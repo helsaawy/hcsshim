@@ -43,8 +43,9 @@ type LCOWMappedVirtualDisk struct {
 }
 
 type WCOWMappedVirtualDisk struct {
-	ContainerPath string `json:"ContainerPath,omitempty"`
-	Lun           int32  `json:"Lun,omitempty"`
+	ContainerPath     string `json:"ContainerPath,omitempty"`
+	Lun               int32  `json:"Lun,omitempty"`
+	OverwriteIfExists bool   `json:"OverwriteIfExists,omitempty"`
 }
 
 type LCOWMappedDirectory struct {

@@ -5,6 +5,7 @@ package uvm
 import (
 	"net"
 	"sync"
+	"time"
 
 	"github.com/Microsoft/go-winio/pkg/guid"
 	"golang.org/x/sys/windows"
@@ -139,4 +140,12 @@ type UtilityVM struct {
 	// noInheritHostTimezone specifies whether to not inherit the hosts timezone for the UVM. UTC will be set as the default instead.
 	// This only applies for WCOW.
 	noInheritHostTimezone bool
+
+	// shutdownGraceful enables saving filesystem and VHD state and sending a
+	// ShutdownGraceful request over guest connection instead of terminating
+	// immediately with a ShutdownForced request to HCS.
+	shutdownGraceful bool
+	// shutdownTimeout is how long to wait for the uVM to shutdown (or terminate).
+	// Set to 0 skip waiting
+	shutdownTimeout time.Duration
 }

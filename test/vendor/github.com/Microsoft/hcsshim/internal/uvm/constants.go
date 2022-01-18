@@ -2,6 +2,7 @@ package uvm
 
 import (
 	"errors"
+	"time"
 )
 
 const (
@@ -29,9 +30,14 @@ const (
 	WCOWGlobalMountPrefix = "C:\\mounts\\m%d"
 	// RootfsPath is part of the container's rootfs path
 	RootfsPath = "rootfs"
+
+	// DefaultShutdownTimeout is the default time to wait for a UVM shutdown to finish
+	// before a timeout is raised
+	DefaultShutdownTimeout = 5 * time.Second
 )
 
 var (
-	errNotSupported = errors.New("not supported")
-	errBadUVMOpts   = errors.New("UVM options incorrect")
+	errNotSupported            = errors.New("not supported")
+	errBadUVMOpts              = errors.New("UVM options incorrect")
+	errGuestConnectionRequired = errors.New("guest connection required")
 )

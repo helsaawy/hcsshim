@@ -431,8 +431,9 @@ func (uvm *UtilityVM) addSCSIActual(ctx context.Context, addReq *addSCSIRequest)
 
 		if uvm.operatingSystem == "windows" {
 			guestReq.Settings = guestrequest.WCOWMappedVirtualDisk{
-				ContainerPath: sm.UVMPath,
-				Lun:           sm.LUN,
+				ContainerPath:     sm.UVMPath,
+				Lun:               sm.LUN,
+				OverwriteIfExists: true,
 			}
 		} else {
 			var verity *guestrequest.DeviceVerityInfo

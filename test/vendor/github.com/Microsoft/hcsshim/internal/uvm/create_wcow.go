@@ -256,7 +256,9 @@ func CreateWCOW(ctx context.Context, opts *OptionsWCOW) (_ *UtilityVM, err error
 		physicallyBacked:        !opts.AllowOvercommit,
 		devicesPhysicallyBacked: opts.FullyPhysicallyBacked,
 		vsmbNoDirectMap:         opts.NoDirectMap,
-		createOpts:              *opts,
+		shutdownGraceful:        opts.ShutdownGraceful,
+		shutdownTimeout:         opts.ShutdownTimeout,
+		createOpts:              opts,
 	}
 
 	defer func() {

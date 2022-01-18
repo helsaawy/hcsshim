@@ -1,3 +1,4 @@
+//go:build linux
 // +build linux
 
 package bridge
@@ -256,13 +257,15 @@ func (b *Bridge) signalContainerV2(ctx context.Context, span *trace.Span, r *Req
 
 	// If this is targeting the UVM send the request to the host itself.
 	if request.ContainerID == hcsv2.UVMContainerID {
-		// We are asking to shutdown the UVM itself.
+		// We are asking to shutdown the UVM itself
+		// Terminates (forcefull shutdowns) are handled by HCS direct, so don't handle here
 		if signal != unix.SIGTERM {
-			log.G(ctx).Error("invalid signal for uvm")
+			log.G(ctx).Errorf("invalid signal for uvm: %v", signal)
 		}
+		log.G(ctx).Debug("shutting down linux uvm")
 		// This is a destructive call. We do not respond to the HCS
 		b.quitChan <- true
-		b.hostState.Shutdown()
+		b.hostState.Shutdown(ctx)
 	} else {
 		c, err := b.hostState.GetContainer(request.ContainerID)
 		if err != nil {

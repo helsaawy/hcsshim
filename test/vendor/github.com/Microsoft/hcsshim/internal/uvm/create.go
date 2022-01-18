@@ -7,18 +7,16 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"time"
 
 	"github.com/Microsoft/hcsshim/internal/cow"
 	"github.com/Microsoft/hcsshim/internal/hcs"
 	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
 	"github.com/Microsoft/hcsshim/internal/log"
 	"github.com/Microsoft/hcsshim/internal/logfields"
-	"github.com/Microsoft/hcsshim/internal/oc"
 	"github.com/Microsoft/hcsshim/internal/schemaversion"
 	"github.com/Microsoft/hcsshim/osversion"
 	"github.com/sirupsen/logrus"
-	"go.opencensus.io/trace"
-	"golang.org/x/sys/windows"
 )
 
 // Options are the set of options passed to Create() to create a utility vm.
@@ -90,6 +88,14 @@ type Options struct {
 	// applied to all containers. On Windows it's configurable per container, but we can mimic this for
 	// Windows by just applying the location specified here per container.
 	ProcessDumpLocation string
+
+	// ShutdownGraceful enables saving filesystem and VHD state and sending a
+	// ShutdownGraceful request over guest connection instead of terminating
+	// immediately with a ShutdownForced request to HCS.
+	ShutdownGraceful bool
+	// ShutdownTimeout is how long to wait for the uVM to shutdown (or terminate).
+	// Set to 0 skip waiting
+	ShutdownTimeout time.Duration
 }
 
 // compares the create opts used during template creation with the create opts
@@ -124,9 +130,10 @@ func verifyCloneUvmCreateOpts(templateOpts, cloneOpts *OptionsWCOW) bool {
 func verifyOptions(ctx context.Context, options interface{}) error {
 	switch opts := options.(type) {
 	case *OptionsLCOW:
-		if opts.EnableDeferredCommit && !opts.AllowOvercommit {
-			return errors.New("EnableDeferredCommit is not supported on physically backed VMs")
+		if err := verifyOptionsCommon(ctx, opts.Options); err != nil {
+			return err
 		}
+
 		if opts.SCSIControllerCount > 1 {
 			return errors.New("SCSI controller count must be 0 or 1") // Future extension here for up to 4
 		}
@@ -150,9 +157,10 @@ func verifyOptions(ctx context.Context, options interface{}) error {
 			return errors.New("EnableColdDiscardHint is not supported on builds older than 18967")
 		}
 	case *OptionsWCOW:
-		if opts.EnableDeferredCommit && !opts.AllowOvercommit {
-			return errors.New("EnableDeferredCommit is not supported on physically backed VMs")
+		if err := verifyOptionsCommon(ctx, opts.Options); err != nil {
+			return err
 		}
+
 		if len(opts.LayerFolders) < 2 {
 			return errors.New("at least 2 LayerFolders must be supplied")
 		}
@@ -166,6 +174,18 @@ func verifyOptions(ctx context.Context, options interface{}) error {
 			return errors.New("template can not be created from a full physically backed UVM")
 		}
 	}
+	return nil
+}
+
+func verifyOptionsCommon(ctx context.Context, opts *Options) error {
+	if opts.EnableDeferredCommit && !opts.AllowOvercommit {
+		return errors.New("EnableDeferredCommit is not supported on physically backed VMs")
+	}
+
+	if opts.ShutdownTimeout < 0 {
+		return errors.New("ShutdownTimeout is negative")
+	}
+
 	return nil
 }
 
@@ -183,6 +203,8 @@ func newDefaultOptions(id, owner string) *Options {
 		EnableDeferredCommit:  false,
 		ProcessorCount:        defaultProcessorCount(),
 		FullyPhysicallyBacked: false,
+		ShutdownGraceful:      false,
+		ShutdownTimeout:       DefaultShutdownTimeout,
 	}
 
 	if opts.Owner == "" {
@@ -231,38 +253,6 @@ func (uvm *UtilityVM) create(ctx context.Context, doc interface{}) error {
 	return nil
 }
 
-// Close terminates and releases resources associated with the utility VM.
-func (uvm *UtilityVM) Close() (err error) {
-	ctx, span := trace.StartSpan(context.Background(), "uvm::Close")
-	defer span.End()
-	defer func() { oc.SetSpanStatus(span, err) }()
-	span.AddAttributes(trace.StringAttribute(logfields.UVMID, uvm.id))
-
-	windows.Close(uvm.vmmemProcess)
-
-	if uvm.hcsSystem != nil {
-		_ = uvm.hcsSystem.Terminate(ctx)
-		_ = uvm.Wait()
-	}
-
-	if err := uvm.CloseGCSConnection(); err != nil {
-		log.G(ctx).Errorf("close GCS connection failed: %s", err)
-	}
-
-	// outputListener will only be nil for a Create -> Stop without a Start. In
-	// this case we have no goroutine processing output so its safe to close the
-	// channel here.
-	if uvm.outputListener != nil {
-		close(uvm.outputProcessingDone)
-		uvm.outputListener.Close()
-		uvm.outputListener = nil
-	}
-	if uvm.hcsSystem != nil {
-		return uvm.hcsSystem.Close()
-	}
-	return nil
-}
-
 // CreateContainer creates a container in the utility VM.
 func (uvm *UtilityVM) CreateContainer(ctx context.Context, id string, settings interface{}) (cow.Container, error) {
 	if uvm.gc != nil {
@@ -298,16 +288,6 @@ func (uvm *UtilityVM) CreateProcess(ctx context.Context, settings interface{}) (
 // include an OCI spec.
 func (uvm *UtilityVM) IsOCI() bool {
 	return false
-}
-
-// Terminate requests that the utility VM be terminated.
-func (uvm *UtilityVM) Terminate(ctx context.Context) error {
-	return uvm.hcsSystem.Terminate(ctx)
-}
-
-// ExitError returns an error if the utility VM has terminated unexpectedly.
-func (uvm *UtilityVM) ExitError() error {
-	return uvm.hcsSystem.ExitError()
 }
 
 func defaultProcessorCount() int32 {

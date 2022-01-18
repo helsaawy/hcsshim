@@ -1,3 +1,4 @@
+//go:build linux
 // +build linux
 
 package hcsv2
@@ -26,10 +27,12 @@ import (
 	"github.com/Microsoft/hcsshim/internal/guest/storage/pmem"
 	"github.com/Microsoft/hcsshim/internal/guest/storage/scsi"
 	"github.com/Microsoft/hcsshim/internal/guest/transport"
+	"github.com/Microsoft/hcsshim/internal/log"
 	"github.com/Microsoft/hcsshim/pkg/annotations"
 	"github.com/Microsoft/hcsshim/pkg/securitypolicy"
 	shellwords "github.com/mattn/go-shellwords"
 	"github.com/pkg/errors"
+	"golang.org/x/sys/unix"
 )
 
 // UVMContainerID is the ContainerID that will be sent on any prot.MessageBase
@@ -330,10 +333,24 @@ func (h *Host) ModifySettings(ctx context.Context, containerID string, settings 
 	return h.modifyContainerSettings(ctx, containerID, settings)
 }
 
-// Shutdown terminates this UVM. This is a destructive call and will destroy all
+// Shutdown gracefully terminates this UVM. This commits all pending filesystem modifications,
+// allowing VHD state to be preserved before shutdown.
+func (h *Host) Shutdown(ctx context.Context) {
+	log.G(ctx).Debug("synching linux uvm filesystem")
+	unix.Sync()
+	h.shutdown(ctx)
+}
+
+// Terminate forcefully terminates this UVM. This is a destructive call and will destroy all
 // state that has not been cleaned before calling this function.
-func (h *Host) Shutdown() {
-	syscall.Reboot(syscall.LINUX_REBOOT_CMD_POWER_OFF)
+//
+// Ideally, the ShutdownForced command should be sent directly to HCS.
+func (h *Host) Terminate(ctx context.Context) {
+	h.shutdown(ctx)
+}
+
+func (h *Host) shutdown(ctx context.Context) {
+	unix.Reboot(unix.LINUX_REBOOT_CMD_POWER_OFF)
 }
 
 // RunExternalProcess runs a process in the utility VM.

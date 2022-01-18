@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"time"
 
 	"github.com/Microsoft/hcsshim/internal/cow"
 	"github.com/Microsoft/hcsshim/internal/hcs"
@@ -87,6 +88,14 @@ type Options struct {
 	// applied to all containers. On Windows it's configurable per container, but we can mimic this for
 	// Windows by just applying the location specified here per container.
 	ProcessDumpLocation string
+
+	// ShutdownGraceful enables saving filesystem and VHD state and sending a
+	// ShutdownGraceful request over guest connection instead of terminating
+	// immediately with a ShutdownForced request to HCS.
+	ShutdownGraceful bool
+	// ShutdownTimeout is how long to wait for the uVM to shutdown (or terminate).
+	// Set to 0 skip waiting
+	ShutdownTimeout time.Duration
 }
 
 // compares the create opts used during template creation with the create opts
@@ -121,9 +130,10 @@ func verifyCloneUvmCreateOpts(templateOpts, cloneOpts *OptionsWCOW) bool {
 func verifyOptions(ctx context.Context, options interface{}) error {
 	switch opts := options.(type) {
 	case *OptionsLCOW:
-		if opts.EnableDeferredCommit && !opts.AllowOvercommit {
-			return errors.New("EnableDeferredCommit is not supported on physically backed VMs")
+		if err := verifyOptionsCommon(ctx, opts.Options); err != nil {
+			return err
 		}
+
 		if opts.SCSIControllerCount > 1 {
 			return errors.New("SCSI controller count must be 0 or 1") // Future extension here for up to 4
 		}
@@ -147,9 +157,10 @@ func verifyOptions(ctx context.Context, options interface{}) error {
 			return errors.New("EnableColdDiscardHint is not supported on builds older than 18967")
 		}
 	case *OptionsWCOW:
-		if opts.EnableDeferredCommit && !opts.AllowOvercommit {
-			return errors.New("EnableDeferredCommit is not supported on physically backed VMs")
+		if err := verifyOptionsCommon(ctx, opts.Options); err != nil {
+			return err
 		}
+
 		if len(opts.LayerFolders) < 2 {
 			return errors.New("at least 2 LayerFolders must be supplied")
 		}
@@ -163,6 +174,18 @@ func verifyOptions(ctx context.Context, options interface{}) error {
 			return errors.New("template can not be created from a full physically backed UVM")
 		}
 	}
+	return nil
+}
+
+func verifyOptionsCommon(ctx context.Context, opts *Options) error {
+	if opts.EnableDeferredCommit && !opts.AllowOvercommit {
+		return errors.New("EnableDeferredCommit is not supported on physically backed VMs")
+	}
+
+	if opts.ShutdownTimeout < 0 {
+		return errors.New("ShutdownTimeout is negative")
+	}
+
 	return nil
 }
 
@@ -180,6 +203,8 @@ func newDefaultOptions(id, owner string) *Options {
 		EnableDeferredCommit:  false,
 		ProcessorCount:        defaultProcessorCount(),
 		FullyPhysicallyBacked: false,
+		ShutdownGraceful:      false,
+		ShutdownTimeout:       DefaultShutdownTimeout,
 	}
 
 	if opts.Owner == "" {
