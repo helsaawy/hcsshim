@@ -28,7 +28,7 @@ const (
 	protocolVersion = 4
 
 	firstIoChannelVsockPort = LinuxGcsVsockPort + 1
-	nullContainerID         = "00000000-0000-0000-0000-000000000000"
+	NullContainerID         = "00000000-0000-0000-0000-000000000000"
 )
 
 // IoListenFunc is a type for a function that creates a listener for a VM for
@@ -142,7 +142,7 @@ func (gc *GuestConnection) connect(ctx context.Context, isColdStart bool, initGu
 			conf.TimeZoneInformation = initGuestState.Timezone
 		}
 		createReq := containerCreate{
-			requestBase:     makeRequest(ctx, nullContainerID),
+			requestBase:     makeRequest(ctx, NullContainerID),
 			ContainerConfig: anyInString{conf},
 		}
 		var createResp responseBase
@@ -151,7 +151,7 @@ func (gc *GuestConnection) connect(ctx context.Context, isColdStart bool, initGu
 			return err
 		}
 		if resp.Capabilities.SendHostStartMessage {
-			startReq := makeRequest(ctx, nullContainerID)
+			startReq := makeRequest(ctx, NullContainerID)
 			var startResp responseBase
 			err = gc.brdg.RPC(ctx, rpcStart, &startReq, &startResp, true)
 			if err != nil {
@@ -170,7 +170,7 @@ func (gc *GuestConnection) Modify(ctx context.Context, settings interface{}) (er
 	defer func() { oc.SetSpanStatus(span, err) }()
 
 	req := containerModifySettings{
-		requestBase: makeRequest(ctx, nullContainerID),
+		requestBase: makeRequest(ctx, NullContainerID),
 		Request:     settings,
 	}
 	var resp responseBase
@@ -183,7 +183,7 @@ func (gc *GuestConnection) DumpStacks(ctx context.Context) (response string, err
 	defer func() { oc.SetSpanStatus(span, err) }()
 
 	req := dumpStacksRequest{
-		requestBase: makeRequest(ctx, nullContainerID),
+		requestBase: makeRequest(ctx, NullContainerID),
 	}
 	var resp dumpStacksResponse
 	err = gc.brdg.RPC(ctx, rpcDumpStacks, &req, &resp, false)
@@ -218,7 +218,7 @@ func (gc *GuestConnection) CreateProcess(ctx context.Context, settings interface
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, err) }()
 
-	return gc.exec(ctx, nullContainerID, settings)
+	return gc.exec(ctx, NullContainerID, settings)
 }
 
 // OS returns the operating system of the container's host, "windows" or "linux".
@@ -230,6 +230,17 @@ func (gc *GuestConnection) OS() string {
 // an OCI process spec.
 func (gc *GuestConnection) IsOCI() bool {
 	return false
+}
+
+func (gc *GuestConnection) Shutdown(ctx context.Context, cid string) (err error) {
+	ctx, span := trace.StartSpan(ctx, "gcs::GuestConnection::Shutdown")
+	defer span.End()
+	defer func() { oc.SetSpanStatus(span, err) }()
+	span.AddAttributes(trace.StringAttribute(logfields.ContainerID, cid))
+
+	var resp responseBase
+	req := makeRequest(ctx, cid)
+	return gc.brdg.RPC(ctx, rpcShutdownGraceful, &req, &resp, false)
 }
 
 func (gc *GuestConnection) newIoChannel() (*ioChannel, uint32, error) {

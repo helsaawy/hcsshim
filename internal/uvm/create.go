@@ -13,12 +13,9 @@ import (
 	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
 	"github.com/Microsoft/hcsshim/internal/log"
 	"github.com/Microsoft/hcsshim/internal/logfields"
-	"github.com/Microsoft/hcsshim/internal/oc"
 	"github.com/Microsoft/hcsshim/internal/schemaversion"
 	"github.com/Microsoft/hcsshim/osversion"
 	"github.com/sirupsen/logrus"
-	"go.opencensus.io/trace"
-	"golang.org/x/sys/windows"
 )
 
 // Options are the set of options passed to Create() to create a utility vm.
@@ -231,38 +228,6 @@ func (uvm *UtilityVM) create(ctx context.Context, doc interface{}) error {
 	return nil
 }
 
-// Close terminates and releases resources associated with the utility VM.
-func (uvm *UtilityVM) Close() (err error) {
-	ctx, span := trace.StartSpan(context.Background(), "uvm::Close")
-	defer span.End()
-	defer func() { oc.SetSpanStatus(span, err) }()
-	span.AddAttributes(trace.StringAttribute(logfields.UVMID, uvm.id))
-
-	windows.Close(uvm.vmmemProcess)
-
-	if uvm.hcsSystem != nil {
-		_ = uvm.hcsSystem.Terminate(ctx)
-		_ = uvm.Wait()
-	}
-
-	if err := uvm.CloseGCSConnection(); err != nil {
-		log.G(ctx).Errorf("close GCS connection failed: %s", err)
-	}
-
-	// outputListener will only be nil for a Create -> Stop without a Start. In
-	// this case we have no goroutine processing output so its safe to close the
-	// channel here.
-	if uvm.outputListener != nil {
-		close(uvm.outputProcessingDone)
-		uvm.outputListener.Close()
-		uvm.outputListener = nil
-	}
-	if uvm.hcsSystem != nil {
-		return uvm.hcsSystem.Close()
-	}
-	return nil
-}
-
 // CreateContainer creates a container in the utility VM.
 func (uvm *UtilityVM) CreateContainer(ctx context.Context, id string, settings interface{}) (cow.Container, error) {
 	if uvm.gc != nil {
@@ -298,16 +263,6 @@ func (uvm *UtilityVM) CreateProcess(ctx context.Context, settings interface{}) (
 // include an OCI spec.
 func (uvm *UtilityVM) IsOCI() bool {
 	return false
-}
-
-// Terminate requests that the utility VM be terminated.
-func (uvm *UtilityVM) Terminate(ctx context.Context) error {
-	return uvm.hcsSystem.Terminate(ctx)
-}
-
-// ExitError returns an error if the utility VM has terminated unexpectedly.
-func (uvm *UtilityVM) ExitError() error {
-	return uvm.hcsSystem.ExitError()
 }
 
 func defaultProcessorCount() int32 {

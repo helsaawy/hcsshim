@@ -40,6 +40,9 @@ var (
 	// ErrTimeout is an error encountered when waiting on a notification times out
 	ErrTimeout = errors.New("hcsshim: timeout waiting for notification")
 
+	// ErrCancelled is an error encountered when the operation, request, or context is cancelled
+	ErrCancelled = errors.New("operation cancelled")
+
 	// ErrUnexpectedContainerExit is the error encountered when a container exits while waiting for
 	// a different expected notification
 	ErrUnexpectedContainerExit = errors.New("unexpected container exit")

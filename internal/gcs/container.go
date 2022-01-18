@@ -178,6 +178,7 @@ func (c *Container) Start(ctx context.Context) (err error) {
 }
 
 func (c *Container) shutdown(ctx context.Context, proc rpcProc) error {
+	// todo (helsaawy): switch this to gc.Shutdown, check err.(rpcError), get err.Result
 	req := makeRequest(ctx, c.id)
 	var resp responseBase
 	err := c.gc.brdg.RPC(ctx, proc, &req, &resp, true)
