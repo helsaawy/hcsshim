@@ -17,6 +17,8 @@ import (
 	"github.com/Microsoft/hcsshim/internal/hcs"
 	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
 	"github.com/Microsoft/hcsshim/internal/log"
+	"github.com/Microsoft/hcsshim/internal/logfields"
+	"github.com/Microsoft/hcsshim/internal/oc"
 	"github.com/Microsoft/hcsshim/internal/oci"
 	"github.com/Microsoft/hcsshim/internal/resources"
 	"github.com/Microsoft/hcsshim/internal/schemaversion"
@@ -24,6 +26,7 @@ import (
 	"github.com/Microsoft/hcsshim/pkg/annotations"
 	specs "github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/sirupsen/logrus"
+	"go.opencensus.io/trace"
 )
 
 var (
@@ -260,6 +263,10 @@ func configureSandboxNetwork(ctx context.Context, coi *createOptionsInternal, r 
 // release the resources on failure, so that the client can make the necessary
 // call to release resources that have been allocated as part of calling this function.
 func CreateContainer(ctx context.Context, createOptions *CreateOptions) (_ cow.Container, _ *resources.Resources, err error) {
+	ctx, span := oc.StartTraceSpan(ctx, "hcsoci::CreateContainer")
+	defer func() { oc.SetSpanStatus(span, err); span.End() }()
+	span.AddAttributes(trace.StringAttribute(logfields.ID, createOptions.ID))
+
 	coi, err := initializeCreateOptions(ctx, createOptions)
 	if err != nil {
 		return nil, nil, err
@@ -381,6 +388,10 @@ func CreateContainer(ctx context.Context, createOptions *CreateOptions) (_ cow.C
 // CreateContainer does. Also, instead of sending create container request it sends a modify
 // request to an existing container. CloneContainer only works for WCOW.
 func CloneContainer(ctx context.Context, createOptions *CreateOptions) (_ cow.Container, _ *resources.Resources, err error) {
+	ctx, span := oc.StartTraceSpan(ctx, "hcsoci::CloneContainer")
+	defer func() { oc.SetSpanStatus(span, err); span.End() }()
+	span.AddAttributes(trace.StringAttribute(logfields.ID, createOptions.ID))
+
 	coi, err := initializeCreateOptions(ctx, createOptions)
 	if err != nil {
 		return nil, nil, err

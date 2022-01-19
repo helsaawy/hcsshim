@@ -31,7 +31,7 @@ var _ cow.Container = &Container{}
 // CreateContainer creates a container using ID `cid` and `cfg`. The request
 // will likely not be cancellable even if `ctx` becomes done.
 func (gc *GuestConnection) CreateContainer(ctx context.Context, cid string, config interface{}) (_ *Container, err error) {
-	ctx, span := trace.StartSpan(ctx, "gcs::GuestConnection::CreateContainer")
+	ctx, span := oc.StartTraceSpan(ctx, "gcs::GuestConnection::CreateContainer", oc.WithClientSpanKind)
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, err) }()
 	span.AddAttributes(trace.StringAttribute("cid", cid))
@@ -90,7 +90,7 @@ func (c *Container) IsOCI() bool {
 // Close releases associated with the container.
 func (c *Container) Close() error {
 	c.closeOnce.Do(func() {
-		_, span := trace.StartSpan(context.Background(), "gcs::Container::Close")
+		_, span := oc.StartTraceSpan(context.Background(), "gcs::Container::Close")
 		defer span.End()
 		span.AddAttributes(trace.StringAttribute("cid", c.id))
 	})
@@ -99,7 +99,7 @@ func (c *Container) Close() error {
 
 // CreateProcess creates a process in the container.
 func (c *Container) CreateProcess(ctx context.Context, config interface{}) (_ cow.Process, err error) {
-	ctx, span := trace.StartSpan(ctx, "gcs::Container::CreateProcess")
+	ctx, span := oc.StartTraceSpan(ctx, "gcs::Container::CreateProcess", oc.WithClientSpanKind)
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, err) }()
 	span.AddAttributes(trace.StringAttribute("cid", c.id))
@@ -114,7 +114,7 @@ func (c *Container) ID() string {
 
 // Modify sends a modify request to the container.
 func (c *Container) Modify(ctx context.Context, config interface{}) (err error) {
-	ctx, span := trace.StartSpan(ctx, "gcs::Container::Modify")
+	ctx, span := oc.StartSpan(ctx, "gcs::Container::Modify", oc.WithClientSpanKind)
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, err) }()
 	span.AddAttributes(trace.StringAttribute("cid", c.id))
@@ -129,7 +129,7 @@ func (c *Container) Modify(ctx context.Context, config interface{}) (err error) 
 
 // Properties returns the requested container properties targeting a V1 schema container.
 func (c *Container) Properties(ctx context.Context, types ...schema1.PropertyType) (_ *schema1.ContainerProperties, err error) {
-	ctx, span := trace.StartSpan(ctx, "gcs::Container::Properties")
+	ctx, span := oc.StartTraceSpan(ctx, "gcs::Container::Properties", oc.WithClientSpanKind)
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, err) }()
 	span.AddAttributes(trace.StringAttribute("cid", c.id))
@@ -148,7 +148,7 @@ func (c *Container) Properties(ctx context.Context, types ...schema1.PropertyTyp
 
 // PropertiesV2 returns the requested container properties targeting a V2 schema container.
 func (c *Container) PropertiesV2(ctx context.Context, types ...hcsschema.PropertyType) (_ *hcsschema.Properties, err error) {
-	ctx, span := trace.StartSpan(ctx, "gcs::Container::PropertiesV2")
+	ctx, span := oc.StartTraceSpan(ctx, "gcs::Container::PropertiesV2", oc.WithClientSpanKind)
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, err) }()
 	span.AddAttributes(trace.StringAttribute("cid", c.id))
@@ -167,7 +167,7 @@ func (c *Container) PropertiesV2(ctx context.Context, types ...hcsschema.Propert
 
 // Start starts the container.
 func (c *Container) Start(ctx context.Context) (err error) {
-	ctx, span := trace.StartSpan(ctx, "gcs::Container::Start")
+	ctx, span := oc.StartTraceSpan(ctx, "gcs::Container::Start", oc.WithClientSpanKind)
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, err) }()
 	span.AddAttributes(trace.StringAttribute("cid", c.id))
@@ -198,7 +198,7 @@ func (c *Container) shutdown(ctx context.Context, proc rpcProc) error {
 // might not be terminated by the time the request completes (and might never
 // terminate).
 func (c *Container) Shutdown(ctx context.Context) (err error) {
-	ctx, span := trace.StartSpan(ctx, "gcs::Container::Shutdown")
+	ctx, span := oc.StartTraceSpan(ctx, "gcs::Container::Shutdown", oc.WithClientSpanKind)
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, err) }()
 	span.AddAttributes(trace.StringAttribute("cid", c.id))
@@ -212,7 +212,7 @@ func (c *Container) Shutdown(ctx context.Context) (err error) {
 // might not be terminated by the time the request completes (and might never
 // terminate).
 func (c *Container) Terminate(ctx context.Context) (err error) {
-	ctx, span := trace.StartSpan(ctx, "gcs::Container::Terminate")
+	ctx, span := oc.StartTraceSpan(ctx, "gcs::Container::Terminate", oc.WithClientSpanKind)
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, err) }()
 	span.AddAttributes(trace.StringAttribute("cid", c.id))
@@ -234,7 +234,7 @@ func (c *Container) Wait() error {
 }
 
 func (c *Container) waitBackground() {
-	ctx, span := trace.StartSpan(context.Background(), "gcs::Container::waitBackground")
+	ctx, span := oc.StartTraceSpan(context.Background(), "gcs::Container::waitBackground")
 	defer span.End()
 	span.AddAttributes(trace.StringAttribute("cid", c.id))
 

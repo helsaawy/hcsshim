@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/Microsoft/hcsshim/internal/log"
+	"github.com/Microsoft/hcsshim/internal/logfields"
 	"github.com/Microsoft/hcsshim/internal/oc"
 	"github.com/Microsoft/hcsshim/internal/oci"
 	"github.com/Microsoft/hcsshim/internal/uvm"
@@ -281,6 +283,8 @@ func (p *pod) ID() string {
 }
 
 func (p *pod) GetCloneAnnotations(ctx context.Context, s *specs.Spec) (bool, string, error) {
+	log.G(ctx).WithField(logfields.TaskID, p.id).Trace("pod::GetCloneAnnotations")
+
 	isTemplate, templateID, err := oci.ParseCloneAnnotations(ctx, s)
 	if err != nil {
 		return false, "", err
@@ -291,6 +295,10 @@ func (p *pod) GetCloneAnnotations(ctx context.Context, s *specs.Spec) (bool, str
 }
 
 func (p *pod) CreateTask(ctx context.Context, req *task.CreateTaskRequest, s *specs.Spec) (_ shimTask, err error) {
+	ctx, span := oc.StartTraceSpan(ctx, "pod::CreateTask")
+	defer func() { oc.SetSpanStatus(span, err); span.End() }()
+	span.AddAttributes(trace.StringAttribute(logfields.TaskID, p.id))
+
 	if req.ID == p.id {
 		return nil, errors.Wrapf(errdefs.ErrAlreadyExists, "task with id: '%s' already exists", req.ID)
 	}
@@ -366,7 +374,11 @@ func (p *pod) GetTask(tid string) (shimTask, error) {
 	return raw.(shimTask), nil
 }
 
-func (p *pod) KillTask(ctx context.Context, tid, eid string, signal uint32, all bool) error {
+func (p *pod) KillTask(ctx context.Context, tid, eid string, signal uint32, all bool) (err error) {
+	ctx, span := oc.StartTraceSpan(ctx, "pod::CreateTask")
+	defer func() { oc.SetSpanStatus(span, err); span.End() }()
+	span.AddAttributes(trace.StringAttribute(logfields.TaskID, p.id))
+
 	t, err := p.GetTask(tid)
 	if err != nil {
 		return err

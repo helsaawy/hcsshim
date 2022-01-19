@@ -3,10 +3,12 @@ package logfields
 const (
 	// Identifiers
 
+	ID          = "id"
 	ContainerID = "cid"
 	UVMID       = "uvm-id"
 	ProcessID   = "pid"
 	TaskID      = "tid"
+	ExecID      = "eid"
 
 	// Common Misc
 

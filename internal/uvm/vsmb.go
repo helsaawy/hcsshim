@@ -13,10 +13,13 @@ import (
 	"github.com/Microsoft/hcsshim/internal/hcs/resourcepaths"
 	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
 	"github.com/Microsoft/hcsshim/internal/log"
+	"github.com/Microsoft/hcsshim/internal/logfields"
+	"github.com/Microsoft/hcsshim/internal/oc"
 	"github.com/Microsoft/hcsshim/internal/requesttype"
 	"github.com/Microsoft/hcsshim/internal/winapi"
 	"github.com/Microsoft/hcsshim/osversion"
 	"github.com/sirupsen/logrus"
+	"go.opencensus.io/trace"
 	"golang.org/x/sys/windows"
 )
 
@@ -157,7 +160,13 @@ func forceNoDirectMap(path string) (bool, error) {
 // AddVSMB adds a VSMB share to a Windows utility VM. Each VSMB share is ref-counted and
 // only added if it isn't already. This is used for read-only layers, mapped directories
 // to a container, and for mapped pipes.
-func (uvm *UtilityVM) AddVSMB(ctx context.Context, hostPath string, options *hcsschema.VirtualSmbShareOptions) (*VSMBShare, error) {
+func (uvm *UtilityVM) AddVSMB(ctx context.Context, hostPath string, options *hcsschema.VirtualSmbShareOptions) (_ *VSMBShare, err error) {
+	ctx, span := oc.StartTraceSpan(ctx, "uvm::AddVSMB")
+	defer func() { oc.SetSpanStatus(span, err); span.End() }()
+	span.AddAttributes(
+		trace.StringAttribute(logfields.UVMID, uvm.id),
+		trace.StringAttribute("hostPath", hostPath))
+
 	if uvm.operatingSystem != "windows" {
 		return nil, errNotSupported
 	}

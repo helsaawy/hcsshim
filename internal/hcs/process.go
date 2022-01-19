@@ -201,7 +201,7 @@ func (process *Process) Kill(ctx context.Context) (bool, error) {
 // call multiple times.
 func (process *Process) waitBackground() {
 	operation := "hcs::Process::waitBackground"
-	ctx, span := trace.StartSpan(context.Background(), operation)
+	ctx, span := oc.StartTraceSpan(context.Background(), operation)
 	defer span.End()
 	span.AddAttributes(
 		trace.StringAttribute("cid", process.SystemID()),
@@ -312,7 +312,7 @@ func (process *Process) ExitCode() (int, error) {
 // are the responsibility of the caller to close.
 func (process *Process) StdioLegacy() (_ io.WriteCloser, _ io.ReadCloser, _ io.ReadCloser, err error) {
 	operation := "hcs::Process::StdioLegacy"
-	ctx, span := trace.StartSpan(context.Background(), operation)
+	ctx, span := oc.StartTraceSpan(context.Background(), operation)
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, err) }()
 	span.AddAttributes(
@@ -398,7 +398,7 @@ func (process *Process) CloseStdin(ctx context.Context) error {
 }
 
 func (process *Process) CloseStdout(ctx context.Context) (err error) {
-	ctx, span := trace.StartSpan(ctx, "hcs::Process::CloseStdout") //nolint:ineffassign,staticcheck
+	ctx, span := oc.StartTraceSpan(ctx, "hcs::Process::CloseStdout") //nolint:ineffassign,staticcheck
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, err) }()
 	span.AddAttributes(
@@ -422,7 +422,7 @@ func (process *Process) CloseStdout(ctx context.Context) (err error) {
 }
 
 func (process *Process) CloseStderr(ctx context.Context) (err error) {
-	ctx, span := trace.StartSpan(ctx, "hcs::Process::CloseStderr") //nolint:ineffassign,staticcheck
+	ctx, span := oc.StartTraceSpan(ctx, "hcs::Process::CloseStderr") //nolint:ineffassign,staticcheck
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, err) }()
 	span.AddAttributes(
@@ -450,7 +450,7 @@ func (process *Process) CloseStderr(ctx context.Context) (err error) {
 // or wait on it.
 func (process *Process) Close() (err error) {
 	operation := "hcs::Process::Close"
-	ctx, span := trace.StartSpan(context.Background(), operation)
+	ctx, span := oc.StartTraceSpan(context.Background(), operation)
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, err) }()
 	span.AddAttributes(

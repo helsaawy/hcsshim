@@ -44,7 +44,7 @@ func CreateComputeSystem(ctx context.Context, id string, hcsDocumentInterface in
 
 	// hcsCreateComputeSystemContext is an async operation. Start the outer span
 	// here to measure the full create time.
-	ctx, span := trace.StartSpan(ctx, operation)
+	ctx, span := oc.StartTraceSpan(ctx, operation)
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, err) }()
 	span.AddAttributes(trace.StringAttribute("cid", id))
@@ -178,7 +178,7 @@ func (computeSystem *System) Start(ctx context.Context) (err error) {
 
 	// hcsStartComputeSystemContext is an async operation. Start the outer span
 	// here to measure the full start time.
-	ctx, span := trace.StartSpan(ctx, operation)
+	ctx, span := oc.StartTraceSpan(ctx, operation)
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, err) }()
 	span.AddAttributes(trace.StringAttribute("cid", computeSystem.id))
@@ -253,7 +253,7 @@ func (computeSystem *System) Terminate(ctx context.Context) error {
 // safe to call multiple times.
 func (computeSystem *System) waitBackground() {
 	operation := "hcs::System::waitBackground"
-	ctx, span := trace.StartSpan(context.Background(), operation)
+	ctx, span := oc.StartTraceSpan(context.Background(), operation)
 	defer span.End()
 	span.AddAttributes(trace.StringAttribute("cid", computeSystem.id))
 
@@ -359,7 +359,7 @@ func (computeSystem *System) Pause(ctx context.Context) (err error) {
 
 	// hcsPauseComputeSystemContext is an async peration. Start the outer span
 	// here to measure the full pause time.
-	ctx, span := trace.StartSpan(ctx, operation)
+	ctx, span := oc.StartTraceSpan(ctx, operation)
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, err) }()
 	span.AddAttributes(trace.StringAttribute("cid", computeSystem.id))
@@ -386,7 +386,7 @@ func (computeSystem *System) Resume(ctx context.Context) (err error) {
 
 	// hcsResumeComputeSystemContext is an async operation. Start the outer span
 	// here to measure the full restore time.
-	ctx, span := trace.StartSpan(ctx, operation)
+	ctx, span := oc.StartTraceSpan(ctx, operation)
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, err) }()
 	span.AddAttributes(trace.StringAttribute("cid", computeSystem.id))
@@ -413,7 +413,7 @@ func (computeSystem *System) Save(ctx context.Context, options interface{}) (err
 
 	// hcsSaveComputeSystemContext is an async peration. Start the outer span
 	// here to measure the full save time.
-	ctx, span := trace.StartSpan(ctx, operation)
+	ctx, span := oc.StartTraceSpan(ctx, operation)
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, err) }()
 	span.AddAttributes(trace.StringAttribute("cid", computeSystem.id))
@@ -522,7 +522,7 @@ func (computeSystem *System) OpenProcess(ctx context.Context, pid int) (*Process
 // Close cleans up any state associated with the compute system but does not terminate or wait for it.
 func (computeSystem *System) Close() (err error) {
 	operation := "hcs::System::Close"
-	ctx, span := trace.StartSpan(context.Background(), operation)
+	ctx, span := oc.StartTraceSpan(context.Background(), operation)
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, err) }()
 	span.AddAttributes(trace.StringAttribute("cid", computeSystem.id))

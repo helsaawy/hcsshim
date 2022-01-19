@@ -9,11 +9,13 @@ import (
 	"github.com/Microsoft/hcsshim/internal/computeagent"
 	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
 	"github.com/Microsoft/hcsshim/internal/hns"
+	"github.com/Microsoft/hcsshim/internal/logfields"
+	"github.com/Microsoft/hcsshim/internal/oc"
 	"github.com/Microsoft/hcsshim/pkg/octtrpc"
 	"github.com/containerd/ttrpc"
 	"github.com/containerd/typeurl"
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
+	"go.opencensus.io/trace"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -52,12 +54,13 @@ type computeAgent struct {
 
 var _ computeagent.ComputeAgentService = &computeAgent{}
 
-func (ca *computeAgent) AssignPCI(ctx context.Context, req *computeagent.AssignPCIInternalRequest) (*computeagent.AssignPCIInternalResponse, error) {
-	log.G(ctx).WithFields(logrus.Fields{
-		"containerID":          req.ContainerID,
-		"deviceID":             req.DeviceID,
-		"virtualFunctionIndex": req.VirtualFunctionIndex,
-	}).Info("AssignPCI request")
+func (ca *computeAgent) AssignPCI(ctx context.Context, req *computeagent.AssignPCIInternalRequest) (_ *computeagent.AssignPCIInternalResponse, err error) {
+	ctx, span := oc.StartTraceSpan(ctx, "computeAgent::AssignPCI")
+	defer func() { oc.SetSpanStatus(span, err); span.End() }()
+	span.AddAttributes(
+		trace.StringAttribute(logfields.ContainerID, req.ContainerID),
+		trace.StringAttribute("deviceID", req.DeviceID),
+		trace.Int64Attribute("virtualFunctionIndex", int64(req.VirtualFunctionIndex)))
 
 	if req.DeviceID == "" {
 		return nil, status.Error(codes.InvalidArgument, "received empty field in request")
@@ -70,11 +73,12 @@ func (ca *computeAgent) AssignPCI(ctx context.Context, req *computeagent.AssignP
 	return &computeagent.AssignPCIInternalResponse{ID: dev.VMBusGUID}, nil
 }
 
-func (ca *computeAgent) RemovePCI(ctx context.Context, req *computeagent.RemovePCIInternalRequest) (*computeagent.RemovePCIInternalResponse, error) {
-	log.G(ctx).WithFields(logrus.Fields{
-		"containerID": req.ContainerID,
-		"deviceID":    req.DeviceID,
-	}).Info("RemovePCI request")
+func (ca *computeAgent) RemovePCI(ctx context.Context, req *computeagent.RemovePCIInternalRequest) (_ *computeagent.RemovePCIInternalResponse, err error) {
+	ctx, span := oc.StartTraceSpan(ctx, "computeAgent::RemovePCI")
+	defer func() { oc.SetSpanStatus(span, err); span.End() }()
+	span.AddAttributes(
+		trace.StringAttribute(logfields.ContainerID, req.ContainerID),
+		trace.StringAttribute("deviceID", req.DeviceID))
 
 	if req.DeviceID == "" {
 		return nil, status.Error(codes.InvalidArgument, "received empty field in request")
@@ -86,12 +90,13 @@ func (ca *computeAgent) RemovePCI(ctx context.Context, req *computeagent.RemoveP
 }
 
 // AddNIC will add a NIC to the computeagent services hosting UVM.
-func (ca *computeAgent) AddNIC(ctx context.Context, req *computeagent.AddNICInternalRequest) (*computeagent.AddNICInternalResponse, error) {
-	log.G(ctx).WithFields(logrus.Fields{
-		"containerID": req.ContainerID,
-		"endpoint":    req.Endpoint,
-		"nicID":       req.NicID,
-	}).Info("AddNIC request")
+func (ca *computeAgent) AddNIC(ctx context.Context, req *computeagent.AddNICInternalRequest) (_ *computeagent.AddNICInternalResponse, err error) {
+	ctx, span := oc.StartTraceSpan(ctx, "computeAgent::AddNIC")
+	defer func() { oc.SetSpanStatus(span, err); span.End() }()
+	span.AddAttributes(
+		trace.StringAttribute(logfields.ContainerID, req.ContainerID),
+		trace.StringAttribute("endpoint", req.Endpoint.String()),
+		trace.StringAttribute("nicID", req.NicID))
 
 	if req.NicID == "" || req.Endpoint == nil {
 		return nil, status.Error(codes.InvalidArgument, "received empty field in request")
@@ -119,11 +124,12 @@ func (ca *computeAgent) AddNIC(ctx context.Context, req *computeagent.AddNICInte
 }
 
 // ModifyNIC will modify a NIC from the computeagent services hosting UVM.
-func (ca *computeAgent) ModifyNIC(ctx context.Context, req *computeagent.ModifyNICInternalRequest) (*computeagent.ModifyNICInternalResponse, error) {
-	log.G(ctx).WithFields(logrus.Fields{
-		"nicID":    req.NicID,
-		"endpoint": req.Endpoint,
-	}).Info("ModifyNIC request")
+func (ca *computeAgent) ModifyNIC(ctx context.Context, req *computeagent.ModifyNICInternalRequest) (_ *computeagent.ModifyNICInternalResponse, err error) {
+	ctx, span := oc.StartTraceSpan(ctx, "computeAgent::ModifyNIC")
+	defer func() { oc.SetSpanStatus(span, err); span.End() }()
+	span.AddAttributes(
+		trace.StringAttribute("nicID", req.NicID),
+		trace.StringAttribute("endpoint", req.Endpoint.String()))
 
 	if req.NicID == "" || req.Endpoint == nil || req.IovPolicySettings == nil {
 		return nil, status.Error(codes.InvalidArgument, "received empty field in request")
@@ -167,12 +173,13 @@ func (ca *computeAgent) ModifyNIC(ctx context.Context, req *computeagent.ModifyN
 }
 
 // DeleteNIC will delete a NIC from the computeagent services hosting UVM.
-func (ca *computeAgent) DeleteNIC(ctx context.Context, req *computeagent.DeleteNICInternalRequest) (*computeagent.DeleteNICInternalResponse, error) {
-	log.G(ctx).WithFields(logrus.Fields{
-		"containerID": req.ContainerID,
-		"nicID":       req.NicID,
-		"endpoint":    req.Endpoint,
-	}).Info("DeleteNIC request")
+func (ca *computeAgent) DeleteNIC(ctx context.Context, req *computeagent.DeleteNICInternalRequest) (_ *computeagent.DeleteNICInternalResponse, err error) {
+	ctx, span := oc.StartTraceSpan(ctx, "computeAgent::DeleteNIC")
+	defer func() { oc.SetSpanStatus(span, err); span.End() }()
+	span.AddAttributes(
+		trace.StringAttribute(logfields.ContainerID, req.ContainerID),
+		trace.StringAttribute("nicID", req.NicID),
+		trace.StringAttribute("endpoint", req.Endpoint.String()))
 
 	if req.NicID == "" || req.Endpoint == nil {
 		return nil, status.Error(codes.InvalidArgument, "received empty field in request")

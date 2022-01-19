@@ -7,7 +7,9 @@ import (
 
 	"github.com/Microsoft/go-winio"
 	"github.com/Microsoft/hcsshim/internal/ncproxyttrpc"
+	"github.com/Microsoft/hcsshim/internal/oc"
 	"github.com/containerd/ttrpc"
+	"go.opencensus.io/trace"
 
 	"github.com/Microsoft/go-winio/pkg/guid"
 	"github.com/Microsoft/hcsshim/hcn"
@@ -96,13 +98,10 @@ func (uvm *UtilityVM) SetupNetworkNamespace(ctx context.Context, nsid string) er
 }
 
 // GetNamespaceEndpoints gets all endpoints in `netNS`
-func GetNamespaceEndpoints(ctx context.Context, netNS string) ([]*hns.HNSEndpoint, error) {
-	op := "uvm::GetNamespaceEndpoints"
-	l := log.G(ctx).WithField("netns-id", netNS)
-	l.Debug(op + " - Begin")
-	defer func() {
-		l.Debug(op + " - End")
-	}()
+func GetNamespaceEndpoints(ctx context.Context, netNS string) (_ []*hns.HNSEndpoint, err error) {
+	ctx, span := oc.StartTraceSpan(ctx, "uvm::GetNamespaceEndpoints") //nolint:ineffassign,staticcheck
+	defer func() { oc.SetSpanStatus(span, err); span.End() }()
+	span.AddAttributes(trace.StringAttribute("netns-id", netNS))
 
 	ids, err := hns.GetNamespaceEndpoints(netNS)
 	if err != nil {

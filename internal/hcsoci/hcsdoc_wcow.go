@@ -142,7 +142,7 @@ func ConvertCPULimits(ctx context.Context, cid string, spec *specs.Spec, maxCPUC
 // a container, both hosted and process isolated. It creates both v1 and v2
 // container objects, WCOW only. The containers storage should have been mounted already.
 func createWindowsContainerDocument(ctx context.Context, coi *createOptionsInternal) (*schema1.ContainerConfig, *hcsschema.Container, error) {
-	log.G(ctx).Debug("hcsshim: CreateHCSContainerDocument")
+	log.G(ctx).Trace("hcsshim: CreateHCSContainerDocument")
 	// TODO: Make this safe if exported so no null pointer dereferences.
 
 	if coi.Spec == nil {

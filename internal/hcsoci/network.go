@@ -26,7 +26,7 @@ func createNetworkNamespace(ctx context.Context, coi *createOptionsInternal, r *
 	log.G(ctx).WithFields(logrus.Fields{
 		"netID":               netID,
 		logfields.ContainerID: coi.ID,
-	}).Info("created network namespace for container")
+	}).Debug("created network namespace for container")
 
 	r.SetNetNS(netID)
 	r.SetCreatedNetNS(true)

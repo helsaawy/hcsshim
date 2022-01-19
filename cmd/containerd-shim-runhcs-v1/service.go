@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"runtime"
 	"strings"
@@ -85,8 +86,7 @@ func (s *service) Create(ctx context.Context, req *task.CreateTaskRequest) (resp
 	span.AddAttributes(
 		trace.StringAttribute("tid", req.ID),
 		trace.StringAttribute("bundle", req.Bundle),
-		// trace.StringAttribute("rootfs", req.Rootfs), TODO: JTERRY75 -
-		// OpenCensus doesnt support slice like our logrus hook
+		trace.StringAttribute("rootfs", fmt.Sprintf("%+v", req.Rootfs)),
 		trace.BoolAttribute("terminal", req.Terminal),
 		trace.StringAttribute("stdin", req.Stdin),
 		trace.StringAttribute("stdout", req.Stdout),
