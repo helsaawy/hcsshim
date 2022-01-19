@@ -13,6 +13,7 @@ import (
 
 	"github.com/Microsoft/go-winio"
 	runhcsopts "github.com/Microsoft/hcsshim/cmd/containerd-shim-runhcs-v1/options"
+	"github.com/Microsoft/hcsshim/internal/logfields"
 	"github.com/Microsoft/hcsshim/internal/shimdiag"
 	"github.com/Microsoft/hcsshim/pkg/octtrpc"
 	"github.com/containerd/containerd/log"
@@ -74,6 +75,7 @@ var serveCommand = cli.Command{
 		}
 
 		// containerd passes the shim options protobuf via stdin.
+		// todo: merge defaults, above, with passed in opts
 		newShimOpts, err := readOptions(os.Stdin)
 		if err != nil {
 			return errors.Wrap(err, "failed to read shim options from stdin")
@@ -83,24 +85,24 @@ var serveCommand = cli.Command{
 		}
 
 		if shimOpts.Debug && shimOpts.LogLevel != "" {
-			logrus.Warning("Both Debug and LogLevel specified, Debug will be overriden")
+			logrus.Warning("Both Debug and LogLevel specified, Debug will be overridden")
 		}
 
+		lvl := logrus.GetLevel()
 		// For now keep supporting the debug option, this used to be the only way to specify a different logging
 		// level for the shim.
 		if shimOpts.Debug {
-			logrus.SetLevel(logrus.DebugLevel)
+			lvl = logrus.DebugLevel
 		}
-
 		// If log level is specified, set the corresponding logrus logging level. This overrides the debug option
 		// (unless the level being asked for IS debug also, then this doesn't do much).
 		if shimOpts.LogLevel != "" {
-			lvl, err := logrus.ParseLevel(shimOpts.LogLevel)
+			lvl, err = logrus.ParseLevel(shimOpts.LogLevel)
 			if err != nil {
 				return errors.Wrapf(err, "failed to parse shim log level %q", shimOpts.LogLevel)
 			}
-			logrus.SetLevel(lvl)
 		}
+		logrus.SetLevel(lvl)
 
 		switch shimOpts.DebugType {
 		case runhcsopts.Options_NPIPE:
@@ -156,6 +158,10 @@ var serveCommand = cli.Command{
 		}
 
 		os.Stdin.Close()
+
+		logrus.
+			WithField(logfields.Options, fmt.Sprintf("%+v", shimOpts)).
+			Debug("shim options")
 
 		// Force the cli.ErrWriter to be os.Stdout for this. We use stderr for
 		// the panic.log attached via start.

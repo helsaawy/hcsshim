@@ -6,6 +6,7 @@ const (
 	ContainerID = "cid"
 	UVMID       = "uvm-id"
 	ProcessID   = "pid"
+	TaskID      = "tid"
 
 	// Common Misc
 
@@ -18,6 +19,7 @@ const (
 	Field         = "field"
 	OCIAnnotation = "oci-annotation"
 	Value         = "value"
+	Options       = "options"
 
 	// Golang type's
 

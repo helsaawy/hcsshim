@@ -6,18 +6,17 @@ import (
 	"github.com/Microsoft/hcsshim/internal/hns"
 	"github.com/Microsoft/hcsshim/internal/log"
 	"github.com/Microsoft/hcsshim/internal/logfields"
+	"github.com/Microsoft/hcsshim/internal/oc"
 	"github.com/Microsoft/hcsshim/internal/resources"
 	"github.com/Microsoft/hcsshim/internal/uvm"
 	"github.com/sirupsen/logrus"
+	"go.opencensus.io/trace"
 )
 
-func createNetworkNamespace(ctx context.Context, coi *createOptionsInternal, r *resources.Resources) error {
-	op := "hcsoci::createNetworkNamespace"
-	l := log.G(ctx).WithField(logfields.ContainerID, coi.ID)
-	l.Debug(op + " - Begin")
-	defer func() {
-		l.Debug(op + " - End")
-	}()
+func createNetworkNamespace(ctx context.Context, coi *createOptionsInternal, r *resources.Resources) (err error) {
+	ctx, span := oc.StartTraceSpan(ctx, "hcsoci::createNetworkNamespace")
+	defer func() { oc.SetSpanStatus(span, err); span.End() }()
+	span.AddAttributes(trace.StringAttribute(logfields.ContainerID, coi.ID))
 
 	netID, err := hns.CreateNamespace()
 	if err != nil {

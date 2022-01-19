@@ -133,7 +133,7 @@ func (mux *Mux) ServeMsg(r *Request) (RequestResponse, error) {
 type Request struct {
 	// Context is the request context received from the bridge.
 	Context context.Context
-	// Header is the wire format message header that preceeded the message for
+	// Header is the wire format message header that preceded the message for
 	// this request.
 	Header *prot.MessageHeader
 	// ContainerID is the id of the container that this message corresponds to.
@@ -166,7 +166,7 @@ type bridgeResponse struct {
 // It has two fundamentally different dispatch options:
 //
 // 1. Request/Response where using the `Handler` a request
-//    of a given type will be dispatched to the apprpriate handler
+//    of a given type will be dispatched to the appropriate handler
 //    and an appropriate response will respond to exactly that request that
 //    caused the dispatch.
 //
