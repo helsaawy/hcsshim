@@ -17,6 +17,8 @@ import (
 	"github.com/Microsoft/hcsshim/internal/hcs"
 	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
 	"github.com/Microsoft/hcsshim/internal/log"
+	"github.com/Microsoft/hcsshim/internal/logfields"
+	"github.com/Microsoft/hcsshim/internal/oc"
 	"github.com/Microsoft/hcsshim/internal/oci"
 	"github.com/Microsoft/hcsshim/internal/resources"
 	"github.com/Microsoft/hcsshim/internal/schemaversion"
@@ -24,6 +26,7 @@ import (
 	"github.com/Microsoft/hcsshim/pkg/annotations"
 	specs "github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/sirupsen/logrus"
+	"go.opencensus.io/trace"
 )
 
 var (
@@ -208,8 +211,8 @@ func initializeCreateOptions(ctx context.Context, createOptions *CreateOptions) 
 
 	log.G(ctx).WithFields(logrus.Fields{
 		"options": fmt.Sprintf("%+v", createOptions),
-		"schema":  coi.actualSchemaVersion,
-	}).Debug("hcsshim::initializeCreateOptions")
+		"schema":  fmt.Sprintf("%+v", coi.actualSchemaVersion),
+	}).Debug("hcsshim::initializeCreateOptions options")
 
 	return coi, nil
 }
@@ -260,6 +263,11 @@ func configureSandboxNetwork(ctx context.Context, coi *createOptionsInternal, r 
 // release the resources on failure, so that the client can make the necessary
 // call to release resources that have been allocated as part of calling this function.
 func CreateContainer(ctx context.Context, createOptions *CreateOptions) (_ cow.Container, _ *resources.Resources, err error) {
+	ctx, span := trace.StartSpan(ctx, "hcsoci::CreateContainer")
+	defer span.End()
+	defer func() { oc.SetSpanStatus(span, err) }()
+	span.AddAttributes(trace.StringAttribute(logfields.ID, createOptions.ID))
+
 	coi, err := initializeCreateOptions(ctx, createOptions)
 	if err != nil {
 		return nil, nil, err
@@ -312,12 +320,13 @@ func CreateContainer(ctx context.Context, createOptions *CreateOptions) (_ cow.C
 	}
 
 	var hcsDocument, gcsDocument interface{}
-	log.G(ctx).Debug("hcsshim::CreateContainer allocating resources")
+	etr := log.G(ctx)
+	etr.Debug("hcsshim::CreateContainer allocating resources")
 	if coi.Spec.Linux != nil {
 		if schemaversion.IsV10(coi.actualSchemaVersion) {
 			return nil, r, errors.New("LCOW v1 not supported")
 		}
-		log.G(ctx).Debug("hcsshim::CreateContainer allocateLinuxResources")
+		etr.Debug("hcsshim::CreateContainer allocateLinuxResources")
 		err = allocateLinuxResources(ctx, coi, r, isSandbox)
 		if err != nil {
 			log.G(ctx).WithError(err).Debug("failed to allocateLinuxResources")
@@ -325,19 +334,19 @@ func CreateContainer(ctx context.Context, createOptions *CreateOptions) (_ cow.C
 		}
 		gcsDocument, err = createLinuxContainerDocument(ctx, coi, r.ContainerRootInUVM())
 		if err != nil {
-			log.G(ctx).WithError(err).Debug("failed createHCSContainerDocument")
+			log.G(ctx).WithError(err).Error("failed createHCSContainerDocument")
 			return nil, r, err
 		}
 	} else {
 		err = allocateWindowsResources(ctx, coi, r, isSandbox)
 		if err != nil {
-			log.G(ctx).WithError(err).Debug("failed to allocateWindowsResources")
+			etr.WithError(err).Error("failed to allocateWindowsResources")
 			return nil, r, err
 		}
-		log.G(ctx).Debug("hcsshim::CreateContainer creating container document")
+		etr.Debug("hcsshim::CreateContainer creating container document")
 		v1, v2, err := createWindowsContainerDocument(ctx, coi)
 		if err != nil {
-			log.G(ctx).WithError(err).Debug("failed createHCSContainerDocument")
+			etr.WithError(err).Error("failed createHCSContainerDocument")
 			return nil, r, err
 		}
 
@@ -361,7 +370,7 @@ func CreateContainer(ctx context.Context, createOptions *CreateOptions) (_ cow.C
 		}
 	}
 
-	log.G(ctx).Debug("hcsshim::CreateContainer creating compute system")
+	etr.Debug("hcsshim::CreateContainer creating compute system")
 	if gcsDocument != nil {
 		c, err := coi.HostingSystem.CreateContainer(ctx, coi.actualID, gcsDocument)
 		if err != nil {
@@ -381,6 +390,11 @@ func CreateContainer(ctx context.Context, createOptions *CreateOptions) (_ cow.C
 // CreateContainer does. Also, instead of sending create container request it sends a modify
 // request to an existing container. CloneContainer only works for WCOW.
 func CloneContainer(ctx context.Context, createOptions *CreateOptions) (_ cow.Container, _ *resources.Resources, err error) {
+	ctx, span := trace.StartSpan(ctx, "hcsoci::CloneContainer")
+	defer span.End()
+	defer func() { oc.SetSpanStatus(span, err) }()
+	span.AddAttributes(trace.StringAttribute(logfields.ID, createOptions.ID))
+
 	coi, err := initializeCreateOptions(ctx, createOptions)
 	if err != nil {
 		return nil, nil, err

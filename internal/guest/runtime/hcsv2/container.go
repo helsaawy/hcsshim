@@ -25,6 +25,7 @@ import (
 	"github.com/Microsoft/hcsshim/internal/logfields"
 	"github.com/Microsoft/hcsshim/internal/protocol/guestrequest"
 	"github.com/Microsoft/hcsshim/internal/protocol/guestresource"
+	"github.com/Microsoft/hcsshim/internal/oc"
 )
 
 type Container struct {
@@ -178,7 +179,7 @@ func (c *Container) Update(ctx context.Context, resources interface{}) error {
 
 // Wait waits for the container's init process to exit.
 func (c *Container) Wait() prot.NotificationType {
-	_, span := trace.StartSpan(context.Background(), "opengcs::Container::Wait")
+	_, span := oc.StartTraceSpan(context.Background(), "opengcs::Container::Wait")
 	defer span.End()
 	span.AddAttributes(trace.StringAttribute(logfields.ContainerID, c.id))
 

@@ -129,11 +129,14 @@ func (mux *Mux) ServeMsg(r *Request) (RequestResponse, error) {
 	return h.ServeMsg(r)
 }
 
+// todo (helsaawy): remove context as a field and pass it explicitly
+// https://go.dev/blog/context-and-structs#storing-context-in-structs-leads-to-confusion
+
 // Request is the bridge request that has been sent.
 type Request struct {
 	// Context is the request context received from the bridge.
 	Context context.Context
-	// Header is the wire format message header that preceeded the message for
+	// Header is the wire format message header that preceded the message for
 	// this request.
 	Header *prot.MessageHeader
 	// ContainerID is the id of the container that this message corresponds to.
@@ -166,7 +169,7 @@ type bridgeResponse struct {
 // It has two fundamentally different dispatch options:
 //
 // 1. Request/Response where using the `Handler` a request
-//    of a given type will be dispatched to the apprpriate handler
+//    of a given type will be dispatched to the appropriate handler
 //    and an appropriate response will respond to exactly that request that
 //    caused the dispatch.
 //
@@ -290,9 +293,15 @@ func (b *Bridge) ListenAndServe(bridgeIn io.ReadCloser, bridgeOut io.WriteCloser
 							}
 						}
 					}
-					ctx, span = trace.StartSpanWithRemoteParent(context.Background(), "opengcs::bridge::request", sc)
+					ctx, span = trace.StartSpanWithRemoteParent(context.Background(),
+						"opengcs::bridge::request",
+						sc,
+						oc.WithTraceLevelSampler,
+						oc.WithServerSpanKind)
 				} else {
-					ctx, span = trace.StartSpan(context.Background(), "opengcs::bridge::request")
+					ctx, span = oc.StartTraceSpan(context.Background(),
+						"opengcs::bridge::request",
+						oc.WithServerSpanKind)
 				}
 
 				span.AddAttributes(
@@ -401,7 +410,9 @@ func (b *Bridge) ListenAndServe(bridgeIn io.ReadCloser, bridgeOut io.WriteCloser
 
 // PublishNotification writes a specific notification to the bridge.
 func (b *Bridge) PublishNotification(n *prot.ContainerNotification) {
-	ctx, span := trace.StartSpan(context.Background(), "opengcs::bridge::PublishNotification")
+	ctx, span := oc.StartTraceSpan(context.Background(),
+		"opengcs::bridge::PublishNotification",
+		oc.WithClientSpanKind)
 	span.AddAttributes(trace.StringAttribute("notification", fmt.Sprintf("%+v", n)))
 	// DONT defer span.End() here. Publish is odd because bridgeResponse calls
 	// `End` on the `ctx` after the response is sent.

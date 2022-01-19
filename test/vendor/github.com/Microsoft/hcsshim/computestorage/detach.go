@@ -12,7 +12,7 @@ import (
 //
 // `layerPath` is a path to a directory containing the layer to export.
 func DetachLayerStorageFilter(ctx context.Context, layerPath string) (err error) {
-	title := "hcsshim.DetachLayerStorageFilter"
+	title := "hcsshim::DetachLayerStorageFilter"
 	ctx, span := trace.StartSpan(ctx, title) //nolint:ineffassign,staticcheck
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, err) }()

@@ -14,11 +14,14 @@ import (
 	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
 	"github.com/Microsoft/hcsshim/internal/hcserror"
 	"github.com/Microsoft/hcsshim/internal/log"
+	"github.com/Microsoft/hcsshim/internal/logfields"
+	"github.com/Microsoft/hcsshim/internal/oc"
 	"github.com/Microsoft/hcsshim/internal/ospath"
 	"github.com/Microsoft/hcsshim/internal/uvm"
 	"github.com/Microsoft/hcsshim/internal/wclayer"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"go.opencensus.io/trace"
 	"golang.org/x/sys/windows"
 )
 
@@ -45,7 +48,12 @@ func NewImageLayers(vm *uvm.UtilityVM, containerRootInUVM string, layers []strin
 }
 
 // Release unmounts all of the layers located in the layers array.
-func (layers *ImageLayers) Release(ctx context.Context, all bool) error {
+func (layers *ImageLayers) Release(ctx context.Context, all bool) (err error) {
+	ctx, span := trace.StartSpan(ctx, "layers::Release")
+	defer span.End()
+	defer func() { oc.SetSpanStatus(span, err) }()
+	span.AddAttributes(trace.StringAttribute("ImageLayers", fmt.Sprintf("%+v", layers)))
+
 	if layers.skipCleanup && layers.vm != nil {
 		return nil
 	}
@@ -57,7 +65,7 @@ func (layers *ImageLayers) Release(ctx context.Context, all bool) error {
 	if layers.vm != nil {
 		crp = containerRootfsPath(layers.vm, layers.containerRootInUVM)
 	}
-	err := UnmountContainerLayers(ctx, layers.layers, crp, layers.volumeMountPath, layers.vm, op)
+	err = UnmountContainerLayers(ctx, layers.layers, crp, layers.volumeMountPath, layers.vm, op)
 	if err != nil {
 		return err
 	}
@@ -78,7 +86,12 @@ func (layers *ImageLayers) Release(ctx context.Context, all bool) error {
 //
 // TODO dcantah: Keep better track of the layers that are added, don't simply discard the SCSI, VSMB, etc. resource types gotten inside.
 func MountContainerLayers(ctx context.Context, containerID string, layerFolders []string, guestRoot string, volumeMountPath string, vm *uvm.UtilityVM) (_ string, err error) {
-	log.G(ctx).WithField("layerFolders", layerFolders).Debug("hcsshim::mountContainerLayers")
+	ctx, span := trace.StartSpan(ctx, "layers::MountContainerLayers")
+	defer span.End()
+	defer func() { oc.SetSpanStatus(span, err) }()
+	span.AddAttributes(trace.StringAttribute("layerFolders", fmt.Sprintf("%q", layerFolders)),
+		trace.StringAttribute("guestRoot", guestRoot),
+		trace.StringAttribute("volumeMountPath", volumeMountPath))
 
 	if vm == nil {
 		if len(layerFolders) < 2 {
@@ -160,7 +173,7 @@ func MountContainerLayers(ctx context.Context, containerID string, layerFolders 
 	}
 
 	// V2 UVM
-	log.G(ctx).WithField("os", vm.OS()).Debug("hcsshim::mountContainerLayers V2 UVM")
+	log.G(ctx).WithField("os", vm.OS()).Debug("layers::MountContainerLayers V2 UVM")
 
 	var (
 		layersAdded       []string
@@ -267,7 +280,6 @@ func MountContainerLayers(ctx context.Context, containerID string, layerFolders 
 	if err != nil {
 		return "", err
 	}
-	log.G(ctx).Debug("hcsshim::mountContainerLayers Succeeded")
 	return rootfs, nil
 }
 
@@ -340,8 +352,12 @@ const (
 )
 
 // UnmountContainerLayers is a helper for clients to hide all the complexity of layer unmounting
-func UnmountContainerLayers(ctx context.Context, layerFolders []string, containerRootPath, volumeMountPath string, vm *uvm.UtilityVM, op UnmountOperation) error {
-	log.G(ctx).WithField("layerFolders", layerFolders).Debug("hcsshim::unmountContainerLayers")
+func UnmountContainerLayers(ctx context.Context, layerFolders []string, containerRootPath, volumeMountPath string, vm *uvm.UtilityVM, op UnmountOperation) (err error) {
+	ctx, span := trace.StartSpan(ctx, "layers::UnmountContainerLayers")
+	defer span.End()
+	defer func() { oc.SetSpanStatus(span, err) }()
+	span.AddAttributes(trace.StringAttribute("layerFolders", fmt.Sprint(layerFolders)))
+
 	if vm == nil {
 		// Must be an argon - folders are mounted on the host
 		if op != UnmountOperationAll {
@@ -442,6 +458,12 @@ func UnmountContainerLayers(ctx context.Context, layerFolders []string, containe
 
 // GetHCSLayers converts host paths corresponding to container layers into HCS schema V2 layers
 func GetHCSLayers(ctx context.Context, vm *uvm.UtilityVM, paths []string) (layers []hcsschema.Layer, err error) {
+	ctx, span := trace.StartSpan(ctx, "layers::GetHCSLayers")
+	defer span.End()
+	defer func() { oc.SetSpanStatus(span, err) }()
+	span.AddAttributes(trace.StringAttribute(logfields.UVMID, vm.ID()),
+		trace.StringAttribute("paths", fmt.Sprint(paths)))
+
 	for _, path := range paths {
 		uvmPath, err := vm.GetVSMBUvmPath(ctx, path, true)
 		if err != nil {
@@ -483,7 +505,7 @@ func mountSandboxVolume(ctx context.Context, hostPath, volumeName string) (err e
 	log.G(ctx).WithFields(logrus.Fields{
 		"hostpath":   hostPath,
 		"volumeName": volumeName,
-	}).Debug("mounting volume for container")
+	}).Trace("layers::mountSandboxVolume")
 
 	if _, err := os.Stat(hostPath); os.IsNotExist(err) {
 		if err := os.MkdirAll(hostPath, 0777); err != nil {
@@ -509,10 +531,10 @@ func mountSandboxVolume(ctx context.Context, hostPath, volumeName string) (err e
 }
 
 // Remove volume mount point. And remove folder afterwards.
-func removeSandboxMountPoint(ctx context.Context, hostPath string) error {
+func removeSandboxMountPoint(ctx context.Context, hostPath string) (err error) {
 	log.G(ctx).WithFields(logrus.Fields{
 		"hostpath": hostPath,
-	}).Debug("removing volume mount point for container")
+	}).Trace("layers::removeSandboxMountPoint")
 
 	if err := windows.DeleteVolumeMountPoint(windows.StringToUTF16Ptr(hostPath)); err != nil {
 		return errors.Wrap(err, "failed to delete sandbox volume mount point")

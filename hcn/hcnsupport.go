@@ -115,7 +115,7 @@ func getSupportedFeatures() (SupportedFeatures, error) {
 	logrus.WithFields(logrus.Fields{
 		"version":           fmt.Sprintf("%+v", globals.Version),
 		"supportedFeatures": fmt.Sprintf("%+v", features),
-	}).Info("HCN feature check")
+	}).Debug("HCN feature check")
 
 	return features, nil
 }

@@ -155,7 +155,7 @@ func handleAssignedDevicesWindows(
 				ID:     value,
 				IDType: uvm.VPCILocationPathIDType,
 			}
-			log.G(ctx).WithField("parsed devices", specDev).Info("added windows device to spec")
+			log.G(ctx).WithField("parsed devices", specDev).Debug("added windows device to spec")
 			resultDevs = append(resultDevs, specDev)
 		}
 	}

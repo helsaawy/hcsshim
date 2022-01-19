@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"runtime"
 	"strings"
@@ -103,7 +104,7 @@ func (s *service) State(ctx context.Context, req *task.StateRequest) (resp *task
 			span.AddAttributes(
 				trace.StringAttribute("status", resp.Status.String()),
 				trace.Int64Attribute("exitStatus", int64(resp.ExitStatus)),
-				trace.StringAttribute("exitedAt", resp.ExitedAt.String()))
+				trace.StringAttribute("exitedAt", resp.ExitedAt.Format(time.RFC3339Nano)))
 		}
 		oc.SetSpanStatus(span, err)
 	}()
@@ -133,8 +134,7 @@ func (s *service) Create(ctx context.Context, req *task.CreateTaskRequest) (resp
 	span.AddAttributes(
 		trace.StringAttribute("tid", req.ID),
 		trace.StringAttribute("bundle", req.Bundle),
-		// trace.StringAttribute("rootfs", req.Rootfs), TODO: JTERRY75 -
-		// OpenCensus doesnt support slice like our logrus hook
+		trace.StringAttribute("rootfs", fmt.Sprintf("%+v", req.Rootfs)),
 		trace.BoolAttribute("terminal", req.Terminal),
 		trace.StringAttribute("stdin", req.Stdin),
 		trace.StringAttribute("stdout", req.Stdout),
@@ -180,7 +180,7 @@ func (s *service) Delete(ctx context.Context, req *task.DeleteRequest) (resp *ta
 			span.AddAttributes(
 				trace.Int64Attribute("pid", int64(resp.Pid)),
 				trace.Int64Attribute("exitStatus", int64(resp.ExitStatus)),
-				trace.StringAttribute("exitedAt", resp.ExitedAt.String()))
+				trace.StringAttribute("exitedAt", resp.ExitedAt.Format(time.RFC3339Nano)))
 		}
 		oc.SetSpanStatus(span, err)
 	}()
@@ -397,7 +397,7 @@ func (s *service) Wait(ctx context.Context, req *task.WaitRequest) (resp *task.W
 		if resp != nil {
 			span.AddAttributes(
 				trace.Int64Attribute("exitStatus", int64(resp.ExitStatus)),
-				trace.StringAttribute("exitedAt", resp.ExitedAt.String()))
+				trace.StringAttribute("exitedAt", resp.ExitedAt.Format(time.RFC3339Nano)))
 		}
 		oc.SetSpanStatus(span, err)
 	}()
@@ -457,7 +457,8 @@ func (s *service) Shutdown(ctx context.Context, req *task.ShutdownRequest) (_ *g
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, err) }()
 
-	span.AddAttributes(trace.StringAttribute("tid", req.ID))
+	span.AddAttributes(trace.StringAttribute("tid", req.ID),
+		trace.BoolAttribute("now", req.Now))
 
 	if s.isSandbox {
 		span.AddAttributes(trace.StringAttribute("pod-id", s.tid))

@@ -709,7 +709,10 @@ func CreateLCOW(ctx context.Context, opts *OptionsLCOW) (_ *UtilityVM, err error
 	}
 
 	span.AddAttributes(trace.StringAttribute(logfields.UVMID, opts.ID))
-	log.G(ctx).WithField("options", fmt.Sprintf("%+v", opts)).Debug("uvm::CreateLCOW options")
+	log.G(ctx).WithFields(logrus.Fields{
+		logfields.Options: fmt.Sprintf("%+v", opts.Options),
+		"options-lcow":    fmt.Sprintf("%+v", opts),
+	}).Debug("uvm::CreateLCOW options")
 
 	// We dont serialize OutputHandler so if it is missing we need to put it back to the default.
 	if opts.OutputHandler == nil {

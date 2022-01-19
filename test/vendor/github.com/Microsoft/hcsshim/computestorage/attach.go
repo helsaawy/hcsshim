@@ -17,7 +17,7 @@ import (
 //
 // `layerData` is the parent read-only layer data.
 func AttachLayerStorageFilter(ctx context.Context, layerPath string, layerData LayerData) (err error) {
-	title := "hcsshim.AttachLayerStorageFilter"
+	title := "hcsshim::AttachLayerStorageFilter"
 	ctx, span := trace.StartSpan(ctx, title) //nolint:ineffassign,staticcheck
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, err) }()

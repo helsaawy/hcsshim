@@ -16,7 +16,7 @@ import (
 //
 // `layerData` is the parent read-only layer data.
 func InitializeWritableLayer(ctx context.Context, layerPath string, layerData LayerData) (err error) {
-	title := "hcsshim.InitializeWritableLayer"
+	title := "hcsshim::InitializeWritableLayer"
 	ctx, span := trace.StartSpan(ctx, title) //nolint:ineffassign,staticcheck
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, err) }()

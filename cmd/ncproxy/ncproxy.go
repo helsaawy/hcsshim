@@ -195,7 +195,8 @@ func (s *grpcService) ModifyNIC(ctx context.Context, req *ncproxygrpc.ModifyNICR
 	if settings.Policies == nil || settings.Policies.IovPolicySettings == nil {
 		return nil, status.Error(codes.InvalidArgument, "received empty field in request")
 	}
-	log.G(ctx).WithField("iov settings", settings.Policies.IovPolicySettings).Info("ModifyNIC iov settings")
+
+	log.G(ctx).WithField("iov settings", settings.Policies.IovPolicySettings).Debug("ModifyNIC iov settings")
 
 	iovReqSettings := settings.Policies.IovPolicySettings
 	caReq := &computeagent.ModifyNICInternalRequest{

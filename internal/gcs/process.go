@@ -122,7 +122,7 @@ func (gc *GuestConnection) exec(ctx context.Context, cid string, params interfac
 // Close releases resources associated with the process and closes the
 // associated standard IO streams.
 func (p *Process) Close() error {
-	ctx, span := trace.StartSpan(context.Background(), "gcs::Process::Close")
+	ctx, span := oc.StartTraceSpan(context.Background(), "gcs::Process::Close")
 	defer span.End()
 	span.AddAttributes(
 		trace.StringAttribute("cid", p.cid),
@@ -211,7 +211,7 @@ func (p *Process) Pid() int {
 // ResizeConsole requests that the pty associated with the process resize its
 // window.
 func (p *Process) ResizeConsole(ctx context.Context, width, height uint16) (err error) {
-	ctx, span := trace.StartSpan(ctx, "gcs::Process::ResizeConsole")
+	ctx, span := trace.StartSpan(ctx, "gcs::Process::ResizeConsole", oc.WithClientSpanKind)
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, err) }()
 	span.AddAttributes(
@@ -230,7 +230,7 @@ func (p *Process) ResizeConsole(ctx context.Context, width, height uint16) (err 
 
 // Signal sends a signal to the process, returning whether it was delivered.
 func (p *Process) Signal(ctx context.Context, options interface{}) (_ bool, err error) {
-	ctx, span := trace.StartSpan(ctx, "gcs::Process::Signal")
+	ctx, span := trace.StartSpan(ctx, "gcs::Process::Signal", oc.WithClientSpanKind)
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, err) }()
 	span.AddAttributes(
@@ -275,7 +275,7 @@ func (p *Process) Wait() error {
 }
 
 func (p *Process) waitBackground() {
-	ctx, span := trace.StartSpan(context.Background(), "gcs::Process::waitBackground")
+	ctx, span := oc.StartTraceSpan(context.Background(), "gcs::Process::waitBackground")
 	defer span.End()
 	span.AddAttributes(
 		trace.StringAttribute("cid", p.cid),

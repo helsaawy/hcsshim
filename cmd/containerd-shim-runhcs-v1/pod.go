@@ -8,6 +8,8 @@ import (
 	"sync"
 
 	"github.com/Microsoft/hcsshim/internal/log"
+	"github.com/Microsoft/hcsshim/internal/logfields"
+	"github.com/Microsoft/hcsshim/internal/oc"
 	"github.com/Microsoft/hcsshim/internal/oci"
 	"github.com/Microsoft/hcsshim/internal/uvm"
 	"github.com/Microsoft/hcsshim/osversion"
@@ -18,6 +20,7 @@ import (
 	"github.com/containerd/containerd/runtime/v2/task"
 	specs "github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/pkg/errors"
+	"go.opencensus.io/trace"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -62,7 +65,10 @@ type shimPod interface {
 }
 
 func createPod(ctx context.Context, events publisher, req *task.CreateTaskRequest, s *specs.Spec) (_ shimPod, err error) {
-	log.G(ctx).WithField("tid", req.ID).Debug("createPod")
+	ctx, span := oc.StartTraceSpan(ctx, "createPod")
+	defer span.End()
+	defer func() { oc.SetSpanStatus(span, err) }()
+	span.AddAttributes(trace.StringAttribute("tid", req.ID))
 
 	if osversion.Build() < osversion.RS5 {
 		return nil, errors.Wrapf(errdefs.ErrFailedPrecondition, "pod support is not available on Windows versions previous to RS5 (%d)", osversion.RS5)
@@ -286,6 +292,8 @@ func (p *pod) ID() string {
 }
 
 func (p *pod) GetCloneAnnotations(ctx context.Context, s *specs.Spec) (bool, string, error) {
+	log.G(ctx).WithField(logfields.TaskID, p.id).Trace("pod::GetCloneAnnotations")
+
 	isTemplate, templateID, err := oci.ParseCloneAnnotations(ctx, s)
 	if err != nil {
 		return false, "", err
@@ -296,6 +304,11 @@ func (p *pod) GetCloneAnnotations(ctx context.Context, s *specs.Spec) (bool, str
 }
 
 func (p *pod) CreateTask(ctx context.Context, req *task.CreateTaskRequest, s *specs.Spec) (_ shimTask, err error) {
+	ctx, span := oc.StartTraceSpan(ctx, "pod::CreateTask")
+	defer span.End()
+	defer func() { oc.SetSpanStatus(span, err) }()
+	span.AddAttributes(trace.StringAttribute(logfields.TaskID, p.id))
+
 	if req.ID == p.id {
 		return nil, errors.Wrapf(errdefs.ErrAlreadyExists, "task with id: '%s' already exists", req.ID)
 	}
@@ -371,7 +384,12 @@ func (p *pod) GetTask(tid string) (shimTask, error) {
 	return raw.(shimTask), nil
 }
 
-func (p *pod) KillTask(ctx context.Context, tid, eid string, signal uint32, all bool) error {
+func (p *pod) KillTask(ctx context.Context, tid, eid string, signal uint32, all bool) (err error) {
+	ctx, span := oc.StartTraceSpan(ctx, "pod::KillTask")
+	defer span.End()
+	defer func() { oc.SetSpanStatus(span, err) }()
+	span.AddAttributes(trace.StringAttribute(logfields.TaskID, p.id))
+
 	t, err := p.GetTask(tid)
 	if err != nil {
 		return err

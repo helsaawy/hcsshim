@@ -49,6 +49,9 @@ type rpc struct {
 	ch      chan struct{}
 }
 
+// todo(helsaawy): remove bridge.log entry and log based on per-request context, not
+// the context that started the bridge
+
 // bridge represents a communcations bridge with the guest. It handles the
 // transport layer but (mostly) does not parse or construct the message payload.
 type bridge struct {
@@ -307,7 +310,7 @@ func (brdg *bridge) recvLoop() error {
 		}
 		brdg.log.WithFields(logrus.Fields{
 			"payload":    string(b),
-			"type":       typ,
+			"type":       typ.String(),
 			"message-id": id}).Debug("bridge receive")
 		switch typ & msgTypeMask {
 		case msgTypeResponse:
@@ -395,7 +398,7 @@ func (brdg *bridge) writeMessage(buf *bytes.Buffer, enc *json.Encoder, typ msgTy
 	// Write the message.
 	brdg.log.WithFields(logrus.Fields{
 		"payload":    string(buf.Bytes()[hdrSize:]),
-		"type":       typ,
+		"type":       typ.String(),
 		"message-id": id}).Debug("bridge send")
 	_, err = buf.WriteTo(brdg.conn)
 	if err != nil {

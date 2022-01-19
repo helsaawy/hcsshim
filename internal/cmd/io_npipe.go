@@ -13,6 +13,7 @@ import (
 	winio "github.com/Microsoft/go-winio"
 	"github.com/Microsoft/go-winio/pkg/guid"
 	"github.com/Microsoft/hcsshim/internal/log"
+	"github.com/Microsoft/hcsshim/internal/logfields"
 	"github.com/cenkalti/backoff/v4"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sys/windows"
@@ -32,7 +33,7 @@ func NewNpipeIO(ctx context.Context, stdin, stdout, stderr string, terminal bool
 		"stdout":   stdout,
 		"stderr":   stderr,
 		"terminal": terminal,
-	}).Debug("NewNpipeIO")
+	}).Trace("NewNpipeIO")
 
 	nio := &npipeio{
 		stdin:    stdin,
@@ -121,7 +122,7 @@ func (nprw *nPipeRetryWriter) Write(p []byte) (n int, err error) {
 				nprw.Conn.Close()
 				newConn, retryErr := nprw.retryDialPipe()
 				if retryErr == nil {
-					log.G(nprw.ctx).WithField("address", nprw.pipePath).Info("Succeeded in reconnecting to named pipe")
+					log.G(nprw.ctx).WithField("address", nprw.pipePath).Debug("Succeeded in reconnecting to named pipe")
 
 					nprw.Conn = newConn
 					continue
@@ -196,28 +197,31 @@ type npipeio struct {
 }
 
 func (nio *npipeio) Close(ctx context.Context) {
+	log.G(ctx).Trace("npipeio::Close")
+	// winio.win32Pipe.Close currently doesn't return any errors
 	nio.sinCloser.Do(func() {
 		if nio.sin != nil {
-			log.G(ctx).Debug("npipeio::sinCloser")
+			log.G(ctx).WithField(logfields.Pipe, nio.stdin).Debug("npipeio::sinCloser")
 			nio.sin.Close()
 		}
 	})
 	nio.outErrCloser.Do(func() {
 		if nio.sout != nil {
-			log.G(ctx).Debug("npipeio::outErrCloser - stdout")
+			log.G(ctx).WithField(logfields.Pipe, nio.stdout).Debug("npipeio::outErrCloser - stdout")
 			nio.sout.Close()
 		}
 		if nio.serr != nil {
-			log.G(ctx).Debug("npipeio::outErrCloser - stderr")
+			log.G(ctx).WithField(logfields.Pipe, nio.stderr).Debug("npipeio::outErrCloser - stderr")
 			nio.serr.Close()
 		}
 	})
 }
 
 func (nio *npipeio) CloseStdin(ctx context.Context) {
+	log.G(ctx).Trace("npipeio::CloseStdin")
 	nio.sinCloser.Do(func() {
 		if nio.sin != nil {
-			log.G(ctx).Debug("npipeio::sinCloser")
+			log.G(ctx).WithField(logfields.Pipe, nio.stdin).Debug("npipeio::sinCloser")
 			nio.sin.Close()
 		}
 	})
