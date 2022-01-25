@@ -4,10 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"regexp"
+	"strconv"
 	"syscall"
+	"unsafe"
 
 	"github.com/Microsoft/go-winio/vhd"
-	myvhd "github.com/Microsoft/hcsshim/internal/vhd"
 	"golang.org/x/sys/windows"
 )
 
@@ -48,6 +50,8 @@ func main() {
 	os.Exit(_main())
 }
 
+var DiskNumberRe = regexp.MustCompile(`\\\\.\\PhysicalDrive([\d]+)`)
+
 func _main() int {
 	if len(os.Args) != 2 {
 		fmt.Printf("need to pass a path")
@@ -65,13 +69,18 @@ func _main() int {
 	// 	return 1
 	// }
 
-	// op := vhd.OpenVirtualDiskParameters{Version: 2}
-	// op.Version2.ReadOnly = true
-	h, err := vhd.OpenVirtualDisk(
+	op := vhd.OpenVirtualDiskParameters{
+		Version:  2,
+		Version2: vhd.OpenVersion2{
+			// ReadOnly: true,
+		},
+	}
+	h, err := vhd.OpenVirtualDiskWithParameters(
 		f,
 		vhd.VirtualDiskAccessNone,
 		vhd.OpenVirtualDiskFlagNone,
 		// vhd.OpenVirtualDiskFlagCachedIO|vhd.OpenVirtualDiskFlagIgnoreRelativeParentLocator,
+		&op,
 	)
 	if err != nil {
 		fmt.Printf("open virtual disk failed with: %v", err)
@@ -79,15 +88,8 @@ func _main() int {
 	}
 	defer syscall.CloseHandle(h)
 
-	uuid, err := myvhd.GetVirtualDiskGUID(h)
-	if err != nil {
-		fmt.Printf("get vhd uuid failed: %v", err)
-		return 1
-	}
-	fmt.Printf("guid is %v", uuid)
-
 	fmt.Printf("attaching %q\n", f)
-	err = vhd.AttachVirtualDisk(h, vhd.AttachVirtualDiskFlagNone, &vhd.AttachVirtualDiskParameters{Version: 1})
+	err = vhd.AttachVirtualDisk(h, vhd.AttachVirtualDiskFlagReadOnly, &vhd.AttachVirtualDiskParameters{Version: 1})
 	if err != nil {
 		fmt.Printf("attach virtual disk failed with: %v", err)
 		return 1
@@ -100,13 +102,18 @@ func _main() int {
 		return 1
 	}
 
-	fmt.Printf("mounted vhd to %q\n", vpath)
-
-	if vpath[len(vpath)-1] != '\\' {
-		vpath = vpath + "\\"
+	is := DiskNumberRe.FindStringSubmatch(vpath)
+	if len(is) != 2 {
+		fmt.Printf("%q does not match regexp %v", vpath, DiskNumberRe.String())
+		return 1
 	}
+	n, err := strconv.ParseInt(is[1], 10, 64)
+	if err != nil {
+		fmt.Printf("could not parse disk numper %q", is[1])
+		return 1
+	}
+	fmt.Printf("disk number %d\n", n)
 
-	// fmt.Println(vpath + ":")
 	ListAllVolumes()
 
 	// vpathptr, err := windows.UTF16PtrFromString(vpath)
@@ -174,6 +181,7 @@ func ListAllVolumes() int {
 	for {
 		printUtf(buff)
 		printpathnames(&buff[0])
+		getDevNumber(buff)
 
 		err = windows.FindNextVolume(h, &buff[0], n)
 		if errors.Is(err, windows.ERROR_NO_MORE_FILES) {
@@ -189,6 +197,56 @@ func ListAllVolumes() int {
 		}
 	}
 	return 0
+}
+
+type E struct {
+	DiskNumber                   uint32
+	StartingOffset, ExtendLength uint64
+}
+type VDE struct {
+	Num         uint32
+	DiskExtents [1]E
+}
+
+// excluding trailing zero
+func utf16buffstrlen(b []uint16) int {
+	for i, c := range b {
+		if c == 0 {
+			return i
+		}
+	}
+	return len(b)
+}
+
+func getDevNumber(vol []uint16) {
+	getVolExtents := uint32('V') << 16
+
+	l := utf16buffstrlen(vol)
+	o := vol[l-1]
+	vol[l-1] = 0
+	defer func() {
+		vol[l-1] = o
+	}()
+
+	h, err := windows.CreateFile(&vol[0], windows.GENERIC_READ, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE, nil, windows.OPEN_EXISTING, windows.FILE_ATTRIBUTE_NORMAL, 0)
+	if err != nil {
+		fmt.Printf("create file: %v\n", err)
+		return
+	}
+	defer windows.CloseHandle(h)
+
+	var v VDE
+	vs := unsafe.Sizeof(v)
+	bb := make([]byte, vs, vs)
+	var r uint32
+
+	err = windows.DeviceIoControl(h, getVolExtents, nil, 0, &bb[0], uint32(vs), &r, nil)
+	if err != nil {
+		fmt.Printf("dev io ctl (%x %v) %v\n", getVolExtents, r, err)
+		return
+	}
+
+	fmt.Printf("%v\n", bb)
 }
 
 func printUtf(b []uint16) {
