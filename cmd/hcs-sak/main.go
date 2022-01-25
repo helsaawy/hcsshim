@@ -109,48 +109,41 @@ func _main() int {
 	}
 	n, err := strconv.ParseInt(is[1], 10, 64)
 	if err != nil {
-		fmt.Printf("could not parse disk numper %q", is[1])
+		fmt.Printf("could not parse disk number %q", is[1])
 		return 1
 	}
 	fmt.Printf("disk number %d\n", n)
 
-	ListAllVolumes()
+	id, err := findVolume(uint32(n))
+	if err != nil {
+		fmt.Printf("could not find disk number %d: %v", n, err)
+		return 1
+	}
 
+	id = id + "\\"
 	// vpathptr, err := windows.UTF16PtrFromString(vpath)
 	// if err != nil {
 	// 	fmt.Printf("ptr 16 from string with: %v", err)
 	// 	return 1
 	// }
 
-	// vb := make([]uint16, 256, 256)
-	// nb := make([]uint16, 256, 256)
-	// err = windows.GetVolumeNameForVolumeMountPoint(vpathptr, &vb[0], 256)
-	// // err = windows.GetVolumeInformationByHandle(windows.Handle(h), &vb[0], 256, nil, nil, nil, &nb[0], 256)
-	// if err != nil {
-	// 	fmt.Printf("get vol info failed with: %v", err)
-	// 	return 1
-	// }
-
-	// fmt.Println(windows.UTF16PtrToString(&vb[0]))
-	// fmt.Println(windows.UTF16PtrToString(&nb[0]))
-
 	// vpath = "\\\\?\\Volume{10bbc1b8-1583-4588-b288-0bf125cad124}\\"
-	// vol, err := os.OpenFile(vpath, os.O_RDONLY, 0)
-	// if err != nil {
-	// 	fmt.Printf("open file failed with: %v", err)
-	// 	return 1
-	// }
-	// defer vol.Close()
+	vol, err := os.OpenFile(id, os.O_RDONLY, 0)
+	if err != nil {
+		fmt.Printf("open file failed with: %v", err)
+		return 1
+	}
+	defer vol.Close()
 
-	// fileInfo, err := vol.Readdir(-1)
-	// if err != nil {
-	// 	fmt.Printf("open file failed with: %v", err)
-	// 	return 1
-	// }
+	fileInfo, err := vol.Readdir(-1)
+	if err != nil {
+		fmt.Printf("open file failed with: %v", err)
+		return 1
+	}
 
-	// for _, file := range fileInfo {
-	// 	fmt.Printf("- %v\n", file.Name())
-	// }
+	for _, file := range fileInfo {
+		fmt.Printf("- %v\n", file.Name())
+	}
 
 	// utf16DestPath := windows.StringToUTF16(f)
 
@@ -167,6 +160,40 @@ func _main() int {
 	// }
 	return 0
 }
+
+func findVolume(vn uint32) (string, error) {
+	const n = 256
+	var buff = make([]uint16, n, n)
+
+	h, err := windows.FindFirstVolume(&buff[0], n)
+	if err != nil {
+		return "", fmt.Errorf("could not find first volume: %w", err)
+	}
+	defer windows.FindVolumeClose(h)
+
+	for {
+		// remove trailing \
+		l := utf16buffstrlen(buff)
+		buff[l-1] = 0
+
+		i, err := getDevNumber(buff)
+		if err != nil {
+			return "", fmt.Errorf("could not get volume number: %w", err)
+		}
+
+		if i == vn {
+			return windows.UTF16ToString(buff), nil
+		}
+
+		err = windows.FindNextVolume(h, &buff[0], n)
+		if errors.Is(err, windows.ERROR_NO_MORE_FILES) {
+			return "", fmt.Errorf("could not find volume number %d: %w", vn, err)
+		} else if err != nil {
+			return "", fmt.Errorf("could not find next volume: %w", err)
+		}
+	}
+}
+
 func ListAllVolumes() int {
 	const n = 256
 	var buff = make([]uint16, n, n)
@@ -218,35 +245,26 @@ func utf16buffstrlen(b []uint16) int {
 	return len(b)
 }
 
-func getDevNumber(vol []uint16) {
+func getDevNumber(vol []uint16) (uint32, error) {
 	getVolExtents := uint32('V') << 16
-
-	l := utf16buffstrlen(vol)
-	o := vol[l-1]
-	vol[l-1] = 0
-	defer func() {
-		vol[l-1] = o
-	}()
 
 	h, err := windows.CreateFile(&vol[0], windows.GENERIC_READ, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE, nil, windows.OPEN_EXISTING, windows.FILE_ATTRIBUTE_NORMAL, 0)
 	if err != nil {
-		fmt.Printf("create file: %v\n", err)
-		return
+		return 0, fmt.Errorf("create file: %w", err)
 	}
 	defer windows.CloseHandle(h)
 
-	var v VDE
-	vs := unsafe.Sizeof(v)
+	vs := unsafe.Sizeof(VDE{})
 	bb := make([]byte, vs, vs)
 	var r uint32
 
 	err = windows.DeviceIoControl(h, getVolExtents, nil, 0, &bb[0], uint32(vs), &r, nil)
 	if err != nil {
-		fmt.Printf("dev io ctl (%x %v) %v\n", getVolExtents, r, err)
-		return
+		return 0, fmt.Errorf("dev io ctl %w", err)
 	}
+	var v = (*VDE)(unsafe.Pointer(&bb[0]))
 
-	fmt.Printf("%v\n", bb)
+	return v.DiskExtents[0].DiskNumber, nil
 }
 
 func printUtf(b []uint16) {
