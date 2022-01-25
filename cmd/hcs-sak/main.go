@@ -7,6 +7,7 @@ import (
 	"syscall"
 
 	"github.com/Microsoft/go-winio/vhd"
+	myvhd "github.com/Microsoft/hcsshim/internal/vhd"
 	"golang.org/x/sys/windows"
 )
 
@@ -65,6 +66,7 @@ func _main() int {
 	// }
 
 	// op := vhd.OpenVirtualDiskParameters{Version: 2}
+	// op.Version2.ReadOnly = true
 	h, err := vhd.OpenVirtualDisk(
 		f,
 		vhd.VirtualDiskAccessNone,
@@ -76,6 +78,13 @@ func _main() int {
 		return 1
 	}
 	defer syscall.CloseHandle(h)
+
+	uuid, err := myvhd.GetVirtualDiskGUID(h)
+	if err != nil {
+		fmt.Printf("get vhd uuid failed: %v", err)
+		return 1
+	}
+	fmt.Printf("guid is %v", uuid)
 
 	fmt.Printf("attaching %q\n", f)
 	err = vhd.AttachVirtualDisk(h, vhd.AttachVirtualDiskFlagNone, &vhd.AttachVirtualDiskParameters{Version: 1})
@@ -100,41 +109,41 @@ func _main() int {
 	// fmt.Println(vpath + ":")
 	ListAllVolumes()
 
-	vpathptr, err := windows.UTF16PtrFromString(vpath)
-	if err != nil {
-		fmt.Printf("ptr 16 from string with: %v", err)
-		return 1
-	}
+	// vpathptr, err := windows.UTF16PtrFromString(vpath)
+	// if err != nil {
+	// 	fmt.Printf("ptr 16 from string with: %v", err)
+	// 	return 1
+	// }
 
-	vb := make([]uint16, 256, 256)
-	nb := make([]uint16, 256, 256)
-	err = windows.GetVolumeNameForVolumeMountPoint(vpathptr, &vb[0], 256)
-	// err = windows.GetVolumeInformationByHandle(windows.Handle(h), &vb[0], 256, nil, nil, nil, &nb[0], 256)
-	if err != nil {
-		fmt.Printf("get vol info failed with: %v", err)
-		return 1
-	}
+	// vb := make([]uint16, 256, 256)
+	// nb := make([]uint16, 256, 256)
+	// err = windows.GetVolumeNameForVolumeMountPoint(vpathptr, &vb[0], 256)
+	// // err = windows.GetVolumeInformationByHandle(windows.Handle(h), &vb[0], 256, nil, nil, nil, &nb[0], 256)
+	// if err != nil {
+	// 	fmt.Printf("get vol info failed with: %v", err)
+	// 	return 1
+	// }
 
-	fmt.Println(windows.UTF16PtrToString(&vb[0]))
-	fmt.Println(windows.UTF16PtrToString(&nb[0]))
+	// fmt.Println(windows.UTF16PtrToString(&vb[0]))
+	// fmt.Println(windows.UTF16PtrToString(&nb[0]))
 
-	vpath = "\\\\?\\Volume{10bbc1b8-1583-4588-b288-0bf125cad124}\\"
-	vol, err := os.OpenFile(vpath, os.O_RDONLY, 0)
-	if err != nil {
-		fmt.Printf("open file failed with: %v", err)
-		return 1
-	}
-	defer vol.Close()
+	// vpath = "\\\\?\\Volume{10bbc1b8-1583-4588-b288-0bf125cad124}\\"
+	// vol, err := os.OpenFile(vpath, os.O_RDONLY, 0)
+	// if err != nil {
+	// 	fmt.Printf("open file failed with: %v", err)
+	// 	return 1
+	// }
+	// defer vol.Close()
 
-	fileInfo, err := vol.Readdir(-1)
-	if err != nil {
-		fmt.Printf("open file failed with: %v", err)
-		return 1
-	}
+	// fileInfo, err := vol.Readdir(-1)
+	// if err != nil {
+	// 	fmt.Printf("open file failed with: %v", err)
+	// 	return 1
+	// }
 
-	for _, file := range fileInfo {
-		fmt.Printf("- %v\n", file.Name())
-	}
+	// for _, file := range fileInfo {
+	// 	fmt.Printf("- %v\n", file.Name())
+	// }
 
 	// utf16DestPath := windows.StringToUTF16(f)
 
