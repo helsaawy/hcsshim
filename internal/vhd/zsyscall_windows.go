@@ -40,20 +40,36 @@ var (
 	modkernel32 = windows.NewLazySystemDLL("kernel32.dll")
 	modvirtdisk = windows.NewLazySystemDLL("virtdisk.dll")
 
-	procFindFirstVolumeA           = modkernel32.NewProc("FindFirstVolumeA")
-	procFindFirstVolumeMountPointA = modkernel32.NewProc("FindFirstVolumeMountPointA")
-	procFindNextVolumeA            = modkernel32.NewProc("FindNextVolumeA")
-	procFindNextVolumeMountPointA  = modkernel32.NewProc("FindNextVolumeMountPointA")
-	procFindVolumeClose            = modkernel32.NewProc("FindVolumeClose")
-	procFindVolumeMountPointClose  = modkernel32.NewProc("FindVolumeMountPointClose")
-	procOpenVirtualDisk            = modvirtdisk.NewProc("OpenVirtualDisk")
-	procAttachVirtualDisk          = modvirtdisk.NewProc("AttachVirtualDisk")
+	procCreateFileA                      = modkernel32.NewProc("CreateFileA")
+	procFindFirstVolumeA                 = modkernel32.NewProc("FindFirstVolumeA")
+	procFindNextVolumeA                  = modkernel32.NewProc("FindNextVolumeA")
+	procFindVolumeClose                  = modkernel32.NewProc("FindVolumeClose")
+	procFindFirstVolumeMountPointA       = modkernel32.NewProc("FindFirstVolumeMountPointA")
+	procFindNextVolumeMountPointA        = modkernel32.NewProc("FindNextVolumeMountPointA")
+	procFindVolumeMountPointClose        = modkernel32.NewProc("FindVolumeMountPointClose")
+	procGetVolumePathNamesForVolumeNameA = modkernel32.NewProc("GetVolumePathNamesForVolumeNameA")
+	procOpenVirtualDisk                  = modvirtdisk.NewProc("OpenVirtualDisk")
+	procAttachVirtualDisk                = modvirtdisk.NewProc("AttachVirtualDisk")
+	procGetVirtualDiskInformation        = modvirtdisk.NewProc("GetVirtualDiskInformation")
 )
 
-func FindFirstVolume(volumeName *uint16, bufferLength uint32) (handle windows.Handle, err error) {
+func CreateFileA(name *byte, access uint32, mode uint32, sa *windows.SecurityAttributes, createmode uint32, attrs uint32, templatefile windows.Handle) (handle windows.Handle, err error) {
+	r0, _, e1 := syscall.Syscall9(procCreateFileA.Addr(), 7, uintptr(unsafe.Pointer(name)), uintptr(access), uintptr(mode), uintptr(unsafe.Pointer(sa)), uintptr(createmode), uintptr(attrs), uintptr(templatefile), 0, 0)
+	handle = windows.Handle(r0)
+	if handle == windows.InvalidHandle {
+		if e1 != 0 {
+			err = errnoErr(e1)
+		} else {
+			err = syscall.EINVAL
+		}
+	}
+	return
+}
+
+func findFirstVolumeA(volumeName *byte, bufferLength uint32) (findVolume windows.Handle, err error) {
 	r0, _, e1 := syscall.Syscall(procFindFirstVolumeA.Addr(), 2, uintptr(unsafe.Pointer(volumeName)), uintptr(bufferLength), 0)
-	handle = windows.Handle(r0)
-	if handle == windows.InvalidHandle {
+	findVolume = windows.Handle(r0)
+	if findVolume == windows.InvalidHandle {
 		if e1 != 0 {
 			err = errnoErr(e1)
 		} else {
@@ -63,20 +79,7 @@ func FindFirstVolume(volumeName *uint16, bufferLength uint32) (handle windows.Ha
 	return
 }
 
-func FindFirstVolumeMountPoint(rootPathName *uint16, volumeMountPoint *uint16, bufferLength uint32) (handle windows.Handle, err error) {
-	r0, _, e1 := syscall.Syscall(procFindFirstVolumeMountPointA.Addr(), 3, uintptr(unsafe.Pointer(rootPathName)), uintptr(unsafe.Pointer(volumeMountPoint)), uintptr(bufferLength))
-	handle = windows.Handle(r0)
-	if handle == windows.InvalidHandle {
-		if e1 != 0 {
-			err = errnoErr(e1)
-		} else {
-			err = syscall.EINVAL
-		}
-	}
-	return
-}
-
-func FindNextVolume(findVolume windows.Handle, volumeName *uint16, bufferLength uint32) (err error) {
+func findNextVolumeA(findVolume windows.Handle, volumeName *byte, bufferLength uint32) (err error) {
 	r1, _, e1 := syscall.Syscall(procFindNextVolumeA.Addr(), 3, uintptr(findVolume), uintptr(unsafe.Pointer(volumeName)), uintptr(bufferLength))
 	if r1 == 0 {
 		if e1 != 0 {
@@ -88,19 +91,7 @@ func FindNextVolume(findVolume windows.Handle, volumeName *uint16, bufferLength 
 	return
 }
 
-func FindNextVolumeMountPoint(findVolumeMountPoint windows.Handle, volumeMountPoint *uint16, bufferLength uint32) (err error) {
-	r1, _, e1 := syscall.Syscall(procFindNextVolumeMountPointA.Addr(), 3, uintptr(findVolumeMountPoint), uintptr(unsafe.Pointer(volumeMountPoint)), uintptr(bufferLength))
-	if r1 == 0 {
-		if e1 != 0 {
-			err = errnoErr(e1)
-		} else {
-			err = syscall.EINVAL
-		}
-	}
-	return
-}
-
-func FindVolumeClose(findVolume windows.Handle) (err error) {
+func findVolumeClose(findVolume windows.Handle) (err error) {
 	r1, _, e1 := syscall.Syscall(procFindVolumeClose.Addr(), 1, uintptr(findVolume), 0, 0)
 	if r1 == 0 {
 		if e1 != 0 {
@@ -112,8 +103,45 @@ func FindVolumeClose(findVolume windows.Handle) (err error) {
 	return
 }
 
-func FindVolumeMountPointClose(findVolumeMountPoint windows.Handle) (err error) {
+func findFirstVolumeMountPointA(rootPathName *byte, volumeMountPoint *byte, bufferLength uint32) (findVolumeMountPoint windows.Handle, err error) {
+	r0, _, e1 := syscall.Syscall(procFindFirstVolumeMountPointA.Addr(), 3, uintptr(unsafe.Pointer(rootPathName)), uintptr(unsafe.Pointer(volumeMountPoint)), uintptr(bufferLength))
+	findVolumeMountPoint = windows.Handle(r0)
+	if findVolumeMountPoint == windows.InvalidHandle {
+		if e1 != 0 {
+			err = errnoErr(e1)
+		} else {
+			err = syscall.EINVAL
+		}
+	}
+	return
+}
+
+func findNextVolumeMountPointA(findVolumeMountPoint windows.Handle, volumeMountPoint *byte, bufferLength uint32) (err error) {
+	r1, _, e1 := syscall.Syscall(procFindNextVolumeMountPointA.Addr(), 3, uintptr(findVolumeMountPoint), uintptr(unsafe.Pointer(volumeMountPoint)), uintptr(bufferLength))
+	if r1 == 0 {
+		if e1 != 0 {
+			err = errnoErr(e1)
+		} else {
+			err = syscall.EINVAL
+		}
+	}
+	return
+}
+
+func findVolumeMountPointClose(findVolumeMountPoint windows.Handle) (err error) {
 	r1, _, e1 := syscall.Syscall(procFindVolumeMountPointClose.Addr(), 1, uintptr(findVolumeMountPoint), 0, 0)
+	if r1 == 0 {
+		if e1 != 0 {
+			err = errnoErr(e1)
+		} else {
+			err = syscall.EINVAL
+		}
+	}
+	return
+}
+
+func getVolumePathNamesForVolumeNameA(volumeName *byte, volumePathNames *byte, bufferLength uint32, returnLength *uint32) (err error) {
+	r1, _, e1 := syscall.Syscall6(procGetVolumePathNamesForVolumeNameA.Addr(), 4, uintptr(unsafe.Pointer(volumeName)), uintptr(unsafe.Pointer(volumePathNames)), uintptr(bufferLength), uintptr(unsafe.Pointer(returnLength)), 0, 0)
 	if r1 == 0 {
 		if e1 != 0 {
 			err = errnoErr(e1)
@@ -147,6 +175,18 @@ func _openVirtualDisk(vst *VirtualStorageType, path *uint16, virtualDiskAccessMa
 
 func attachVirtualDisk(vhdh windows.Handle, sd uintptr, flags uint32, providerFlags uint32, params uintptr, overlapped uintptr) (err error) {
 	r1, _, e1 := syscall.Syscall6(procAttachVirtualDisk.Addr(), 6, uintptr(vhdh), uintptr(sd), uintptr(flags), uintptr(providerFlags), uintptr(params), uintptr(overlapped))
+	if r1 != 0 {
+		if e1 != 0 {
+			err = errnoErr(e1)
+		} else {
+			err = syscall.EINVAL
+		}
+	}
+	return
+}
+
+func GetVirtualDiskInformation(vhdh windows.Handle, size *uint32, info *byte, used *uint32) (err error) {
+	r1, _, e1 := syscall.Syscall6(procGetVirtualDiskInformation.Addr(), 4, uintptr(vhdh), uintptr(unsafe.Pointer(size)), uintptr(unsafe.Pointer(info)), uintptr(unsafe.Pointer(used)), 0, 0)
 	if r1 != 0 {
 		if e1 != 0 {
 			err = errnoErr(e1)

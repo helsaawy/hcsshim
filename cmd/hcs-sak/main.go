@@ -1,3 +1,7 @@
+// hcs-sak
+//
+// HCS Shim swiss army knife (sak): grab bag  of various utilities needed for
+// hcsshim and containerd on Windows development
 package main
 
 import (
@@ -9,7 +13,8 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/Microsoft/go-winio/vhd"
+	wvhd "github.com/Microsoft/go-winio/vhd"
+	"github.com/Microsoft/hcsshim/internal/vhd"
 	"golang.org/x/sys/windows"
 )
 
@@ -24,6 +29,9 @@ import (
 // https://docs.microsoft.com/en-us/windows/win32/api/winioctl/ns-winioctl-volume_disk_extents
 
 func main() {
+	err := ListAllVolumes()
+	fmt.Println("error: ", err)
+
 	// if len(os.Args) != 2 {
 	// 	fmt.Printf("need to pass a path")
 	// 	os.Exit(1)
@@ -47,7 +55,7 @@ func main() {
 
 	// fmt.Printf("mounted vhd to %q", vpath)
 
-	os.Exit(_main())
+	// os.Exit(_main())
 }
 
 var DiskNumberRe = regexp.MustCompile(`\\\\.\\PhysicalDrive([\d]+)`)
@@ -69,16 +77,17 @@ func _main() int {
 	// 	return 1
 	// }
 
-	op := vhd.OpenVirtualDiskParameters{
-		Version:  2,
-		Version2: vhd.OpenVersion2{
-			// ReadOnly: true,
+	op := wvhd.OpenVirtualDiskParameters{
+		Version: 2,
+		Version2: wvhd.OpenVersion2{
+			// GetInfoOnly: true,
+			ReadOnly: true,
 		},
 	}
-	h, err := vhd.OpenVirtualDiskWithParameters(
+	h, err := wvhd.OpenVirtualDiskWithParameters(
 		f,
-		vhd.VirtualDiskAccessNone,
-		vhd.OpenVirtualDiskFlagNone,
+		wvhd.VirtualDiskAccessNone,
+		wvhd.OpenVirtualDiskFlagNone,
 		// vhd.OpenVirtualDiskFlagCachedIO|vhd.OpenVirtualDiskFlagIgnoreRelativeParentLocator,
 		&op,
 	)
@@ -89,14 +98,14 @@ func _main() int {
 	defer syscall.CloseHandle(h)
 
 	fmt.Printf("attaching %q\n", f)
-	err = vhd.AttachVirtualDisk(h, vhd.AttachVirtualDiskFlagReadOnly, &vhd.AttachVirtualDiskParameters{Version: 1})
+	err = wvhd.AttachVirtualDisk(h, wvhd.AttachVirtualDiskFlagReadOnly, &wvhd.AttachVirtualDiskParameters{Version: 1})
 	if err != nil {
 		fmt.Printf("attach virtual disk failed with: %v", err)
 		return 1
 	}
-	defer vhd.DetachVirtualDisk(h)
+	defer wvhd.DetachVirtualDisk(h)
 
-	vpath, err := vhd.GetVirtualDiskPhysicalPath(h)
+	vpath, err := wvhd.GetVirtualDiskPhysicalPath(h)
 	if err != nil {
 		fmt.Printf("get layer mount path failed with: %v", err)
 		return 1
@@ -194,36 +203,50 @@ func findVolume(vn uint32) (string, error) {
 	}
 }
 
-func ListAllVolumes() int {
-	const n = 256
-	var buff = make([]uint16, n, n)
+func ListAllVolumes() error {
+	return vhd.WalkVolumesA(func(vol string) error {
+		fmt.Println(vol)
 
-	h, err := windows.FindFirstVolume(&buff[0], n)
-	if err != nil {
-		fmt.Printf("could not find first volume: %v", err)
-		// os.Exit(1)
-		return 1
-	}
-
-	for {
-		printUtf(buff)
-		printpathnames(&buff[0])
-		getDevNumber(buff)
-
-		err = windows.FindNextVolume(h, &buff[0], n)
-		if errors.Is(err, windows.ERROR_NO_MORE_FILES) {
-			err := windows.FindVolumeClose(h)
-			if err != nil {
-				fmt.Printf("could not close find volume handle: %v", err)
-				os.Exit(1)
-			}
-			break
-		} else if err != nil {
-			fmt.Printf("could not find next volume: %v", err)
-			return 1
+		ps, err := vhd.GetVolumePathNamesForVolumeName(vol)
+		if err != nil {
+			return err
 		}
-	}
-	return 0
+		for _, p := range ps {
+			fmt.Println("-", p)
+		}
+
+		return nil
+	})
+
+	// const n = 256
+	// var buff = make([]uint16, n, n)
+
+	// h, err := windows.FindFirstVolume(&buff[0], n)
+	// if err != nil {
+	// 	fmt.Printf("could not find first volume: %v", err)
+	// 	// os.Exit(1)
+	// 	return 1
+	// }
+
+	// for {
+	// 	printUtf(buff)
+	// 	printpathnames(&buff[0])
+	// 	getDevNumber(buff)
+
+	// 	err = windows.FindNextVolume(h, &buff[0], n)
+	// 	if errors.Is(err, windows.ERROR_NO_MORE_FILES) {
+	// 		err := windows.FindVolumeClose(h)
+	// 		if err != nil {
+	// 			fmt.Printf("could not close find volume handle: %v", err)
+	// 			os.Exit(1)
+	// 		}
+	// 		break
+	// 	} else if err != nil {
+	// 		fmt.Printf("could not find next volume: %v", err)
+	// 		return 1
+	// 	}
+	// }
+	// return 0
 }
 
 type E struct {

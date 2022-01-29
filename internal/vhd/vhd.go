@@ -4,29 +4,47 @@ package vhd
 
 import (
 	"github.com/Microsoft/go-winio/pkg/guid"
-	"github.com/Microsoft/go-winio/vhd"
+	winiovhd "github.com/Microsoft/go-winio/vhd"
 )
 
 //go:generate go run ../../mksyscall_windows.go -output zsyscall_windows.go vhd.go
 
-//sys FindFirstVolume(volumeName *uint16, bufferLength uint32) (handle windows.Handle, err error) [failretval==windows.InvalidHandle] = FindFirstVolumeA
-//sys FindFirstVolumeMountPoint(rootPathName *uint16, volumeMountPoint *uint16, bufferLength uint32) (handle windows.Handle, err error) [failretval==windows.InvalidHandle] = FindFirstVolumeMountPointA
-//sys FindNextVolume(findVolume windows.Handle, volumeName *uint16, bufferLength uint32) (err error) = FindNextVolumeA
-//sys FindNextVolumeMountPoint(findVolumeMountPoint windows.Handle, volumeMountPoint *uint16, bufferLength uint32) (err error) = FindNextVolumeMountPointA
-//sys FindVolumeClose(findVolume windows.Handle) (err error)
-//sys FindVolumeMountPointClose(findVolumeMountPoint windows.Handle) (err error)
+//
+// win32 apis
+//
+
+//sys CreateFileA(name *byte, access uint32, mode uint32, sa *windows.SecurityAttributes, createmode uint32, attrs uint32, templatefile windows.Handle) (handle windows.Handle, err error) [failretval==windows.InvalidHandle] = CreateFileA
+
+//
+// volume management
+//
+
+//sys findFirstVolumeA(volumeName *byte, bufferLength uint32) (findVolume windows.Handle, err error) [failretval==windows.InvalidHandle] = FindFirstVolumeA
+//sys findNextVolumeA(findVolume windows.Handle, volumeName *byte, bufferLength uint32) (err error) = FindNextVolumeA
+//sys findVolumeClose(findVolume windows.Handle) (err error) = FindVolumeClose
+//sys findFirstVolumeMountPointA(rootPathName *byte, volumeMountPoint *byte, bufferLength uint32) (findVolumeMountPoint windows.Handle, err error) [failretval==windows.InvalidHandle] = FindFirstVolumeMountPointA
+
+//sys findNextVolumeMountPointA(findVolumeMountPoint windows.Handle, volumeMountPoint *byte, bufferLength uint32) (err error) = FindNextVolumeMountPointA
+//sys findVolumeMountPointClose(findVolumeMountPoint windows.Handle) (err error) = FindVolumeMountPointClose
+//sys getVolumePathNamesForVolumeNameA(volumeName *byte, volumePathNames *byte, bufferLength uint32, returnLength *uint32) (err error) = GetVolumePathNamesForVolumeNameA
+
+//
+// virtual disk (vhds)
+//
 
 //sys openVirtualDisk(vst *VirtualStorageType, path string, virtualDiskAccessMask uint32, flags uint32, parameters *OpenVirtualDiskParameters, handle *windows.Handle) (err error) [failretval != 0] = virtdisk.OpenVirtualDisk
 //sys attachVirtualDisk(vhdh windows.Handle, sd uintptr, flags uint32, providerFlags uint32, params uintptr, overlapped uintptr) (err error) [failretval != 0] = virtdisk.AttachVirtualDisk
+
+//sys GetVirtualDiskInformation(vhdh windows.Handle, size *uint32, info *byte , used *uint32) (err error) [failretval != 0] = virtdisk.GetVirtualDiskInformation
 // getVirtualDiskInformation(vhdh windows.Handle, size *uint32, info *VirtualDiskInformationGUID , used *uint32) (err error) [failretval != 0] = virtdisk.GetVirtualDiskInformation
 
 type (
 	GUID                      = guid.GUID
-	VirtualStorageType        = vhd.VirtualStorageType
-	OpenVirtualDiskParameters = vhd.OpenVirtualDiskParameters
+	VirtualStorageType        = winiovhd.VirtualStorageType
+	OpenVirtualDiskParameters = winiovhd.OpenVirtualDiskParameters
 )
 
-type (
+// type (
 // VirtualDiskInformationVersion uint32
 
 // VirtualDiskInformationGUID struct {
@@ -49,9 +67,9 @@ type (
 // 	Version VirtualDiskInformationVersion
 // 	E
 // }
-)
+// )
 
-const (
+// const (
 // VirtualDiskInfoVersionUnspecified VirtualDiskInformationVersion = iota
 // VirtualDiskInfoVersionSize
 // VirtualDiskInfoVersionIdentifier
@@ -68,7 +86,7 @@ const (
 // VirtualDiskInfoVersionIsLoaded
 // VirtualDiskInfoVersionVirtualDiskID
 // VirtualDiskInfoVersionChangeTrackingState
-)
+// )
 
 // func GetVirtualDiskGUID(h windows.Handle) (GUID, error) {
 // 	var (
