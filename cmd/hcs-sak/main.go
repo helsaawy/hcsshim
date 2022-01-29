@@ -5,13 +5,11 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"regexp"
 	"strconv"
 	"syscall"
-	"unsafe"
 
 	wvhd "github.com/Microsoft/go-winio/vhd"
 	"github.com/Microsoft/hcsshim/internal/vhd"
@@ -29,8 +27,8 @@ import (
 // https://docs.microsoft.com/en-us/windows/win32/api/winioctl/ns-winioctl-volume_disk_extents
 
 func main() {
-	err := ListAllVolumes()
-	fmt.Println("error: ", err)
+	// err := ListAllVolumes()
+	// fmt.Println("error: ", err)
 
 	// if len(os.Args) != 2 {
 	// 	fmt.Printf("need to pass a path")
@@ -55,7 +53,7 @@ func main() {
 
 	// fmt.Printf("mounted vhd to %q", vpath)
 
-	// os.Exit(_main())
+	os.Exit(_main())
 }
 
 var DiskNumberRe = regexp.MustCompile(`\\\\.\\PhysicalDrive([\d]+)`)
@@ -80,14 +78,15 @@ func _main() int {
 	op := wvhd.OpenVirtualDiskParameters{
 		Version: 2,
 		Version2: wvhd.OpenVersion2{
-			// GetInfoOnly: true,
-			ReadOnly: true,
+			GetInfoOnly: true,
+			// ReadOnly: true,
 		},
 	}
 	h, err := wvhd.OpenVirtualDiskWithParameters(
 		f,
 		wvhd.VirtualDiskAccessNone,
-		wvhd.OpenVirtualDiskFlagNone,
+		// wvhd.OpenVirtualDiskFlagNone,
+		wvhd.OpenVirtualDiskFlagNoParents,
 		// vhd.OpenVirtualDiskFlagCachedIO|vhd.OpenVirtualDiskFlagIgnoreRelativeParentLocator,
 		&op,
 	)
@@ -97,6 +96,27 @@ func _main() int {
 	}
 	defer syscall.CloseHandle(h)
 
+	i, err := vhd.GetVirtualDiskGUID(windows.Handle(h))
+	if err != nil {
+		fmt.Printf("vhd guid failed with: %v", err)
+		return 1
+	}
+	fmt.Println("guid: ", i)
+
+	i, err := vhd.GetVirtualDiskDiskGUID(windows.Handle(h))
+	if err != nil {
+		fmt.Printf("vhd guid failed with: %v", err)
+		return 1
+	}
+	fmt.Println("guid: ", i)
+
+	// b, err := vhd.GetVirtualDiskProviderSubtype(windows.Handle(h))
+	// if err != nil {
+	// 	fmt.Printf("vhd type failed with: %v", err)
+	// 	return 1
+	// }
+
+	return 0
 	fmt.Printf("attaching %q\n", f)
 	err = wvhd.AttachVirtualDisk(h, wvhd.AttachVirtualDiskFlagReadOnly, &wvhd.AttachVirtualDiskParameters{Version: 1})
 	if err != nil {
@@ -171,41 +191,48 @@ func _main() int {
 }
 
 func findVolume(vn uint32) (string, error) {
-	const n = 256
-	var buff = make([]uint16, n, n)
+	return "", nil
+	// 	const n = 256
+	// 	var buff = make([]uint16, n, n)
 
-	h, err := windows.FindFirstVolume(&buff[0], n)
-	if err != nil {
-		return "", fmt.Errorf("could not find first volume: %w", err)
-	}
-	defer windows.FindVolumeClose(h)
+	// 	h, err := windows.FindFirstVolume(&buff[0], n)
+	// 	if err != nil {
+	// 		return "", fmt.Errorf("could not find first volume: %w", err)
+	// 	}
+	// 	defer windows.FindVolumeClose(h)
 
-	for {
-		// remove trailing \
-		l := utf16buffstrlen(buff)
-		buff[l-1] = 0
+	// 	for {
+	// 		// remove trailing \
+	// 		l := utf16buffstrlen(buff)
+	// 		buff[l-1] = 0
 
-		i, err := getDevNumber(buff)
-		if err != nil {
-			return "", fmt.Errorf("could not get volume number: %w", err)
-		}
+	// 		i, err := getDevNumber(buff)
+	// 		if err != nil {
+	// 			return "", fmt.Errorf("could not get volume number: %w", err)
+	// 		}
 
-		if i == vn {
-			return windows.UTF16ToString(buff), nil
-		}
+	// 		if i == vn {
+	// 			return windows.UTF16ToString(buff), nil
+	// 		}
 
-		err = windows.FindNextVolume(h, &buff[0], n)
-		if errors.Is(err, windows.ERROR_NO_MORE_FILES) {
-			return "", fmt.Errorf("could not find volume number %d: %w", vn, err)
-		} else if err != nil {
-			return "", fmt.Errorf("could not find next volume: %w", err)
-		}
-	}
+	// 		err = windows.FindNextVolume(h, &buff[0], n)
+	// 		if errors.Is(err, windows.ERROR_NO_MORE_FILES) {
+	// 			return "", fmt.Errorf("could not find volume number %d: %w", vn, err)
+	// 		} else if err != nil {
+	// 			return "", fmt.Errorf("could not find next volume: %w", err)
+	// 		}
+	// 	}
 }
 
 func ListAllVolumes() error {
 	return vhd.WalkVolumesA(func(vol string) error {
-		fmt.Println(vol)
+		fmt.Print(vol)
+
+		n, err := vhd.GetVolumeDeviceNumber(vol)
+		if err != nil {
+			return err
+		}
+		fmt.Println(": ", n)
 
 		ps, err := vhd.GetVolumePathNamesForVolumeName(vol)
 		if err != nil {
@@ -217,108 +244,4 @@ func ListAllVolumes() error {
 
 		return nil
 	})
-
-	// const n = 256
-	// var buff = make([]uint16, n, n)
-
-	// h, err := windows.FindFirstVolume(&buff[0], n)
-	// if err != nil {
-	// 	fmt.Printf("could not find first volume: %v", err)
-	// 	// os.Exit(1)
-	// 	return 1
-	// }
-
-	// for {
-	// 	printUtf(buff)
-	// 	printpathnames(&buff[0])
-	// 	getDevNumber(buff)
-
-	// 	err = windows.FindNextVolume(h, &buff[0], n)
-	// 	if errors.Is(err, windows.ERROR_NO_MORE_FILES) {
-	// 		err := windows.FindVolumeClose(h)
-	// 		if err != nil {
-	// 			fmt.Printf("could not close find volume handle: %v", err)
-	// 			os.Exit(1)
-	// 		}
-	// 		break
-	// 	} else if err != nil {
-	// 		fmt.Printf("could not find next volume: %v", err)
-	// 		return 1
-	// 	}
-	// }
-	// return 0
-}
-
-type E struct {
-	DiskNumber                   uint32
-	StartingOffset, ExtendLength uint64
-}
-type VDE struct {
-	Num         uint32
-	DiskExtents [1]E
-}
-
-// excluding trailing zero
-func utf16buffstrlen(b []uint16) int {
-	for i, c := range b {
-		if c == 0 {
-			return i
-		}
-	}
-	return len(b)
-}
-
-func getDevNumber(vol []uint16) (uint32, error) {
-	getVolExtents := uint32('V') << 16
-
-	h, err := windows.CreateFile(&vol[0], windows.GENERIC_READ, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE, nil, windows.OPEN_EXISTING, windows.FILE_ATTRIBUTE_NORMAL, 0)
-	if err != nil {
-		return 0, fmt.Errorf("create file: %w", err)
-	}
-	defer windows.CloseHandle(h)
-
-	vs := unsafe.Sizeof(VDE{})
-	bb := make([]byte, vs, vs)
-	var r uint32
-
-	err = windows.DeviceIoControl(h, getVolExtents, nil, 0, &bb[0], uint32(vs), &r, nil)
-	if err != nil {
-		return 0, fmt.Errorf("dev io ctl %w", err)
-	}
-	var v = (*VDE)(unsafe.Pointer(&bb[0]))
-
-	return v.DiskExtents[0].DiskNumber, nil
-}
-
-func printUtf(b []uint16) {
-	s := windows.UTF16ToString(b)
-	fmt.Println(s)
-}
-
-func printpathnames(b *uint16) {
-	const np = 1024
-	var pl uint32
-	var pb = make([]uint16, np, np)
-
-	err := windows.GetVolumePathNamesForVolumeName(b, &pb[0], uint32(np), &pl)
-	if err != nil {
-		fmt.Printf("could not get path names: %v", err)
-		os.Exit(1)
-	}
-
-	if pl < 2 {
-		fmt.Println("<no mount points found>")
-	}
-
-	for i := uint32(0); i < pl; {
-		s := windows.UTF16PtrToString(&pb[i])
-		if s == "" {
-			break
-		}
-		fmt.Print("- ")
-		fmt.Println(s)
-		for pb[i] != 0 && i < pl {
-			i++
-		}
-	}
 }

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"syscall"
 	"unsafe"
 
 	"github.com/Microsoft/hcsshim/internal/vhd/ioctl"
@@ -52,8 +53,16 @@ func (v VolumeGUID) String() string {
 
 // todo: add version where buffer is parsed as a VolumeGUID and passed to func
 
+func bytesToString(b []byte) string {
+	var i int
+	for i < len(b) && b[i] != 0 {
+		i++
+	}
+	return string(b[:i])
+}
+
 func WalkVolumesA(f func(string) error) (err error) {
-	var buff [VolumeGUIDStringLength]byte
+	buff := make([]byte, VolumeGUIDStringLength)
 
 	h, err := findFirstVolumeA(&buff[0], VolumeGUIDStringLength)
 	if err != nil {
@@ -63,7 +72,7 @@ func WalkVolumesA(f func(string) error) (err error) {
 	defer findVolumeClose(h)
 
 	for {
-		if err = f(string(buff[:])); err != nil {
+		if err = f(bytesToString(buff[:])); err != nil {
 			return err
 		}
 
@@ -77,18 +86,25 @@ func WalkVolumesA(f func(string) error) (err error) {
 	}
 }
 
-// GetVolumePathNamesForVolumeName Retrieves a list of drive letters and mounted
+// GetVolumePathNamesForVolumeName retrieves a list of drive letters and mounted
 // folder paths for the specified volume.
 // vol must be a properly formatted volume GUID string
 func GetVolumePathNamesForVolumeName(vol string) (paths []string, err error) {
-	v := []byte(vol)
-	var l uint32
-	buff := make([]byte, 256, 256)
+	if len(vol) < VolumeGUIDStringLength-1 || len(vol) > VolumeGUIDStringLength {
+		return paths, fmt.Errorf("volume name is the wrong size, found: %d, expected: %d", len(vol), VolumeGUIDStringLength)
+	}
 
+	v, err := syscall.BytePtrFromString(vol)
+	if err != nil {
+		return paths, fmt.Errorf("converting %q to byte pointer: %w", vol, err)
+	}
+
+	var l uint32
+	buff := make([]byte, 256)
 	for {
-		err = getVolumePathNamesForVolumeNameA(&v[0], &buff[0], uint32(len(buff)), &l)
+		err = getVolumePathNamesForVolumeNameA(v, &buff[0], uint32(len(buff)), &l)
 		if errors.Is(err, windows.ERROR_MORE_DATA) {
-			buff = make([]byte, l, l)
+			buff = make([]byte, l)
 		} else if err != nil {
 			return paths, fmt.Errorf("getting volume path names: %w", err)
 		} else {
@@ -113,16 +129,22 @@ func GetVolumePathNamesForVolumeName(vol string) (paths []string, err error) {
 }
 
 func OpenVolumeReadOnly(vol string) (windows.Handle, error) {
-	if vol[len(vol)] == '\\' {
+	h := windows.InvalidHandle
+
+	if vol[len(vol)-1] == '\\' {
+		// is this utf-8 safe?
 		vol = vol[:len(vol)-1]
 	}
 
-	b := []byte(vol)
+	b, err := syscall.BytePtrFromString(vol)
+	if err != nil {
+		return h, fmt.Errorf("converting %q to byte pointer: %w", vol, err)
+	}
 
-	h, err := CreateFileA(&b[0], windows.GENERIC_READ, windows.FILE_SHARE_READ,
+	h, err = CreateFileA(b, windows.GENERIC_READ, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE,
 		nil /* sa */, windows.OPEN_EXISTING, windows.FILE_ATTRIBUTE_NORMAL, 0 /*templatefile*/)
 	if err != nil {
-		return windows.InvalidHandle, fmt.Errorf("opening volume: %w", err)
+		return h, fmt.Errorf("opening volume: %w", err)
 	}
 	return h, nil
 }
@@ -136,7 +158,7 @@ func GetVolumeDeviceNumber(vol string) (uint32, error) {
 	defer windows.CloseHandle(h)
 
 	s := unsafe.Sizeof(ioctl.VolumeDiskExtents{})
-	b := make([]byte, s, s)
+	b := make([]byte, s)
 	var r uint32
 
 	// todo: handle ERROR_INSUFFICIENT_BUFFER and ERROR_MORE_DATA if buffer is too small

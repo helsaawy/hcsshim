@@ -185,7 +185,7 @@ func attachVirtualDisk(vhdh windows.Handle, sd uintptr, flags uint32, providerFl
 	return
 }
 
-func GetVirtualDiskInformation(vhdh windows.Handle, size *uint32, info *byte, used *uint32) (err error) {
+func getVirtualDiskInformation(vhdh windows.Handle, size *uint32, info *byte, used *uint32) (err error) {
 	r1, _, e1 := syscall.Syscall6(procGetVirtualDiskInformation.Addr(), 4, uintptr(vhdh), uintptr(unsafe.Pointer(size)), uintptr(unsafe.Pointer(info)), uintptr(unsafe.Pointer(used)), 0, 0)
 	if r1 != 0 {
 		if e1 != 0 {
