@@ -27,8 +27,8 @@ import (
 // https://docs.microsoft.com/en-us/windows/win32/api/winioctl/ns-winioctl-volume_disk_extents
 
 func main() {
-	// err := ListAllVolumes()
-	// fmt.Println("error: ", err)
+	err := ListAllVolumes()
+	fmt.Println("error: ", err)
 
 	// if len(os.Args) != 2 {
 	// 	fmt.Printf("need to pass a path")
@@ -53,7 +53,7 @@ func main() {
 
 	// fmt.Printf("mounted vhd to %q", vpath)
 
-	os.Exit(_main())
+	// os.Exit(_main())
 }
 
 var DiskNumberRe = regexp.MustCompile(`\\\\.\\PhysicalDrive([\d]+)`)
@@ -103,7 +103,7 @@ func _main() int {
 	}
 	fmt.Println("guid: ", i)
 
-	i, err := vhd.GetVirtualDiskDiskGUID(windows.Handle(h))
+	i, err = vhd.GetVirtualDiskDiskGUID(windows.Handle(h))
 	if err != nil {
 		fmt.Printf("vhd guid failed with: %v", err)
 		return 1

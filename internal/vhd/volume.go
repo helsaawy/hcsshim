@@ -7,8 +7,9 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/Microsoft/hcsshim/internal/vhd/ioctl"
 	"golang.org/x/sys/windows"
+
+	"github.com/Microsoft/hcsshim/internal/vhd/ioctl"
 )
 
 const (
@@ -52,14 +53,6 @@ func (v VolumeGUID) String() string {
 }
 
 // todo: add version where buffer is parsed as a VolumeGUID and passed to func
-
-func bytesToString(b []byte) string {
-	var i int
-	for i < len(b) && b[i] != 0 {
-		i++
-	}
-	return string(b[:i])
-}
 
 func WalkVolumesA(f func(string) error) (err error) {
 	buff := make([]byte, VolumeGUIDStringLength)
@@ -117,14 +110,15 @@ func GetVolumePathNamesForVolumeName(vol string) (paths []string, err error) {
 	}
 
 	// buffer has two null terminals, one for the last string, and one for the entire array
-	for i := uint32(0); i < l-1; {
-		j := i
-		for buff[j] != 0 && j < l {
-			j++
-		}
-		paths = append(paths, string(buff[i:j+1]))
-		i = j + 1
-	}
+	paths = bytesToStringArray(buff[:l-1])
+	// for i := uint32(0); i < l-1; {
+	// 	j := i
+	// 	for buff[j] != 0 && j < l {
+	// 		j++
+	// 	}
+	// 	paths = append(paths, string(buff[i:j+1]))
+	// 	i = j + 1
+	// }
 	return paths, err
 }
 

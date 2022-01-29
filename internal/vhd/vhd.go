@@ -6,9 +6,10 @@ import (
 	"fmt"
 	"unsafe"
 
+	"golang.org/x/sys/windows"
+
 	"github.com/Microsoft/go-winio/pkg/guid"
 	winiovhd "github.com/Microsoft/go-winio/vhd"
-	"golang.org/x/sys/windows"
 )
 
 //go:generate go run ../../mksyscall_windows.go -output zsyscall_windows.go vhd.go
@@ -73,7 +74,7 @@ func (iv VirtualDiskInformationVersion) String() string {
 	case VirtualDiskInfoVersionSize:
 		return s + "size"
 	case VirtualDiskInfoVersionIdentifier:
-		return s + "unique identifier"
+		return s + "identifier"
 	case VirtualDiskInfoVersionParentLocation:
 		return s + "parent location"
 	case VirtualDiskInfoVersionParentIdentifier:
@@ -102,6 +103,30 @@ func (iv VirtualDiskInformationVersion) String() string {
 		return s + "resilient change tracking state"
 	default:
 		return "invalid virtual disk information version "
+	}
+}
+
+// https://docs.microsoft.com/en-us/windows/win32/api/virtdisk/ns-virtdisk-get_virtual_disk_info
+type VirtualDiskProviderSubtype uint32
+
+const (
+	// not in the API, but add it as a return value
+	VirtualDiskProviderSubtypeInvalid      VirtualDiskProviderSubtype = 0x0
+	VirtualDiskProviderSubtypeFixed        VirtualDiskProviderSubtype = 0x2
+	VirtualDiskProviderSubtypeDynamic      VirtualDiskProviderSubtype = 0x3
+	VirtualDiskProviderSubtypeDifferencing VirtualDiskProviderSubtype = 0x4
+)
+
+func (vpst VirtualDiskProviderSubtype) String() string {
+	switch vpst {
+	case VirtualDiskProviderSubtypeFixed:
+		return "fixed"
+	case VirtualDiskProviderSubtypeDynamic:
+		return "dynamically expandable (sparse) "
+	case VirtualDiskProviderSubtypeDifferencing:
+		return "differencing"
+	default:
+		return "invalid subtype"
 	}
 }
 
@@ -144,58 +169,10 @@ type (
 
 type _largestVirtualDiskInformationStruct = VirtualDiskInformationSize
 
-type VirtualDiskProviderSubtype uint32
-
-const (
-	// https://docs.microsoft.com/en-us/windows/win32/api/virtdisk/ns-virtdisk-get_virtual_disk_info
-
-	// not in the API, but add it as a return value
-	VirtualDiskProviderSubtypeInvalid      VirtualDiskProviderSubtype = 0x0
-	VirtualDiskProviderSubtypeFixed        VirtualDiskProviderSubtype = 0x2
-	VirtualDiskProviderSubtypeDynamic      VirtualDiskProviderSubtype = 0x3
-	VirtualDiskProviderSubtypeDifferencing VirtualDiskProviderSubtype = 0x4
-)
-
-func (vpst VirtualDiskProviderSubtype) String() string {
-	switch vpst {
-	case VirtualDiskProviderSubtypeFixed:
-		return "fixed"
-	case VirtualDiskProviderSubtypeDynamic:
-		return "dynamically expandable (sparse) "
-	case VirtualDiskProviderSubtypeDifferencing:
-		return "differencing"
-	default:
-		return "invalid subtype"
-	}
-}
-
-// set to 8 byte alignment
 var _virtualDistkInformationStructBufferSize = to8byteAlignment(uint(unsafe.Sizeof(_largestVirtualDiskInformationStruct{})))
 
-// for when generics come :'(
-// VirtualDiskInformationGUID GUID
-// VirtualDiskInformationIs4kAligned bool
-// VirtualDiskInformationIsLoaded bool
-
-// VirtualDiskInformationUnion interface {
-// 	VirtualDiskInformationGUID |
-// 	VirtualDiskInformationIs4kAligned |
-// 	VirtualDiskInformationIsLoaded
-// }
-
-// VirtualDiskInformation[E VirtualDiskInformationUnion] struct {
-// 	Version VirtualDiskInformationVersion
-// 	E
-// }
-// )
-
 func GetVirtualDiskGUID(h windows.Handle) (GUID, error) {
-
-	v := VirtualDiskInfoVersionIdentifier
-
-	fmt.Printf("version used: %x\n", v)
-	b, err := getVirtualDiskInformationFromVersion(h, v)
-
+	b, err := getVirtualDiskInformationFromVersion(h, VirtualDiskInfoVersionIdentifier)
 	if err != nil {
 		return guid.GUID{}, err
 	}
@@ -205,12 +182,7 @@ func GetVirtualDiskGUID(h windows.Handle) (GUID, error) {
 }
 
 func GetVirtualDiskDiskGUID(h windows.Handle) (GUID, error) {
-
-	v := VirtualDiskInfoVersionVirtualDiskID
-
-	fmt.Printf("version used: %x\n", v)
-	b, err := getVirtualDiskInformationFromVersion(h, v)
-
+	b, err := getVirtualDiskInformationFromVersion(h, VirtualDiskInfoVersionVirtualDiskID)
 	if err != nil {
 		return guid.GUID{}, err
 	}
@@ -220,9 +192,7 @@ func GetVirtualDiskDiskGUID(h windows.Handle) (GUID, error) {
 }
 
 func GetVirtualDiskProviderSubtype(h windows.Handle) (VirtualDiskProviderSubtype, error) {
-	v := VirtualDiskInfoVersionProviderSubtype
-	b, err := getVirtualDiskInformationFromVersion(h, v)
-
+	b, err := getVirtualDiskInformationFromVersion(h, VirtualDiskInfoVersionProviderSubtype)
 	if err != nil {
 		return VirtualDiskProviderSubtypeInvalid, err
 	}
@@ -252,13 +222,15 @@ func getVirtualDiskInformationFromVersion(h windows.Handle, v VirtualDiskInforma
 
 	head.Version = v
 
-	fmt.Printf("%+v\n", buff)
+	fmt.Printf("%s\n", v)
+	// fmt.Printf("%+v\n", buff)
+
 	err := getVirtualDiskInformation(h, &size, &buff[0], nil)
 	if err != nil {
 		return buff, fmt.Errorf("%s: %w", v.String(), err)
 	}
 
-	fmt.Printf("%+v\n", buff)
+	// fmt.Printf("%+v\n", buff)
 
 	return buff, nil
 }
