@@ -11,7 +11,6 @@ func to8byteAlignment(s uint) uint {
 	return s
 }
 
-
 func bytesToString(b []byte) string {
 	for i, v := range b {
 		if v == 0 {
@@ -35,4 +34,11 @@ func bytesToStringArray(b []byte) []string {
 		i += l + 1
 	}
 	return ss
+}
+
+func maxUintptr(a, b uintptr) uintptr {
+	if a > b {
+		return a
+	}
+	return b
 }

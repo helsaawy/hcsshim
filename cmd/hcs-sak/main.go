@@ -11,9 +11,10 @@ import (
 	"strconv"
 	"syscall"
 
+	"golang.org/x/sys/windows"
+
 	wvhd "github.com/Microsoft/go-winio/vhd"
 	"github.com/Microsoft/hcsshim/internal/vhd"
-	"golang.org/x/sys/windows"
 )
 
 // to find GUID of disk:
@@ -28,46 +29,30 @@ import (
 
 func main() {
 	err := ListAllVolumes()
-	fmt.Println("error: ", err)
+	if err != nil {
+		fmt.Println("error: ", err)
+		os.Exit(1)
+	}
 
-	// if len(os.Args) != 2 {
-	// 	fmt.Printf("need to pass a path")
-	// 	os.Exit(1)
-	// }
-	// f := os.Args[1]
+	if len(os.Args) != 2 {
+		fmt.Printf("need to pass a path")
+		os.Exit(1)
+	}
+	f := os.Args[1]
 
-	// ctx := context.Background()
-
-	// fmt.Printf("opening vhd %q\n", f)
-	// err := vhd.AttachVhd(f)
-	// if err != nil {
-	// 	fmt.Printf("open virtual disk failed with: %v", err)
-	// 	os.Exit(1)
-	// }
-
-	// vpath, err := wclayer.GetLayerMountPath(ctx, f)
-	// if err != nil {
-	// 	fmt.Printf("get layer mount path failed with: %v", err)
-	// 	os.Exit(1)
-	// }
-
-	// fmt.Printf("mounted vhd to %q", vpath)
+	err = PrintVHDInfo(f)
+	if err != nil {
+		fmt.Println("error: ", err)
+		os.Exit(1)
+	}
 
 	// os.Exit(_main())
 }
 
 var DiskNumberRe = regexp.MustCompile(`\\\\.\\PhysicalDrive([\d]+)`)
 
-func _main() int {
-	if len(os.Args) != 2 {
-		fmt.Printf("need to pass a path")
-		return 1
-	}
-	f := os.Args[1]
-
+func _main(f string) int {
 	// ctx := context.Background()
-
-	fmt.Printf("opening vhd %q\n", f)
 
 	// err := vhd.AttachVhd(f)
 	// if err != nil {
@@ -95,26 +80,6 @@ func _main() int {
 		return 1
 	}
 	defer syscall.CloseHandle(h)
-
-	i, err := vhd.GetVirtualDiskGUID(windows.Handle(h))
-	if err != nil {
-		fmt.Printf("vhd guid failed with: %v", err)
-		return 1
-	}
-	fmt.Println("guid: ", i)
-
-	i, err = vhd.GetVirtualDiskDiskGUID(windows.Handle(h))
-	if err != nil {
-		fmt.Printf("vhd guid failed with: %v", err)
-		return 1
-	}
-	fmt.Println("guid: ", i)
-
-	// b, err := vhd.GetVirtualDiskProviderSubtype(windows.Handle(h))
-	// if err != nil {
-	// 	fmt.Printf("vhd type failed with: %v", err)
-	// 	return 1
-	// }
 
 	return 0
 	fmt.Printf("attaching %q\n", f)
@@ -244,4 +209,67 @@ func ListAllVolumes() error {
 
 		return nil
 	})
+}
+
+func PrintVHDInfo(path string) error {
+	fmt.Printf("opening vhd %q\n", path)
+
+	op := wvhd.OpenVirtualDiskParameters{
+		Version: 2,
+		Version2: wvhd.OpenVersion2{
+			GetInfoOnly: true,
+			ReadOnly:    true,
+		},
+	}
+	h, err := wvhd.OpenVirtualDiskWithParameters(
+		path,
+		wvhd.VirtualDiskAccessNone,
+		wvhd.OpenVirtualDiskFlagNoParents,
+		&op,
+	)
+	if err != nil {
+		return fmt.Errorf("open virtual disk failed with: %w", err)
+	}
+	defer syscall.CloseHandle(h)
+
+	wh := windows.Handle(h)
+
+	i, err := vhd.GetVirtualDiskGUID(wh)
+	if err != nil {
+		return err
+	}
+	fmt.Println("handle guid: ", i)
+
+	i, err = vhd.GetVirtualDiskDiskGUID(wh)
+	if err != nil {
+		return err
+	}
+	fmt.Println("disk guid: ", i)
+
+	st, err := vhd.GetVirtualDiskProviderSubtype(wh)
+	if err != nil {
+		return err
+	}
+	fmt.Println("type: ", st.String())
+
+	if st == vhd.VirtualDiskProviderSubtypeDifferencing {
+		r, ss, err := vhd.GetVirtualDiskParentLocation(wh)
+		if err != nil {
+			return err
+
+		}
+
+		fmt.Println("parent resolved: ", r)
+		for _, s := range ss {
+			fmt.Printf("parent path:      %s\n", s)
+		}
+	}
+
+	sz, err := vhd.GetVirtualDiskSize(wh)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("size: %+v\n", sz)
+
+	return nil
 }

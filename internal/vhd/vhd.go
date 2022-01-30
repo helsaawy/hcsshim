@@ -3,7 +3,9 @@
 package vhd
 
 import (
+	"errors"
 	"fmt"
+	"syscall"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -41,11 +43,14 @@ import (
 //sys attachVirtualDisk(vhdh windows.Handle, sd uintptr, flags uint32, providerFlags uint32, params uintptr, overlapped uintptr) (err error) [failretval != 0] = virtdisk.AttachVirtualDisk
 //sys getVirtualDiskInformation(vhdh windows.Handle, size *uint32, info *byte, used *uint32) (err error) [failretval != 0] = virtdisk.GetVirtualDiskInformation
 
+// type aliases from imported packages
 type (
 	GUID                      = guid.GUID
 	VirtualStorageType        = winiovhd.VirtualStorageType
 	OpenVirtualDiskParameters = winiovhd.OpenVirtualDiskParameters
 )
+
+const ErrInvalidArgument syscall.Errno = 0x20000027
 
 type VirtualDiskInformationVersion uint32
 
@@ -140,36 +145,49 @@ type (
 	}
 
 	VirtualDiskInformationGUID struct {
-		virtualDiskInformationHeader
-
 		ID GUID
 	}
 
 	VirtualDiskInformationSize struct {
-		virtualDiskInformationHeader
-
 		VirtualSize  uint64
 		PhysicalSize uint64
 		BlockSize    uint32
 		SectorSize   uint32
 	}
 
-	VirtualDiskInformationProviderSubtype struct {
-		virtualDiskInformationHeader
+	VirtualDiskInformationParentLocation struct {
+		ParentResolved bool
+		// bools in win32 are ints, ie 4 bytes
+		// https://docs.microsoft.com/en-us/windows/win32/winprog/windows-data-types#bool
+		_ [4 - unsafe.Sizeof(true)]byte
+		// this will be the start of a variable length array
+		ParentLocationBuffer uint16
+	}
 
+	// todo: are these wrappers needed?
+
+	VirtualDiskInformationProviderSubtype struct {
 		ProviderSubtype VirtualDiskProviderSubtype
 	}
 
 	VirtualDiskInformationIsLoaded struct {
-		virtualDiskInformationHeader
-
 		IsLoaded bool
 	}
 )
 
-type _largestVirtualDiskInformationStruct = VirtualDiskInformationSize
+type largestVirtualDiskInformationStruct = VirtualDiskInformationSize
 
-var _virtualDistkInformationStructBufferSize = to8byteAlignment(uint(unsafe.Sizeof(_largestVirtualDiskInformationStruct{})))
+var _virtualDistkInformationStructBufferSize = to8byteAlignment(uint(unsafe.Sizeof(largestVirtualDiskInformationStruct{})))
+
+func GetVirtualDiskSize(h windows.Handle) (VirtualDiskInformationSize, error) {
+	b, err := getVirtualDiskInformationFromVersion(h, VirtualDiskInfoVersionSize)
+	if err != nil {
+		return VirtualDiskInformationSize{}, err
+	}
+
+	sz := (*VirtualDiskInformationSize)(unsafe.Pointer(&b[0]))
+	return *sz, nil
+}
 
 func GetVirtualDiskGUID(h windows.Handle) (GUID, error) {
 	b, err := getVirtualDiskInformationFromVersion(h, VirtualDiskInfoVersionIdentifier)
@@ -177,18 +195,33 @@ func GetVirtualDiskGUID(h windows.Handle) (GUID, error) {
 		return guid.GUID{}, err
 	}
 
-	info := (*VirtualDiskInformationGUID)(unsafe.Pointer(&b[0]))
-	return info.ID, nil
+	id := (*VirtualDiskInformationGUID)(unsafe.Pointer(&b[0]))
+	return id.ID, nil
 }
 
+func GetVirtualDiskParentLocation(h windows.Handle) (bool, []string, error) {
+	b, err := getVirtualDiskInformationFromVersion(h, VirtualDiskInfoVersionParentLocation)
+	if err != nil {
+		return false, []string{}, err
+	}
+
+	info := (*VirtualDiskInformationParentLocation)(unsafe.Pointer(&b[0]))
+
+	// todo: !ParentResolved, parse full array of returned paths
+	sb := unsafe.Slice(&info.ParentLocationBuffer, uintptr(len(b))-unsafe.Offsetof(info.ParentLocationBuffer))
+	s := syscall.UTF16ToString(sb)
+	return info.ParentResolved, []string{s}, nil
+}
+
+// a unique ID that is constnat for the VHD
 func GetVirtualDiskDiskGUID(h windows.Handle) (GUID, error) {
 	b, err := getVirtualDiskInformationFromVersion(h, VirtualDiskInfoVersionVirtualDiskID)
 	if err != nil {
 		return guid.GUID{}, err
 	}
 
-	info := (*VirtualDiskInformationGUID)(unsafe.Pointer(&b[0]))
-	return info.ID, nil
+	id := (*VirtualDiskInformationGUID)(unsafe.Pointer(&b[0]))
+	return id.ID, nil
 }
 
 func GetVirtualDiskProviderSubtype(h windows.Handle) (VirtualDiskProviderSubtype, error) {
@@ -197,8 +230,8 @@ func GetVirtualDiskProviderSubtype(h windows.Handle) (VirtualDiskProviderSubtype
 		return VirtualDiskProviderSubtypeInvalid, err
 	}
 
-	info := (*VirtualDiskInformationProviderSubtype)(unsafe.Pointer(&b[0]))
-	return info.ProviderSubtype, nil
+	st := (*VirtualDiskProviderSubtype)(unsafe.Pointer(&b[0]))
+	return *st, nil
 }
 
 func GetVirtualDiskIsLoaded(h windows.Handle) (bool, error) {
@@ -209,28 +242,40 @@ func GetVirtualDiskIsLoaded(h windows.Handle) (bool, error) {
 		return false, err
 	}
 
-	info := (*VirtualDiskInformationIsLoaded)(unsafe.Pointer(&b[0]))
-	return info.IsLoaded, nil
+	loaded := (*bool)(unsafe.Pointer(&b[0]))
+	return *loaded, nil
 }
 
-func getVirtualDiskInformationFromVersion(h windows.Handle, v VirtualDiskInformationVersion) ([]byte, error) {
+// getVirtualDiskInformationFromVersion ...
+// payloadSize is the size of data after the header. The size used will be
+//   Sizeof(header) + max(payloadSize, Sizeof(minimumRequiredPayloadSize))
+func getVirtualDiskInformationFromVersion(h windows.Handle, v VirtualDiskInformationVersion) (buff []byte, err error) {
 	var (
-		size = uint32(unsafe.Sizeof(_largestVirtualDiskInformationStruct{}))
-		buff = make([]byte, size)
-		head = (*virtualDiskInformationHeader)(unsafe.Pointer(&buff[0]))
+		hsz  = unsafe.Sizeof(virtualDiskInformationHeader{})
+		size = uint32(hsz + unsafe.Sizeof(largestVirtualDiskInformationStruct{}))
+		// todo: is `used` valuable?
+		used uint32
 	)
 
-	head.Version = v
-
-	fmt.Printf("%s\n", v)
+	// fmt.Printf("%s\n", v)
 	// fmt.Printf("%+v\n", buff)
 
-	err := getVirtualDiskInformation(h, &size, &buff[0], nil)
-	if err != nil {
-		return buff, fmt.Errorf("%s: %w", v.String(), err)
+	// max 5 re-tries for invalid arguments
+	for i := 0; i < 5; i++ {
+		buff = make([]byte, size)
+		hdr := (*virtualDiskInformationHeader)(unsafe.Pointer(&buff[0]))
+		hdr.Version = v
+
+		err := getVirtualDiskInformation(h, &size, &buff[0], &used)
+		if errors.Is(err, ErrInvalidArgument) && int(size) != len(buff) {
+			continue
+		}
+		break
 	}
 
-	// fmt.Printf("%+v\n", buff)
+	if err != nil {
+		err = fmt.Errorf("%s: %w", v.String(), err)
+	}
 
-	return buff, nil
+	return buff[hsz:], err
 }
