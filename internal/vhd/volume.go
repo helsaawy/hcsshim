@@ -4,11 +4,13 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strconv"
 	"syscall"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
 
+	winiovhd "github.com/Microsoft/go-winio/vhd"
 	"github.com/Microsoft/hcsshim/internal/vhd/ioctl"
 )
 
@@ -54,6 +56,8 @@ func (v VolumeGUID) String() string {
 
 // todo: add version where buffer is parsed as a VolumeGUID and passed to func
 
+// WalkVolumesA walks through a mounted volume GUID strings of the form:
+//   `\\?\Volume{xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}\`
 func WalkVolumesA(f func(string) error) (err error) {
 	buff := make([]byte, VolumeGUIDStringLength)
 
@@ -111,14 +115,6 @@ func GetVolumePathNamesForVolumeName(vol string) (paths []string, err error) {
 
 	// buffer has two null terminals, one for the last string, and one for the entire array
 	paths = bytesToStringArray(buff[:l-1])
-	// for i := uint32(0); i < l-1; {
-	// 	j := i
-	// 	for buff[j] != 0 && j < l {
-	// 		j++
-	// 	}
-	// 	paths = append(paths, string(buff[i:j+1]))
-	// 	i = j + 1
-	// }
 	return paths, err
 }
 
@@ -165,4 +161,23 @@ func GetVolumeDeviceNumber(vol string) (uint32, error) {
 	var v = (*ioctl.VolumeDiskExtents)(unsafe.Pointer(&b[0]))
 
 	return v.DiskExtents[0].DiskNumber, nil
+}
+
+func GetAttachedVHDDiskNumber(h windows.Handle) (int64, error) {
+	vpath, err := winiovhd.GetVirtualDiskPhysicalPath(syscall.Handle(h))
+	if err != nil {
+		return 0, fmt.Errorf("get virtual disk physical path: %v", err)
+	}
+
+	is := DiskNumberRegex.FindStringSubmatch(vpath)
+	if len(is) != 2 {
+		return 0, fmt.Errorf("%q does not match regex %q", vpath, DiskNumberRegex.String())
+	}
+
+	n, err := strconv.ParseInt(is[1], 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("could not parse disk number %q", is[1])
+	}
+
+	return n, nil
 }

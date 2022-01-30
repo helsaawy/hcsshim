@@ -140,8 +140,6 @@ func (vpst VirtualDiskProviderSubtype) String() string {
 type (
 	virtualDiskInformationHeader struct {
 		Version VirtualDiskInformationVersion
-		// alignment: union is set to 8-byte boundary (on a 64 bit system)
-		_ uint32
 	}
 
 	VirtualDiskInformationGUID struct {
@@ -159,6 +157,7 @@ type (
 		ParentResolved bool
 		// bools in win32 are ints, ie 4 bytes
 		// https://docs.microsoft.com/en-us/windows/win32/winprog/windows-data-types#bool
+		// todo: is a bool guaranteed to be less than 4 bytes by go
 		_ [4 - unsafe.Sizeof(true)]byte
 		// this will be the start of a variable length array
 		ParentLocationBuffer uint16
@@ -177,7 +176,16 @@ type (
 
 type largestVirtualDiskInformationStruct = VirtualDiskInformationSize
 
-var _virtualDistkInformationStructBufferSize = to8byteAlignment(uint(unsafe.Sizeof(largestVirtualDiskInformationStruct{})))
+const (
+	_largestVirtualDiskInformationStructAlignment = unsafe.Alignof(largestVirtualDiskInformationStruct{})
+	_largestVirtualDiskInformationStructSize      = unsafe.Sizeof(largestVirtualDiskInformationStruct{})
+	// GetVirtualDiskInfo union will be aligned to 4- or 8-byte boundary (on 32- or 64-bit system).
+	// Adding a `_ [0]byte` field to the virtualDiskInformationHeader struct will still causes
+	// the size to increase from 4 to 8, which induces improper padding.
+	// Therefore, account for the padding at buffer allocation.
+	_virtualDiskInformationHeaderPadding = _largestVirtualDiskInformationStructAlignment - unsafe.Sizeof(VirtualDiskInfoVersionUnspecified)
+	_virtualDiskInformationHeaderSize    = unsafe.Sizeof(virtualDiskInformationHeader{}) + _virtualDiskInformationHeaderPadding
+)
 
 func GetVirtualDiskSize(h windows.Handle) (VirtualDiskInformationSize, error) {
 	b, err := getVirtualDiskInformationFromVersion(h, VirtualDiskInfoVersionSize)
@@ -250,9 +258,10 @@ func GetVirtualDiskIsLoaded(h windows.Handle) (bool, error) {
 // payloadSize is the size of data after the header. The size used will be
 //   Sizeof(header) + max(payloadSize, Sizeof(minimumRequiredPayloadSize))
 func getVirtualDiskInformationFromVersion(h windows.Handle, v VirtualDiskInformationVersion) (buff []byte, err error) {
+	// its annoying to type ...
+	const hsz = _virtualDiskInformationHeaderSize
 	var (
-		hsz  = unsafe.Sizeof(virtualDiskInformationHeader{})
-		size = uint32(hsz + unsafe.Sizeof(largestVirtualDiskInformationStruct{}))
+		size = uint32(hsz + _largestVirtualDiskInformationStructAlignment)
 		// todo: is `used` valuable?
 		used uint32
 	)
