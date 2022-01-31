@@ -1,44 +1,131 @@
 package vhd
 
-// miscellaneous byte and string manipulation functions
+import (
+	"fmt"
+	"regexp"
+	"strconv"
 
-func to8byteAlignment(s uint) uint {
-	// todo: make this generic over integer types
-	r := s & 0x7
-	if r != 0 {
-		s = s ^ r + 0x8
+	"github.com/Microsoft/go-winio/pkg/guid"
+	"golang.org/x/sys/windows"
+)
+
+// miscellaneous byte and string manipulation
+
+const (
+	// MaxPathLength is the maximum length for a path. A local path is structured in
+	// the following order: drive letter, colon, backslash, name components separated
+	// by backslashes, and a terminating null character.
+	//
+	// see also: https://docs.microsoft.com/en-us/windows/win32/fileio/maximum-file-path-limitation
+	MaxPathLength = 260
+
+	// VolumeGUIDStringLength is the length of a null-terminated Volume GUID string of the form:
+	//   \\?\Volume{xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}\
+	VolumeGUIDStringLength = 50
+
+	hexCG = `[\da-f]`
+)
+
+var (
+	DiskNumberRegex = regexp.MustCompile(`(?i)\\\\.\\PhysicalDrive([\d]+)`)
+	VolumeGUIDRegex = regexp.MustCompile(
+		`(?i)\\\\\?\\Volume{(` +
+			hexCG + `{8}-` +
+			hexCG + `{4}-` +
+			hexCG + `{4}-` +
+			hexCG + `{4}-` +
+			hexCG + `{12}` + `)}\\?`)
+)
+
+// ParseDiskNumber extracts the disk number from the physical device path of the form
+//    `\\.\PhysicalDriveX`
+// Returns a `strconv.ErrSyntax` if the string is not of the correct form.
+//
+// see GetVirtualDiskPhysicalPath
+func ParseDiskNumber(s string) (n uint32, err error) {
+	m := DiskNumberRegex.FindStringSubmatch(s)
+	if len(m) != 2 {
+		return n, fmt.Errorf("%q does not match regex %q: %w", s, DiskNumberRegex.String(), strconv.ErrSyntax)
 	}
-	return s
+
+	// disk number is a DWORD (32 bit integer):
+	// see https://docs.microsoft.com/en-us/windows/win32/api/winioctl/ns-winioctl-disk_extent
+	nn, err := strconv.ParseUint(m[1], 10, 32)
+	if err != nil {
+		return n, fmt.Errorf("could not parse disk number %q: %w", m[1], err)
+	}
+
+	return uint32(nn), nil
 }
 
-func bytesToString(b []byte) string {
-	for i, v := range b {
+// ParseVolumeGUID extacts the GUID from a volume string name of the form
+//   \\?\Volume{xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}\
+// Returns a `strconv.ErrSyntax` if the string is not of the correct form.
+//
+// see FindFirstVolume, GetVolumePathNamesForVolumeName
+func ParseVolumeGUID(s string) (g GUID, err error) {
+	m := VolumeGUIDRegex.FindStringSubmatch(s)
+	if len(m) != 2 {
+		return g, fmt.Errorf("%q does not match regex %q: %w", s, DiskNumberRegex.String(), strconv.ErrSyntax)
+	}
+
+	g, err = guid.FromString(m[1])
+	if err != nil {
+		err = fmt.Errorf("%s: %w", err, strconv.ErrSyntax)
+	}
+
+	return g, nil
+}
+
+func bytesToString(s []byte) string {
+	for i, v := range s {
 		if v == 0 {
-			b = b[:i]
+			s = s[:i]
 			break
 		}
 	}
-	return string(b)
+	return string(s)
 }
 
-func bytesToStringArray(b []byte) []string {
-	ss := make([]string, 0, 3)
+func bytesToStringArray(s []byte) []string {
+	a := make([]string, 0, 3)
 
-	for i := 0; i < len(b); {
-		s := bytesToString(b[i:])
-		l := len(s)
+	for i := 0; i < len(s); {
+		ss := bytesToString(s[i:])
+		l := len(ss)
 		if l > 0 {
 			// skip empty strings (ie, repeated null bytes)
-			ss = append(ss, s)
+			a = append(a, ss)
 		}
 		i += l + 1
 	}
-	return ss
+	return a
 }
 
-func maxUintptr(a, b uintptr) uintptr {
-	if a > b {
-		return a
+func UTF16ToStringArray(s []uint16) []string {
+	a := make([]string, 0, 3)
+
+	// cant modify the `i` in `i,v := range s`, so need old-school for loop to
+	// modify index and skip ahead after processing a string
+	for i := 0; i < len(s); i++ {
+		if s[i] == 0 {
+			continue
+		}
+
+		// don't modify s inside the loop
+		si := s[i:]
+		ss := windows.UTF16ToString(si)
+		if len(s) > 0 { // skip empty strings (ie, failed parsings)
+			a = append(a, ss)
+		}
+
+		// len(s) returns the bytes needed to encode s as a utf-8 string, not utf-16
+		for j, v := range si {
+			if v == 0 {
+				i += j + 1
+				break
+			}
+		}
 	}
-	return b
+	return a
 }

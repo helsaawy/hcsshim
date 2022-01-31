@@ -5,6 +5,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -17,24 +18,24 @@ import (
 	"github.com/Microsoft/hcsshim/internal/vhd"
 )
 
-// to find GUID of disk:
-// 1. run getvolumes twice, and find newest volume
-// 2. parse GUID from embedded GPT partition in VHD:
-//    https://stackoverflow.com/questions/31849488/open-attach-and-assign-a-vhd/48475371#48475371
-// 3. look for diskID in findvolume enumeration:
-//    https://stackoverflow.com/questions/24396644/programmatically-mount-a-microsoft-virtual-hard-drive-vhd/27611730#27611730
-
-// https://docs.microsoft.com/en-us/windows/win32/api/winioctl/ni-winioctl-ioctl_storage_get_device_number?redirectedfrom=MSDN
-// https://docs.microsoft.com/en-us/windows/win32/api/winioctl/ns-winioctl-volume_disk_extents
+// todo:
+//* add logging and debug statements
+//** switch to something that isnt logrus
+//*** default "log" package?
+//** debug flag
+//* add CLI apps and commands and help and usage
+//* have functions (list vols, VHD info) return populated structs that are then printed
+//* add depth and reparse options to list vhd dir
 
 func main() {
 	var err error
+	ctx := context.Background()
 
-	// err = ListAllVolumes()
-	// if err != nil {
-	// 	fmt.Println("error: ", err)
-	// 	os.Exit(1)
-	// }
+	err = ListAllVolumes(ctx)
+	if err != nil {
+		fmt.Println("error: ", err)
+		os.Exit(1)
+	}
 
 	if len(os.Args) != 2 {
 		fmt.Printf("need to pass a path")
@@ -42,28 +43,24 @@ func main() {
 	}
 	f := os.Args[1]
 
-	err = PrintVHDInfo(f)
+	err = PrintVHDInfo(ctx, f)
 	if err != nil {
 		fmt.Println("error: ", err)
 		os.Exit(1)
 	}
 
-	err = _main(f)
+	err = PrintDirs(ctx, f)
 	if err != nil {
 		fmt.Println("error: ", err)
 		os.Exit(1)
-
 	}
 }
 
 var DiskNumberRe = regexp.MustCompile(`\\\\.\\PhysicalDrive([\d]+)`)
 
-func _main(f string) error {
+func PrintDirs(ctx context.Context, f string) error {
 	op := wvhd.OpenVirtualDiskParameters{
 		Version: 2,
-		Version2: wvhd.OpenVersion2{
-			ReadOnly: true,
-		},
 	}
 	h, err := wvhd.OpenVirtualDiskWithParameters(
 		f,
@@ -84,28 +81,19 @@ func _main(f string) error {
 	}
 	defer wvhd.DetachVirtualDisk(h)
 
-	n, err := vhd.GetAttachedVHDDiskNumber(wh)
+	n, err := vhd.GetAttachedVHDDiskNumber(ctx, wh)
 	if err != nil {
 		return fmt.Errorf("attached virtual disk number: %w", err)
 	}
 	fmt.Printf("disk number %d\n", n)
 
-	id, err := findVolume(uint32(n))
+	id, err := findVolume(ctx, n)
 	if err != nil {
 		return fmt.Errorf("could not find disk number %d: %w", n, err)
 	}
 
 	fmt.Println("vhd mount path: ", id)
-	return nil
 
-	id = id + "\\"
-	// vpathptr, err := windows.UTF16PtrFromString(vpath)
-	// if err != nil {
-	// 	fmt.Printf("ptr 16 from string with: %v", err)
-	// 	return 1
-	// }
-
-	// vpath = "\\\\?\\Volume{10bbc1b8-1583-4588-b288-0bf125cad124}\\"
 	vol, err := os.OpenFile(id, os.O_RDONLY, 0)
 	if err != nil {
 		return fmt.Errorf("open file failed with: %w", err)
@@ -121,27 +109,14 @@ func _main(f string) error {
 		fmt.Printf("- %v\n", file.Name())
 	}
 
-	// utf16DestPath := windows.StringToUTF16(f)
-
-	// h, err := windows.CreateFile(&utf16DestPath[0], windows.GENERIC_WRITE, windows.FILE_SHARE_WRITE, nil, windows.OPEN_EXISTING, windows.FILE_ATTRIBUTE_NORMAL, 0)
-	// if err != nil {
-	// 	fmt.Printf("create file failed with: %v", err)
-	// 	os.Exit(1)
-	// }
-
-	// err = windows.FlushFileBuffers(h)
-	// if err != nil {
-	// 	fmt.Printf("file buffer flush failed with: %v", err)
-	// 	os.Exit(1)
-	// }
 	return nil
 }
 
-func findVolume(v uint32) (id string, err error) {
+func findVolume(ctx context.Context, v uint32) (id string, err error) {
 	errFound := errors.New("found volume by device number")
 
-	err = vhd.WalkVolumesA(func(vol string) error {
-		n, err := vhd.GetVolumeDeviceNumber(vol)
+	err = vhd.WalkVolumes(ctx, func(ctx context.Context, vol string) error {
+		n, err := vhd.GetVolumeDeviceNumber(ctx, vol)
 		if err != nil {
 			return err
 		}
@@ -160,30 +135,39 @@ func findVolume(v uint32) (id string, err error) {
 	return "", err
 }
 
-func ListAllVolumes() error {
-	return vhd.WalkVolumesA(func(vol string) error {
-		fmt.Print(vol)
+func ListAllVolumes(ctx context.Context) error {
+	return vhd.WalkVolumes(ctx, func(ctx context.Context, vol string) error {
+		Display(ctx, "name", vol, -1)
 
-		n, err := vhd.GetVolumeDeviceNumber(vol)
+		n, err := vhd.GetVolumeDeviceNumber(ctx, vol)
 		if err != nil {
 			return err
 		}
-		fmt.Println(": ", n)
+		Display(ctx, "dev number", n, -1)
 
-		ps, err := vhd.GetVolumePathNamesForVolumeName(vol)
+		ps, err := vhd.GetVolumePathNamesForVolumeName(ctx, vol)
 		if err != nil {
 			return err
 		}
-		for _, p := range ps {
-			fmt.Println("-", p)
+		switch len(ps) {
+		case 0:
+		case 1:
+			Display(ctx, "mount path", ps[0], -1)
+		default:
+			Display(ctx, "mount paths", ps[0], -1)
+			for _, p := range ps[1:] {
+				Display(ctx, "", p, -1)
+			}
 		}
+
+		fmt.Println()
 
 		return nil
 	})
 }
 
-func PrintVHDInfo(path string) error {
-	fmt.Printf("opening vhd %q\n", path)
+func PrintVHDInfo(ctx context.Context, path string) error {
+	Display(ctx, "vhd", path, -1)
 
 	op := wvhd.OpenVirtualDiskParameters{
 		Version: 2,
@@ -205,42 +189,42 @@ func PrintVHDInfo(path string) error {
 
 	wh := windows.Handle(h)
 
-	i, err := vhd.GetVirtualDiskGUID(wh)
+	i, err := vhd.GetVirtualDiskGUID(ctx, wh)
 	if err != nil {
 		return err
 	}
-	fmt.Println("handle guid: ", i)
+	Display(ctx, "handle guid", i, -1)
 
-	i, err = vhd.GetVirtualDiskDiskGUID(wh)
+	i, err = vhd.GetVirtualDiskDiskGUID(ctx, wh)
 	if err != nil {
 		return err
 	}
-	fmt.Println("disk guid: ", i)
+	Display(ctx, "disk guid", i, -1)
 
-	st, err := vhd.GetVirtualDiskProviderSubtype(wh)
+	st, err := vhd.GetVirtualDiskProviderSubtype(ctx, wh)
 	if err != nil {
 		return err
 	}
-	fmt.Println("type: ", st.String())
+	Display(ctx, "type", st.String(), -1)
 
 	if st == vhd.VirtualDiskProviderSubtypeDifferencing {
-		r, ss, err := vhd.GetVirtualDiskParentLocation(wh)
+		r, ss, err := vhd.GetVirtualDiskParentLocation(ctx, wh)
 		if err != nil {
 			return err
 
 		}
 
-		fmt.Println("parent resolved: ", r)
+		Display(ctx, "parent resolved", r, -1)
 		for _, s := range ss {
-			fmt.Printf("parent path:      %s\n", s)
+			Display(ctx, "parent path", s, -1)
 		}
 	}
 
-	sz, err := vhd.GetVirtualDiskSize(wh)
+	sz, err := vhd.GetVirtualDiskSize(ctx, wh)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("size: %+v\n", sz)
+	Display(ctx, "size", sz, -1)
 
 	return nil
 }

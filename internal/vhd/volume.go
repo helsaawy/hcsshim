@@ -1,43 +1,14 @@
 package vhd
 
 import (
+	"context"
 	"errors"
 	"fmt"
-	"regexp"
-	"strconv"
-	"syscall"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
 
-	winiovhd "github.com/Microsoft/go-winio/vhd"
 	"github.com/Microsoft/hcsshim/internal/vhd/ioctl"
-)
-
-const (
-	// MaxPath is the maximum length for a path. A local path is structured in the following
-	// order: drive letter, colon, backslash, name components separated by backslashes,
-	// and a terminating null character.
-	//
-	// see also: https://docs.microsoft.com/en-us/windows/win32/fileio/maximum-file-path-limitation
-	MaxPath = 260
-
-	// VolumeGUIDStringLength is the length of a null-terminated Volume GUID string of the form:
-	//   \\?\Volume{xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}\
-	VolumeGUIDStringLength = 50
-
-	hexCG = `[\da-f]`
-)
-
-var (
-	DiskNumberRegex = regexp.MustCompile(`\\\\.\\PhysicalDrive([\d]+)`)
-	VolumeGUIDRegex = regexp.MustCompile(
-		`(?i)\\\\\?\\Volume{(` +
-			hexCG + `{8}-` +
-			hexCG + `{4}-` +
-			hexCG + `{4}-` +
-			hexCG + `{4}-` +
-			hexCG + `{12}` + `)}\\?`)
 )
 
 type VolumeGUID struct {
@@ -56,24 +27,36 @@ func (v VolumeGUID) String() string {
 
 // todo: add version where buffer is parsed as a VolumeGUID and passed to func
 
-// WalkVolumesA walks through a mounted volume GUID strings of the form:
+// WalkVolumes walks through a mounted volume GUID strings of the form:
 //   `\\?\Volume{xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}\`
-func WalkVolumesA(f func(string) error) (err error) {
-	buff := make([]byte, VolumeGUIDStringLength)
+//
+// Cancelling the context will cancel walking
+func WalkVolumes(ctx context.Context, f func(context.Context, string) error) (err error) {
+	buff := make([]uint16, VolumeGUIDStringLength)
 
-	h, err := findFirstVolumeA(&buff[0], VolumeGUIDStringLength)
+	h, err := windows.FindFirstVolume(&buff[0], VolumeGUIDStringLength*2)
 	if err != nil {
 		return err
 	}
 	// todo: what to do about errors with closing the handle?
-	defer findVolumeClose(h)
+	defer windows.FindVolumeClose(h)
 
 	for {
-		if err = f(bytesToString(buff[:])); err != nil {
+		s := windows.UTF16ToString(buff)
+		if s == "" {
+			return nil
+		}
+
+		if err = f(ctx, s); err != nil {
 			return err
 		}
 
-		err = findNextVolumeA(h, &buff[0], VolumeGUIDStringLength)
+		// allow f to first handle ctx cancellation, if it wants to
+		if err = ctx.Err(); err != nil {
+			return err
+		}
+
+		err = windows.FindNextVolume(h, &buff[0], VolumeGUIDStringLength*2)
 		if err != nil {
 			if errors.Is(err, windows.ERROR_NO_MORE_FILES) {
 				err = nil
@@ -86,39 +69,42 @@ func WalkVolumesA(f func(string) error) (err error) {
 // GetVolumePathNamesForVolumeName retrieves a list of drive letters and mounted
 // folder paths for the specified volume.
 // vol must be a properly formatted volume GUID string
-func GetVolumePathNamesForVolumeName(vol string) (paths []string, err error) {
+func GetVolumePathNamesForVolumeName(ctx context.Context, vol string) (paths []string, err error) {
 	if len(vol) < VolumeGUIDStringLength-1 || len(vol) > VolumeGUIDStringLength {
 		return paths, fmt.Errorf("volume name is the wrong size, found: %d, expected: %d", len(vol), VolumeGUIDStringLength)
 	}
 
-	v, err := syscall.BytePtrFromString(vol)
+	p, err := windows.UTF16PtrFromString(vol)
 	if err != nil {
 		return paths, fmt.Errorf("converting %q to byte pointer: %w", vol, err)
 	}
 
-	var l uint32
-	buff := make([]byte, 256)
-	for {
-		err = getVolumePathNamesForVolumeNameA(v, &buff[0], uint32(len(buff)), &l)
+	var buff []uint16
+	sz := uint32(MaxPathLength)
+
+	for i := 0; i < 3; i++ {
+		buff = make([]uint16, sz)
+
+		err = windows.GetVolumePathNamesForVolumeName(p, &buff[0], uint32(len(buff)*2), &sz)
 		if errors.Is(err, windows.ERROR_MORE_DATA) {
-			buff = make([]byte, l)
-		} else if err != nil {
-			return paths, fmt.Errorf("getting volume path names: %w", err)
-		} else {
-			break
+			continue
 		}
+		break
+	}
+	if err != nil {
+		return paths, fmt.Errorf("getting volume path names: %w", err)
 	}
 
-	if l < 2 {
+	if sz < 2 {
 		return paths, nil
 	}
 
 	// buffer has two null terminals, one for the last string, and one for the entire array
-	paths = bytesToStringArray(buff[:l-1])
+	paths = UTF16ToStringArray(buff[:sz-1])
 	return paths, err
 }
 
-func OpenVolumeReadOnly(vol string) (windows.Handle, error) {
+func OpenVolumeReadOnly(ctx context.Context, vol string) (windows.Handle, error) {
 	h := windows.InvalidHandle
 
 	if vol[len(vol)-1] == '\\' {
@@ -126,12 +112,12 @@ func OpenVolumeReadOnly(vol string) (windows.Handle, error) {
 		vol = vol[:len(vol)-1]
 	}
 
-	b, err := syscall.BytePtrFromString(vol)
+	p, err := windows.UTF16PtrFromString(vol)
 	if err != nil {
 		return h, fmt.Errorf("converting %q to byte pointer: %w", vol, err)
 	}
 
-	h, err = CreateFileA(b, windows.GENERIC_READ, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE,
+	h, err = windows.CreateFile(p, windows.GENERIC_READ, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE,
 		nil /* sa */, windows.OPEN_EXISTING, windows.FILE_ATTRIBUTE_NORMAL, 0 /*templatefile*/)
 	if err != nil {
 		return h, fmt.Errorf("opening volume: %w", err)
@@ -140,8 +126,8 @@ func OpenVolumeReadOnly(vol string) (windows.Handle, error) {
 }
 
 // https://docs.microsoft.com/en-us/windows/win32/api/winioctl/ni-winioctl-ioctl_volume_get_volume_disk_extents
-func GetVolumeDeviceNumber(vol string) (uint32, error) {
-	h, err := OpenVolumeReadOnly(vol)
+func GetVolumeDeviceNumber(ctx context.Context, vol string) (uint32, error) {
+	h, err := OpenVolumeReadOnly(ctx, vol)
 	if err != nil {
 		return 0, fmt.Errorf("volume device number: %w", err)
 	}
@@ -161,23 +147,4 @@ func GetVolumeDeviceNumber(vol string) (uint32, error) {
 	var v = (*ioctl.VolumeDiskExtents)(unsafe.Pointer(&b[0]))
 
 	return v.DiskExtents[0].DiskNumber, nil
-}
-
-func GetAttachedVHDDiskNumber(h windows.Handle) (int64, error) {
-	vpath, err := winiovhd.GetVirtualDiskPhysicalPath(syscall.Handle(h))
-	if err != nil {
-		return 0, fmt.Errorf("get virtual disk physical path: %v", err)
-	}
-
-	is := DiskNumberRegex.FindStringSubmatch(vpath)
-	if len(is) != 2 {
-		return 0, fmt.Errorf("%q does not match regex %q", vpath, DiskNumberRegex.String())
-	}
-
-	n, err := strconv.ParseInt(is[1], 10, 64)
-	if err != nil {
-		return 0, fmt.Errorf("could not parse disk number %q", is[1])
-	}
-
-	return n, nil
 }
