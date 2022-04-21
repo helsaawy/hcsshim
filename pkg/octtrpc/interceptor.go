@@ -10,6 +10,8 @@ import (
 	"go.opencensus.io/trace/propagation"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/Microsoft/hcsshim/internal/oc"
 )
 
 type options struct {
@@ -67,7 +69,7 @@ func ClientInterceptor(opts ...Option) ttrpc.UnaryClientInterceptor {
 		opt(&o)
 	}
 	return func(ctx context.Context, req *ttrpc.Request, resp *ttrpc.Response, info *ttrpc.UnaryClientInfo, inv ttrpc.Invoker) (err error) {
-		ctx, span := trace.StartSpan(
+		ctx, span := oc.StartSpan(
 			ctx,
 			convertMethodName(info.FullMethod),
 			trace.WithSampler(o.sampler),
@@ -98,7 +100,7 @@ func ServerInterceptor(opts ...Option) ttrpc.UnaryServerInterceptor {
 		var span *trace.Span
 		parent, ok := getParentSpanFromContext(ctx)
 		if ok {
-			ctx, span = trace.StartSpanWithRemoteParent(
+			ctx, span = oc.StartSpanWithRemoteParent(
 				ctx,
 				name,
 				parent,
@@ -106,7 +108,7 @@ func ServerInterceptor(opts ...Option) ttrpc.UnaryServerInterceptor {
 				trace.WithSampler(o.sampler),
 			)
 		} else {
-			ctx, span = trace.StartSpan(
+			ctx, span = oc.StartSpan(
 				ctx,
 				name,
 				trace.WithSpanKind(trace.SpanKindServer),
