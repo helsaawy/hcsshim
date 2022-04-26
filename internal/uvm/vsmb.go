@@ -18,7 +18,7 @@ import (
 	"github.com/Microsoft/hcsshim/internal/hcs"
 	"github.com/Microsoft/hcsshim/internal/hcs/resourcepaths"
 	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
-	"github.com/Microsoft/hcsshim/internal/log"
+	"github.com/Microsoft/hcsshim/internal/logfields"
 	"github.com/Microsoft/hcsshim/internal/protocol/guestrequest"
 	"github.com/Microsoft/hcsshim/internal/winapi"
 	"github.com/Microsoft/hcsshim/osversion"
@@ -197,7 +197,7 @@ func (uvm *UtilityVM) AddVSMB(ctx context.Context, hostPath string, options *hcs
 	if force, err := forceNoDirectMap(hostPath); err != nil {
 		return nil, err
 	} else if force {
-		log.G(ctx).WithField("hostPath", hostPath).Debug("Forcing NoDirectmap for VSMB mount")
+		uvm.logEntry(ctx).WithField("hostPath", hostPath).Debug("Forcing NoDirectmap for VSMB mount")
 		options.NoDirectmap = true
 	}
 
@@ -227,7 +227,7 @@ func (uvm *UtilityVM) AddVSMB(ctx context.Context, hostPath string, options *hcs
 	// isn't set (e.g. if used on an unrestricted share). So we only call Modify
 	// if we are either doing an Add, or if RestrictFileAccess is set.
 	if requestType == guestrequest.RequestTypeAdd || options.RestrictFileAccess {
-		log.G(ctx).WithFields(logrus.Fields{
+		uvm.logEntry(ctx).WithFields(logrus.Fields{
 			"name":      share.name,
 			"path":      hostPath,
 			"options":   options,
