@@ -270,6 +270,8 @@ func configureSandboxNetwork(ctx context.Context, coi *createOptionsInternal, r 
 // release the resources on failure, so that the client can make the necessary
 // call to release resources that have been allocated as part of calling this function.
 func CreateContainer(ctx context.Context, createOptions *CreateOptions) (_ cow.Container, _ *resources.Resources, err error) {
+	entry := log.G(ctx).WithField(logfields.ContainerID, createOptions.ID)
+
 	coi, err := initializeCreateOptions(ctx, createOptions)
 	if err != nil {
 		return nil, nil, err
@@ -322,7 +324,6 @@ func CreateContainer(ctx context.Context, createOptions *CreateOptions) (_ cow.C
 	}
 
 	var hcsDocument, gcsDocument interface{}
-	entry := log.G(ctx)
 	entry.Debug("hcsshim::CreateContainer allocating resources")
 	if coi.Spec.Linux != nil {
 		if schemaversion.IsV10(coi.actualSchemaVersion) {

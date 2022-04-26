@@ -18,9 +18,11 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"go.opencensus.io/trace"
 	"golang.org/x/sys/windows"
 
 	"github.com/Microsoft/hcsshim/internal/log"
+	"github.com/Microsoft/hcsshim/internal/oc"
 )
 
 const (
@@ -52,6 +54,9 @@ type rpc struct {
 	brdgErr error // error encountered when sending the request or unmarshaling the result
 	ch      chan struct{}
 }
+
+// todo(helsaawy): remove bridge.log entry and log based on per-request context, not
+// the context that started the bridge
 
 // bridge represents a communcations bridge with the guest. It handles the
 // transport layer but (mostly) does not parse or construct the message payload.
@@ -143,7 +148,12 @@ func (brdg *bridge) Wait() error {
 // AsyncRPC sends an RPC request to the guest but does not wait for a response.
 // If the message cannot be sent before the context is done, then an error is
 // returned.
-func (brdg *bridge) AsyncRPC(ctx context.Context, proc rpcProc, req requestMessage, resp responseMessage) (*rpc, error) {
+func (brdg *bridge) AsyncRPC(ctx context.Context, proc rpcProc, req requestMessage, resp responseMessage) (_ *rpc, err error) {
+	ctx, span := oc.StartSpan(ctx, "gcs::bridge::AsyncRPC", oc.WithClientSpanKind)
+	defer span.End()
+	defer func() { oc.SetSpanStatus(span, err) }()
+	span.AddAttributes(trace.StringAttribute("type", proc.String()))
+
 	call := &rpc{
 		ch:   make(chan struct{}),
 		proc: proc,
@@ -416,7 +426,6 @@ func (brdg *bridge) writeMessage(buf *bytes.Buffer, enc *json.Encoder, typ msgTy
 			"message-id": id}).Debug("bridge send")
 	}
 
-	// Write the message.
 	_, err = buf.WriteTo(brdg.conn)
 	if err != nil {
 		return fmt.Errorf("bridge write: %s", err)
