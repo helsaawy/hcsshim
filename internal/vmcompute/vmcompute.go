@@ -4,6 +4,7 @@ package vmcompute
 
 import (
 	gcontext "context"
+	"errors"
 	"syscall"
 	"time"
 
@@ -87,7 +88,7 @@ func execute(ctx gcontext.Context, timeout time.Duration, f func() error) error 
 	}()
 	select {
 	case <-ctx.Done():
-		if ctx.Err() == gcontext.DeadlineExceeded {
+		if errors.Is(ctx.Err(), gcontext.DeadlineExceeded) {
 			log.G(ctx).WithField(logfields.Timeout, timeout).
 				Warning("Syscall did not complete within operation timeout. This may indicate a platform issue. If it appears to be making no forward progress, obtain the stacks and see if there is a syscall stuck in the platform API for a significant length of time.")
 		}

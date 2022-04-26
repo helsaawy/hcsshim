@@ -154,6 +154,8 @@ func (uvm *UtilityVM) configureHvSocketForGCS(ctx context.Context) (err error) {
 
 // Start synchronously starts the utility VM.
 func (uvm *UtilityVM) Start(ctx context.Context) (err error) {
+	uvm.logEntry(ctx).Trace("uvm::Start")
+
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	g, gctx := errgroup.WithContext(ctx)
 	defer func() {

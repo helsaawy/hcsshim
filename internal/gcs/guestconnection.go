@@ -119,6 +119,11 @@ func (gc *GuestConnection) Protocol() uint32 {
 // It should be false for subsequent connections (e.g. when connecting to a UVM that has
 // been cloned).
 func (gc *GuestConnection) connect(ctx context.Context, isColdStart bool, initGuestState *InitialGuestState) (err error) {
+	log.G(ctx).WithFields(logrus.Fields{
+		"isColdStart":    isColdStart,
+		"initGuestState": initGuestState,
+	}).Trace("gcs::GuestConnection::connect")
+
 	req := negotiateProtocolRequest{
 		MinimumVersion: protocolVersion,
 		MaximumVersion: protocolVersion,
@@ -132,6 +137,12 @@ func (gc *GuestConnection) connect(ctx context.Context, isColdStart bool, initGu
 	if resp.Version != protocolVersion {
 		return fmt.Errorf("unexpected version %d returned", resp.Version)
 	}
+
+	log.G(ctx).WithFields(logrus.Fields{
+		"capabilities": gc.caps,
+		"version":      resp.Version,
+	}).Trace("gcs::GuestConnection::connect received capabilities")
+
 	gc.os = strings.ToLower(resp.Capabilities.RuntimeOsType)
 	if gc.os == "" {
 		gc.os = "windows"

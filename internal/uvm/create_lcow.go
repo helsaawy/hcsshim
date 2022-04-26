@@ -280,6 +280,8 @@ Example JSON document produced once the hcsschema.ComputeSytem returned by makeL
 
 // Make a hcsschema.ComputeSytem with the parts that target booting from a VMGS file
 func makeLCOWVMGSDoc(ctx context.Context, opts *OptionsLCOW, uvm *UtilityVM) (_ *hcsschema.ComputeSystem, err error) {
+	log.G(ctx).Trace("uvm::makeLCOWVMGSDoc")
+
 	// Kernel and initrd are combined into a single vmgs file.
 	vmgsFullPath := filepath.Join(opts.BootFilesPath, opts.GuestStateFile)
 	if _, err := os.Stat(vmgsFullPath); os.IsNotExist(err) {
@@ -392,6 +394,8 @@ func makeLCOWVMGSDoc(ctx context.Context, opts *OptionsLCOW, uvm *UtilityVM) (_ 
 // Many details are quite different (see the typical JSON examples), in particular it boots from a VMGS file
 // which contains both the kernel and initrd as well as kernel boot options.
 func makeLCOWSecurityDoc(ctx context.Context, opts *OptionsLCOW, uvm *UtilityVM) (_ *hcsschema.ComputeSystem, err error) {
+	log.G(ctx).Trace("uvm::makeLCOWSecurityDoc")
+
 	doc, vmgsErr := makeLCOWVMGSDoc(ctx, opts, uvm)
 	if vmgsErr != nil {
 		return nil, vmgsErr

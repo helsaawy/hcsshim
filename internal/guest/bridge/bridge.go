@@ -128,6 +128,9 @@ func (mux *Mux) ServeMsg(r *Request) (RequestResponse, error) {
 	return h.ServeMsg(r)
 }
 
+// todo (helsaawy): remove context as a field and pass it explicitly
+// https://go.dev/blog/context-and-structs#storing-context-in-structs-leads-to-confusion
+
 // Request is the bridge request that has been sent.
 type Request struct {
 	// Context is the request context received from the bridge.

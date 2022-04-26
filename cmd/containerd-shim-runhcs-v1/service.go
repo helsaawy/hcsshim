@@ -459,7 +459,8 @@ func (s *service) Shutdown(ctx context.Context, req *task.ShutdownRequest) (_ *g
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, err) }()
 
-	span.AddAttributes(trace.StringAttribute("tid", req.ID))
+	span.AddAttributes(trace.StringAttribute("tid", req.ID),
+		trace.BoolAttribute("now", req.Now))
 
 	if s.isSandbox {
 		span.AddAttributes(trace.StringAttribute("pod-id", s.tid))

@@ -85,6 +85,8 @@ func (uvm *UtilityVM) startExternalGcsListener(ctx context.Context) error {
 }
 
 func prepareConfigDoc(ctx context.Context, uvm *UtilityVM, opts *OptionsWCOW, uvmFolder string) (*hcsschema.ComputeSystem, error) {
+	log.G(ctx).Trace("uvm::prepareConfigDoc")
+
 	processorTopology, err := processorinfo.HostProcessorInfo(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get host processor information: %s", err)

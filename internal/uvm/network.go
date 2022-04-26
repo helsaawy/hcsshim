@@ -18,6 +18,7 @@ import (
 	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
 	"github.com/Microsoft/hcsshim/internal/hns"
 	"github.com/Microsoft/hcsshim/internal/log"
+	"github.com/Microsoft/hcsshim/internal/logfields"
 	"github.com/Microsoft/hcsshim/internal/ncproxyttrpc"
 	"github.com/Microsoft/hcsshim/internal/protocol/guestrequest"
 	"github.com/Microsoft/hcsshim/internal/protocol/guestresource"
@@ -45,6 +46,8 @@ var (
 // endpoints associated with this namespace and then hot add those endpoints (by changing
 // their namespace IDs by the default IDs if it is a template).
 func (uvm *UtilityVM) SetupNetworkNamespace(ctx context.Context, nsid string) error {
+	uvm.logEntry(ctx).WithField("netns-id", nsid).Trace("uvm::SetupNetworkNamespace")
+
 	nsidInsideUVM := nsid
 	if uvm.IsTemplate || uvm.IsClone {
 		nsidInsideUVM = DefaultCloneNetworkNamespaceID
@@ -155,6 +158,8 @@ var ErrNoNetworkSetup = errors.New("no network setup present for UVM")
 //
 // `addr` is an optional parameter
 func (uvm *UtilityVM) CreateAndAssignNetworkSetup(ctx context.Context, addr, containerID string) (err error) {
+	uvm.logEntry(ctx).Trace("uvm::CreateAndAssignNetworkSetup")
+
 	if uvm.NCProxyEnabled() {
 		if addr == "" || containerID == "" {
 			return errors.New("received empty field(s) for external network setup")
@@ -182,6 +187,8 @@ func (uvm *UtilityVM) ConfigureNetworking(ctx context.Context, nsid string) erro
 // TearDownNetworking tears down the utility VMs networking setup using the namespace ID
 // `nsid`.
 func (uvm *UtilityVM) TearDownNetworking(ctx context.Context, nsid string) error {
+	uvm.logEntry(ctx).WithField("netns-id", nsid).Trace("uvm::TearDownNetworking")
+
 	if uvm.networkSetup != nil {
 		return uvm.networkSetup.ConfigureNetworking(ctx, nsid, NetworkRequestTearDown)
 	}
@@ -329,6 +336,8 @@ func (endpoints *NetworkEndpoints) Release(ctx context.Context) error {
 //
 // If a namespace with the same id already exists this returns `ErrNetNSAlreadyAttached`.
 func (uvm *UtilityVM) AddNetNS(ctx context.Context, hcnNamespace *hcn.HostComputeNamespace) error {
+	uvm.logEntry(ctx).WithField(logfields.Namespace, hcnNamespace).Trace("uvm::AddNetNS")
+
 	uvm.m.Lock()
 	defer uvm.m.Unlock()
 	if _, ok := uvm.namespaces[hcnNamespace.Id]; ok {
@@ -444,6 +453,8 @@ func (uvm *UtilityVM) AddEndpointsToNS(ctx context.Context, id string, endpoints
 //
 // If a namespace matching `id` is not found this command silently succeeds.
 func (uvm *UtilityVM) RemoveNetNS(ctx context.Context, id string) error {
+	uvm.logEntry(ctx).WithField(logfields.Namespace, id).Trace("uvm::RemoveNetNS")
+
 	uvm.m.Lock()
 	defer uvm.m.Unlock()
 	if ns, ok := uvm.namespaces[id]; ok {
@@ -549,6 +560,11 @@ func getNetworkModifyRequest(adapterID string, requestType guestrequest.RequestT
 
 // addNIC adds a nic to the Utility VM.
 func (uvm *UtilityVM) addNIC(ctx context.Context, id string, endpoint *hns.HNSEndpoint) error {
+	uvm.logEntry(ctx).WithFields(logrus.Fields{
+		logfields.ID: id,
+		"endpoint":   endpoint,
+	}).Trace("uvm::addNIC")
+
 	// First a pre-add. This is a guest-only request and is only done on Windows.
 	if uvm.operatingSystem == "windows" {
 		preAddRequest := hcsschema.ModifySettingRequest{
@@ -615,6 +631,11 @@ func (uvm *UtilityVM) addNIC(ctx context.Context, id string, endpoint *hns.HNSEn
 }
 
 func (uvm *UtilityVM) removeNIC(ctx context.Context, id string, endpoint *hns.HNSEndpoint) error {
+	uvm.logEntry(ctx).WithFields(logrus.Fields{
+		logfields.ID: id,
+		"endpoint":   endpoint,
+	}).Trace("uvm::removeNIC")
+
 	request := hcsschema.ModifySettingRequest{
 		RequestType:  guestrequest.RequestTypeRemove,
 		ResourcePath: fmt.Sprintf(resourcepaths.NetworkResourceFormat, id),

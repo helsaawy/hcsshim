@@ -292,6 +292,8 @@ func (p *pod) ID() string {
 }
 
 func (p *pod) GetCloneAnnotations(ctx context.Context, s *specs.Spec) (bool, string, error) {
+	log.G(ctx).WithField(logfields.ID, p.id).Trace("pod::GetCloneAnnotations")
+
 	isTemplate, templateID, err := oci.ParseCloneAnnotations(ctx, s)
 	if err != nil {
 		return false, "", err
@@ -302,6 +304,11 @@ func (p *pod) GetCloneAnnotations(ctx context.Context, s *specs.Spec) (bool, str
 }
 
 func (p *pod) CreateTask(ctx context.Context, req *task.CreateTaskRequest, s *specs.Spec) (_ shimTask, err error) {
+	log.G(ctx).WithFields(logrus.Fields{
+		logfields.ID:     p.id,
+		logfields.TaskID: req.ID,
+	}).Trace("pod::CreateTask")
+
 	if req.ID == p.id {
 		return nil, errors.Wrapf(errdefs.ErrAlreadyExists, "task with id: '%s' already exists", req.ID)
 	}
@@ -377,7 +384,12 @@ func (p *pod) GetTask(tid string) (shimTask, error) {
 	return raw.(shimTask), nil
 }
 
-func (p *pod) KillTask(ctx context.Context, tid, eid string, signal uint32, all bool) error {
+func (p *pod) KillTask(ctx context.Context, tid, eid string, signal uint32, all bool) (err error) {
+	log.G(ctx).WithFields(logrus.Fields{
+		logfields.ID:     p.id,
+		logfields.TaskID: tid,
+	}).Trace("pod::KillTask")
+
 	t, err := p.GetTask(tid)
 	if err != nil {
 		return err
@@ -406,6 +418,11 @@ func (p *pod) KillTask(ctx context.Context, tid, eid string, signal uint32, all 
 }
 
 func (p *pod) DeleteTask(ctx context.Context, tid string) error {
+	log.G(ctx).WithFields(logrus.Fields{
+		logfields.ID:     p.id,
+		logfields.TaskID: tid,
+	}).Trace("pod::DeleteTask")
+
 	// Deleting the sandbox task is a no-op, since the service should delete its
 	// reference to the sandbox task or pod, and `p.sandboxTask != nil` is an
 	// invariant that is relied on elsewhere.

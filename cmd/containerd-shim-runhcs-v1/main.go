@@ -73,7 +73,7 @@ func main() {
 	if err != nil {
 		logrus.Error(err)
 	} else {
-		if hook, err := etwlogrus.NewHookFromProvider(provider); err == nil {
+		if hook, err := etwlogrus.NewHookFromProvider(provider, etwlogrus.WithGetName(oc.GetSpanName)); err == nil {
 			logrus.AddHook(hook)
 		} else {
 			logrus.Error(err)

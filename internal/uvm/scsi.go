@@ -381,6 +381,8 @@ func (uvm *UtilityVM) AddSCSIExtensibleVirtualDisk(ctx context.Context, hostPath
 //
 // Returns result from calling modify with the given scsi mount
 func (uvm *UtilityVM) addSCSIActual(ctx context.Context, addReq *addSCSIRequest) (sm *SCSIMount, err error) {
+	uvm.logEntry(ctx).WithField("request", addReq).Trace("uvm::addSCSIActual")
+
 	sm, existed, err := uvm.allocateSCSIMount(
 		ctx,
 		addReq.readOnly,
@@ -631,6 +633,8 @@ func (sm *SCSIMount) GobDecode(data []byte) error {
 // writable mount(e.g a scratch layer) then a copy of it is made and that copy is added
 // to the `vm`.
 func (sm *SCSIMount) Clone(ctx context.Context, vm *UtilityVM, cd *cloneData) error {
+	vm.logEntry(ctx).WithFields(sm.logFormat()).Trace("SCSIMount::Close")
+
 	var (
 		dstVhdPath string = sm.HostPath
 		err        error

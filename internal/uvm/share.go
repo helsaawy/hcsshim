@@ -8,7 +8,11 @@ import (
 	"os"
 	"path/filepath"
 
+	"go.opencensus.io/trace"
+
 	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
+	"github.com/Microsoft/hcsshim/internal/logfields"
+	"github.com/Microsoft/hcsshim/internal/oc"
 	"github.com/Microsoft/hcsshim/internal/protocol/guestrequest"
 	"github.com/Microsoft/hcsshim/internal/protocol/guestresource"
 )
@@ -16,6 +20,15 @@ import (
 // Share shares in file(s) from `reqHostPath` on the host machine to `reqUVMPath` inside the UVM.
 // This function handles both LCOW and WCOW scenarios.
 func (uvm *UtilityVM) Share(ctx context.Context, reqHostPath, reqUVMPath string, readOnly bool) (err error) {
+	ctx, span := oc.StartSpan(ctx, "uvm::AddPlan9")
+	defer span.End()
+	defer func() { oc.SetSpanStatus(span, err) }()
+	span.AddAttributes(
+		trace.StringAttribute(logfields.UVMID, uvm.id),
+		trace.StringAttribute("hostPath", reqHostPath),
+		trace.StringAttribute("uvmPath", reqUVMPath),
+		trace.BoolAttribute("readOnly", readOnly))
+
 	if uvm.OS() == "windows" {
 		options := uvm.DefaultVSMBOptions(readOnly)
 		vsmbShare, err := uvm.AddVSMB(ctx, reqHostPath, options)

@@ -14,9 +14,11 @@ import (
 	"github.com/Microsoft/hcsshim/internal/hcs/schema1"
 	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
 	"github.com/Microsoft/hcsshim/internal/log"
+	"github.com/Microsoft/hcsshim/internal/logfields"
 	"github.com/Microsoft/hcsshim/internal/oc"
 	"github.com/Microsoft/hcsshim/internal/timeout"
 	"github.com/Microsoft/hcsshim/internal/vmcompute"
+	"github.com/sirupsen/logrus"
 	"go.opencensus.io/trace"
 )
 
@@ -99,6 +101,7 @@ func CreateComputeSystem(ctx context.Context, id string, hcsDocumentInterface in
 // OpenComputeSystem opens an existing compute system by ID.
 func OpenComputeSystem(ctx context.Context, id string) (*System, error) {
 	operation := "hcs::OpenComputeSystem"
+	log.G(ctx).WithField(logfields.ContainerID, id).Trace(operation)
 
 	computeSystem := newSystem(id)
 	handle, resultJSON, err := vmcompute.HcsOpenComputeSystem(ctx, id)
@@ -151,6 +154,7 @@ func (computeSystem *System) IsOCI() bool {
 // GetComputeSystems gets a list of the compute systems on the system that match the query
 func GetComputeSystems(ctx context.Context, q schema1.ComputeSystemQuery) ([]schema1.ContainerProperties, error) {
 	operation := "hcs::GetComputeSystems"
+	log.G(ctx).WithField("query", q).Trace(operation)
 
 	queryb, err := json.Marshal(q)
 	if err != nil {
@@ -208,10 +212,11 @@ func (computeSystem *System) ID() string {
 
 // Shutdown requests a compute system shutdown.
 func (computeSystem *System) Shutdown(ctx context.Context) error {
+	operation := "hcs::System::Shutdown"
+	log.G(ctx).WithField(logfields.ContainerID, computeSystem.id).Trace(operation)
+
 	computeSystem.handleLock.RLock()
 	defer computeSystem.handleLock.RUnlock()
-
-	operation := "hcs::System::Shutdown"
 
 	if computeSystem.handle == 0 {
 		return nil
@@ -229,10 +234,11 @@ func (computeSystem *System) Shutdown(ctx context.Context) error {
 
 // Terminate requests a compute system terminate.
 func (computeSystem *System) Terminate(ctx context.Context) error {
+	operation := "hcs::System::Terminate"
+	log.G(ctx).WithField(logfields.ContainerID, computeSystem.id).Trace(operation)
+
 	computeSystem.handleLock.RLock()
 	defer computeSystem.handleLock.RUnlock()
-
-	operation := "hcs::System::Terminate"
 
 	if computeSystem.handle == 0 {
 		return nil
@@ -300,10 +306,11 @@ func (computeSystem *System) ExitError() error {
 
 // Properties returns the requested container properties targeting a V1 schema container.
 func (computeSystem *System) Properties(ctx context.Context, types ...schema1.PropertyType) (*schema1.ContainerProperties, error) {
+	operation := "hcs::System::Properties"
+	log.G(ctx).WithField(logfields.ContainerID, computeSystem.id).Trace(operation)
+
 	computeSystem.handleLock.RLock()
 	defer computeSystem.handleLock.RUnlock()
-
-	operation := "hcs::System::Properties"
 
 	queryBytes, err := json.Marshal(schema1.PropertyQuery{PropertyTypes: types})
 	if err != nil {
@@ -329,10 +336,11 @@ func (computeSystem *System) Properties(ctx context.Context, types ...schema1.Pr
 
 // PropertiesV2 returns the requested container properties targeting a V2 schema container.
 func (computeSystem *System) PropertiesV2(ctx context.Context, types ...hcsschema.PropertyType) (*hcsschema.Properties, error) {
+	operation := "hcs::System::PropertiesV2"
+	log.G(ctx).WithField(logfields.ContainerID, computeSystem.id).Trace(operation)
+
 	computeSystem.handleLock.RLock()
 	defer computeSystem.handleLock.RUnlock()
-
-	operation := "hcs::System::PropertiesV2"
 
 	queryBytes, err := json.Marshal(hcsschema.PropertyQuery{PropertyTypes: types})
 	if err != nil {
@@ -469,6 +477,9 @@ func (computeSystem *System) createProcess(ctx context.Context, operation string
 // CreateProcess launches a new process within the computeSystem.
 func (computeSystem *System) CreateProcess(ctx context.Context, c interface{}) (cow.Process, error) {
 	operation := "hcs::System::CreateProcess"
+	ctx, entry := log.S(ctx, logrus.Fields{logfields.ContainerID: computeSystem.id})
+	entry.Trace(operation)
+
 	process, processInfo, err := computeSystem.createProcess(ctx, operation, c)
 	if err != nil {
 		return nil, err
@@ -498,10 +509,11 @@ func (computeSystem *System) CreateProcess(ctx context.Context, c interface{}) (
 
 // OpenProcess gets an interface to an existing process within the computeSystem.
 func (computeSystem *System) OpenProcess(ctx context.Context, pid int) (*Process, error) {
+	operation := "hcs::System::OpenProcess"
+	log.G(ctx).WithField(logfields.ContainerID, computeSystem.id).Trace(operation)
+
 	computeSystem.handleLock.RLock()
 	defer computeSystem.handleLock.RUnlock()
-
-	operation := "hcs::System::OpenProcess"
 
 	if computeSystem.handle == 0 {
 		return nil, makeSystemError(computeSystem, operation, ErrAlreadyClosed, nil)
@@ -615,10 +627,11 @@ func (computeSystem *System) unregisterCallback(ctx context.Context) error {
 
 // Modify the System by sending a request to HCS
 func (computeSystem *System) Modify(ctx context.Context, config interface{}) error {
+	operation := "hcs::System::Modify"
+	log.G(ctx).WithField(logfields.ContainerID, computeSystem.id).Trace(operation)
+
 	computeSystem.handleLock.RLock()
 	defer computeSystem.handleLock.RUnlock()
-
-	operation := "hcs::System::Modify"
 
 	if computeSystem.handle == 0 {
 		return makeSystemError(computeSystem, operation, ErrAlreadyClosed, nil)

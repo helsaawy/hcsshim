@@ -42,10 +42,16 @@ type baseProcessParams struct {
 }
 
 func (gc *GuestConnection) exec(ctx context.Context, cid string, params interface{}) (_ cow.Process, err error) {
+	entry := log.G(ctx).WithFields(logrus.Fields{
+		logfields.ContainerID: cid,
+	})
+	entry.Trace("gcs::GuestConnection::exec")
+
 	b, err := json.Marshal(params)
 	if err != nil {
 		return nil, err
 	}
+
 	var bp baseProcessParams
 	err = json.Unmarshal(b, &bp)
 	if err != nil {
@@ -106,7 +112,7 @@ func (gc *GuestConnection) exec(ctx context.Context, cid string, params interfac
 		return nil, err
 	}
 	p.id = resp.ProcessID
-	log.G(ctx).WithField("pid", p.id).Debug("created process pid")
+	entry.WithField("pid", p.id).Debug("gcs::GuestConnection::exec created process pid")
 	// Start a wait message.
 	waitReq := containerWaitForProcess{
 		requestBase: makeRequest(ctx, cid),
@@ -251,7 +257,7 @@ func (p *Process) waitBackground() {
 	p.waitCall.Wait()
 	var ec int
 	ec, err = p.ExitCode()
-	span.AddAttributes(trace.Int64Attribute("exitCode", int64(ec)))
+	span.AddAttributes(trace.Int64Attribute(logfields.ExitCode, int64(ec)))
 }
 
 func (p *Process) logEntry(ctx context.Context) *logrus.Entry {

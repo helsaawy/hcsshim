@@ -271,6 +271,7 @@ func configureSandboxNetwork(ctx context.Context, coi *createOptionsInternal, r 
 // call to release resources that have been allocated as part of calling this function.
 func CreateContainer(ctx context.Context, createOptions *CreateOptions) (_ cow.Container, _ *resources.Resources, err error) {
 	entry := log.G(ctx).WithField(logfields.ContainerID, createOptions.ID)
+	entry.Trace("hcsoci::CreateContainer")
 
 	coi, err := initializeCreateOptions(ctx, createOptions)
 	if err != nil {
@@ -322,6 +323,8 @@ func CreateContainer(ctx context.Context, createOptions *CreateOptions) (_ cow.C
 			return nil, r, fmt.Errorf("failure while creating namespace for container: %s", err)
 		}
 	}
+
+	entry.WithField("resources", r).Trace("hcsshim::CreateContainer created container resources")
 
 	var hcsDocument, gcsDocument interface{}
 	entry.Debug("hcsshim::CreateContainer allocating resources")
@@ -393,6 +396,9 @@ func CreateContainer(ctx context.Context, createOptions *CreateOptions) (_ cow.C
 // CreateContainer does. Also, instead of sending create container request it sends a modify
 // request to an existing container. CloneContainer only works for WCOW.
 func CloneContainer(ctx context.Context, createOptions *CreateOptions) (_ cow.Container, _ *resources.Resources, err error) {
+	entry := log.G(ctx).WithField(logfields.ContainerID, createOptions.ID)
+	entry.Trace("hcsoci::CreateContainer")
+
 	coi, err := initializeCreateOptions(ctx, createOptions)
 	if err != nil {
 		return nil, nil, err

@@ -11,13 +11,14 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/sirupsen/logrus"
+	"golang.org/x/sync/errgroup"
+	"golang.org/x/sys/windows"
+
 	"github.com/Microsoft/hcsshim/internal/cow"
 	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
 	"github.com/Microsoft/hcsshim/internal/log"
 	specs "github.com/opencontainers/runtime-spec/specs-go"
-	"github.com/sirupsen/logrus"
-	"golang.org/x/sync/errgroup"
-	"golang.org/x/sys/windows"
 )
 
 // CmdProcessRequest stores information on command requests made through this package.
@@ -29,6 +30,8 @@ type CmdProcessRequest struct {
 	Stdout   string
 	Stderr   string
 }
+
+// todo (helsaawy): replace use of Cmd.Log and switch to log.WithContext
 
 // Cmd represents a command being prepared or run in a process host.
 type Cmd struct {
@@ -135,7 +138,15 @@ func CommandContext(ctx context.Context, host cow.ProcessHost, name string, arg 
 
 // Start starts a command. The caller must ensure that if Start succeeds,
 // Wait is eventually called to clean up resources.
-func (c *Cmd) Start() error {
+func (c *Cmd) Start() (err error) {
+	if c.Context == nil {
+		c.Context = context.Background()
+	}
+	ctx := c.Context
+	if c.Log == nil {
+		c.Log = log.G(ctx)
+	}
+
 	c.allDoneCh = make(chan struct{})
 	var x interface{}
 	if !c.Host.IsOCI() {
@@ -184,17 +195,15 @@ func (c *Cmd) Start() error {
 		}
 		x = lpp
 	}
-	if c.Context != nil && c.Context.Err() != nil {
-		return c.Context.Err()
+	if err = ctx.Err(); err != nil {
+		return err
 	}
-	p, err := c.Host.CreateProcess(context.TODO(), x)
+	p, err := c.Host.CreateProcess(ctx, x)
 	if err != nil {
 		return err
 	}
 	c.Process = p
-	if c.Log != nil {
-		c.Log = c.Log.WithField("pid", p.Pid())
-	}
+	c.Log = c.Log.WithField("pid", p.Pid())
 
 	// Start relaying process IO.
 	stdin, stdout, stderr := p.Stdio()
@@ -211,7 +220,7 @@ func (c *Cmd) Start() error {
 				c.stdinErr.Store(err)
 			}
 			// Notify the process that there is no more input.
-			if err := p.CloseStdin(context.TODO()); err != nil && c.Log != nil {
+			if err := p.CloseStdin(ctx); err != nil && c.Log != nil {
 				c.Log.WithError(err).Warn("failed to close Cmd stdin")
 			}
 		}()
@@ -220,7 +229,7 @@ func (c *Cmd) Start() error {
 	if c.Stdout != nil {
 		c.iogrp.Go(func() error {
 			_, err := relayIO(c.Stdout, stdout, c.Log, "stdout")
-			if err := p.CloseStdout(context.TODO()); err != nil {
+			if err := p.CloseStdout(ctx); err != nil {
 				c.Log.WithError(err).Warn("failed to close Cmd stdout")
 			}
 			return err
@@ -230,7 +239,7 @@ func (c *Cmd) Start() error {
 	if c.Stderr != nil {
 		c.iogrp.Go(func() error {
 			_, err := relayIO(c.Stderr, stderr, c.Log, "stderr")
-			if err := p.CloseStderr(context.TODO()); err != nil {
+			if err := p.CloseStderr(ctx); err != nil {
 				c.Log.WithError(err).Warn("failed to close Cmd stderr")
 			}
 			return err
@@ -243,27 +252,26 @@ func (c *Cmd) Start() error {
 			case <-c.Context.Done():
 				// Process.Kill (via Process.Signal) will not send an RPC if the
 				// provided context in is cancelled (bridge.AsyncRPC will end early)
-				ctx := c.Context
-				if ctx == nil {
-					ctx = context.Background()
-				}
 				kctx := log.Copy(context.Background(), ctx)
 				_, _ = c.Process.Kill(kctx)
 			case <-c.allDoneCh:
 			}
 		}()
 	}
+
 	return nil
 }
 
 // Wait waits for a command and its IO to complete and closes the underlying
-// process. It can only be called once. It returns an ExitError if the command
+// process. It returns an ExitError if the command
 // runs and returns a non-zero exit code.
+//
+// It can only be called once.
 func (c *Cmd) Wait() error {
-	waitErr := c.Process.Wait()
-	if waitErr != nil && c.Log != nil {
-		c.Log.WithError(waitErr).Warn("process wait failed")
+	if err := c.Process.Wait(); err != nil {
+		c.Log.WithError(err).Warn("process wait failed")
 	}
+
 	state := &ExitState{}
 	code, exitErr := c.Process.ExitCode()
 	if exitErr == nil {
@@ -280,9 +288,7 @@ func (c *Cmd) Wait() error {
 			case <-t.C:
 				// Close the process to cancel any reads to stdout or stderr.
 				c.Process.Close()
-				if c.Log != nil {
-					c.Log.Warn("timed out waiting for stdio relay")
-				}
+				c.Log.Warn("timed out waiting for stdio relay")
 			}
 		}()
 	}

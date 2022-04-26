@@ -30,6 +30,8 @@ import (
 const wcowSandboxMountPath = "C:\\SandboxMounts"
 
 func allocateWindowsResources(ctx context.Context, coi *createOptionsInternal, r *resources.Resources, isSandbox bool) error {
+	log.G(ctx).Trace("hcsshim::allocateWindowsResources")
+
 	if coi.Spec == nil || coi.Spec.Windows == nil || coi.Spec.Windows.LayerFolders == nil {
 		return errors.New("field 'Spec.Windows.Layerfolders' is not populated")
 	}
@@ -125,6 +127,8 @@ func allocateWindowsResources(ctx context.Context, coi *createOptionsInternal, r
 // setupMounts adds the custom mounts requested in the container configuration of this
 // request.
 func setupMounts(ctx context.Context, coi *createOptionsInternal, r *resources.Resources) error {
+	log.G(ctx).Trace("hcsshim::setupMounts")
+
 	// Validate each of the mounts. If this is a V2 Xenon, we have to add them as
 	// VSMB shares to the utility VM. For V1 Xenon and Argons, there's nothing for
 	// us to do as it's done by HCS.

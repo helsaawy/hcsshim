@@ -14,6 +14,7 @@ import (
 	"github.com/Microsoft/hcsshim/internal/protocol/guestrequest"
 	"github.com/Microsoft/hcsshim/internal/protocol/guestresource"
 	"github.com/Microsoft/hcsshim/osversion"
+	"github.com/sirupsen/logrus"
 )
 
 // Plan9Share is a struct containing host paths for the UVM
@@ -34,7 +35,15 @@ func (p9 *Plan9Share) Release(ctx context.Context) error {
 const plan9Port = 564
 
 // AddPlan9 adds a Plan9 share to a utility VM.
-func (uvm *UtilityVM) AddPlan9(ctx context.Context, hostPath string, uvmPath string, readOnly bool, restrict bool, allowedNames []string) (*Plan9Share, error) {
+func (uvm *UtilityVM) AddPlan9(ctx context.Context, hostPath string, uvmPath string, readOnly bool, restrict bool, allowedNames []string) (_ *Plan9Share, err error) {
+	uvm.logEntry(ctx).WithFields(logrus.Fields{
+		"hostPath":     hostPath,
+		"uvmPath":      uvmPath,
+		"readOnly":     readOnly,
+		"restrict":     restrict,
+		"allowedNamed": allowedNames,
+	}).Trace("uvm::AddPlan9")
+
 	if uvm.operatingSystem != "linux" {
 		return nil, errNotSupported
 	}
@@ -110,7 +119,12 @@ func (uvm *UtilityVM) AddPlan9(ctx context.Context, hostPath string, uvmPath str
 
 // RemovePlan9 removes a Plan9 share from a utility VM. Each Plan9 share is ref-counted
 // and only actually removed when the ref-count drops to zero.
-func (uvm *UtilityVM) RemovePlan9(ctx context.Context, share *Plan9Share) error {
+func (uvm *UtilityVM) RemovePlan9(ctx context.Context, share *Plan9Share) (err error) {
+	uvm.logEntry(ctx).WithFields(logrus.Fields{
+		"uvmPath": share.uvmPath,
+		"name":    share.name,
+	}).Trace("uvm::RemovePlan9")
+
 	if uvm.operatingSystem != "linux" {
 		return errNotSupported
 	}

@@ -104,6 +104,8 @@ func newBridge(conn io.ReadWriteCloser, notify notifyFunc, log *logrus.Entry) *b
 
 // Start begins the bridge send and receive goroutines.
 func (brdg *bridge) Start() {
+	brdg.log.Trace("gcs::bridge::Start")
+
 	go brdg.recvLoopRoutine()
 	go brdg.sendLoop()
 }
@@ -134,6 +136,8 @@ func (brdg *bridge) kill(err error) {
 // Close closes the bridge. Calling RPC or AsyncRPC after calling Close will
 // panic.
 func (brdg *bridge) Close() error {
+	brdg.log.Trace("gcs::bridge::Close")
+
 	brdg.kill(nil)
 	return brdg.brdgErr
 }
@@ -240,6 +244,8 @@ func (call *rpc) Wait() {
 // waiting for a response. Avoid this on messages that are not idempotent or
 // otherwise safe to ignore the response of.
 func (brdg *bridge) RPC(ctx context.Context, proc rpcProc, req requestMessage, resp responseMessage, allowCancel bool) error {
+	brdg.log.WithField("type", proc.String()).Trace("gcs::bridge::RPC")
+
 	call, err := brdg.AsyncRPC(ctx, proc, req, resp)
 	if err != nil {
 		return err

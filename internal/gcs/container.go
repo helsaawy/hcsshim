@@ -58,13 +58,17 @@ func (gc *GuestConnection) CreateContainer(ctx context.Context, cid string, conf
 	if err != nil {
 		return nil, err
 	}
-	go c.waitBackground()
+	go c.waitBackground(ctx)
 	return c, nil
 }
 
 // CloneContainer just creates the wrappers and sets up notification requests for a
 // container that is already running inside the UVM (after cloning).
 func (gc *GuestConnection) CloneContainer(ctx context.Context, cid string) (_ *Container, err error) {
+	log.G(ctx).WithFields(logrus.Fields{
+		logfields.ContainerID: cid,
+	}).Trace("gcs::GuestConnection:: CloneContainer")
+
 	c := &Container{
 		gc:       gc,
 		id:       cid,
@@ -75,7 +79,7 @@ func (gc *GuestConnection) CloneContainer(ctx context.Context, cid string) (_ *C
 	if err != nil {
 		return nil, err
 	}
-	go c.waitBackground()
+	go c.waitBackground(ctx)
 	return c, nil
 }
 

@@ -162,6 +162,11 @@ func forceNoDirectMap(path string) (bool, error) {
 // only added if it isn't already. This is used for read-only layers, mapped directories
 // to a container, and for mapped pipes.
 func (uvm *UtilityVM) AddVSMB(ctx context.Context, hostPath string, options *hcsschema.VirtualSmbShareOptions) (*VSMBShare, error) {
+	uvm.logEntry(ctx).WithFields(logrus.Fields{
+		"hostPath":        hostPath,
+		logfields.Options: options,
+	}).Trace("uvm::AddVSMB")
+
 	if uvm.operatingSystem != "windows" {
 		return nil, errNotSupported
 	}
@@ -258,6 +263,11 @@ func (uvm *UtilityVM) AddVSMB(ctx context.Context, hostPath string, options *hcs
 // RemoveVSMB removes a VSMB share from a utility VM. Each VSMB share is ref-counted
 // and only actually removed when the ref-count drops to zero.
 func (uvm *UtilityVM) RemoveVSMB(ctx context.Context, hostPath string, readOnly bool) error {
+	uvm.logEntry(ctx).WithFields(logrus.Fields{
+		"readOnly": readOnly,
+		"hostpath": hostPath,
+	}).Trace("uvm::RemoveVSMB")
+
 	if uvm.operatingSystem != "windows" {
 		return errNotSupported
 	}
@@ -394,6 +404,12 @@ func (vsmb *VSMBShare) GobDecode(data []byte) error {
 // clone VSMB share we just need to add it into the config doc of that VM and increase the
 // vsmb counter.
 func (vsmb *VSMBShare) Clone(ctx context.Context, vm *UtilityVM, cd *cloneData) error {
+	vm.logEntry(ctx).WithFields(logrus.Fields{
+		"hostPath":  vsmb.HostPath,
+		"guestPath": vsmb.guestPath,
+		"name":      vsmb.name,
+	}).Trace("vsmb::Clone")
+
 	cd.doc.VirtualMachine.Devices.VirtualSmb.Shares = append(cd.doc.VirtualMachine.Devices.VirtualSmb.Shares, hcsschema.VirtualSmbShare{
 		Name:         vsmb.name,
 		Path:         vsmb.HostPath,

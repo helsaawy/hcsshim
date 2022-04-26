@@ -13,8 +13,10 @@ import (
 	"time"
 
 	"github.com/Microsoft/hcsshim/internal/log"
+	"github.com/Microsoft/hcsshim/internal/logfields"
 	"github.com/Microsoft/hcsshim/internal/oc"
 	"github.com/Microsoft/hcsshim/internal/vmcompute"
+	"github.com/sirupsen/logrus"
 	"go.opencensus.io/trace"
 )
 
@@ -120,10 +122,11 @@ func (process *Process) processSignalResult(ctx context.Context, err error) (boo
 //
 // For WCOW `guestresource.SignalProcessOptionsWCOW`.
 func (process *Process) Signal(ctx context.Context, options interface{}) (bool, error) {
+	operation := "hcs::Process::Signal"
+	process.logEntry(ctx).Trace(operation)
+
 	process.handleLock.RLock()
 	defer process.handleLock.RUnlock()
-
-	operation := "hcs::Process::Signal"
 
 	if process.handle == 0 {
 		return false, makeProcessError(process, operation, ErrAlreadyClosed, nil)
@@ -145,10 +148,11 @@ func (process *Process) Signal(ctx context.Context, options interface{}) (bool, 
 
 // Kill signals the process to terminate but does not wait for it to finish terminating.
 func (process *Process) Kill(ctx context.Context) (bool, error) {
+	operation := "hcs::Process::Kill"
+	process.logEntry(ctx).Trace(operation)
+
 	process.handleLock.RLock()
 	defer process.handleLock.RUnlock()
-
-	operation := "hcs::Process::Kill"
 
 	if process.handle == 0 {
 		return false, makeProcessError(process, operation, ErrAlreadyClosed, nil)
@@ -251,6 +255,7 @@ func (process *Process) waitBackground() {
 	}
 
 	process.closedWaitOnce.Do(func() {
+		log.G(ctx).Trace("hcs::Process::waitBackground::closedWaitOnce")
 		process.exitCode = exitCode
 		process.waitError = err
 		close(process.waitBlock)
@@ -266,10 +271,11 @@ func (process *Process) Wait() error {
 
 // ResizeConsole resizes the console of the process.
 func (process *Process) ResizeConsole(ctx context.Context, width, height uint16) error {
+	operation := "hcs::Process::ResizeConsole"
+	process.logEntry(ctx).Trace(operation)
+
 	process.handleLock.RLock()
 	defer process.handleLock.RUnlock()
-
-	operation := "hcs::Process::ResizeConsole"
 
 	if process.handle == 0 {
 		return makeProcessError(process, operation, ErrAlreadyClosed, nil)
@@ -360,10 +366,10 @@ func (process *Process) Stdio() (stdin io.Writer, stdout, stderr io.Reader) {
 // CloseStdin closes the write side of the stdin pipe so that the process is
 // notified on the read side that there is no more data in stdin.
 func (process *Process) CloseStdin(ctx context.Context) error {
+	operation := "hcs::Process::CloseStdin"
+	process.logEntry(ctx).Trace(operation)
 	process.handleLock.RLock()
 	defer process.handleLock.RUnlock()
-
-	operation := "hcs::Process::CloseStdin"
 
 	if process.handle == 0 {
 		return makeProcessError(process, operation, ErrAlreadyClosed, nil)

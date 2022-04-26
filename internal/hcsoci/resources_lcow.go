@@ -24,6 +24,8 @@ import (
 )
 
 func allocateLinuxResources(ctx context.Context, coi *createOptionsInternal, r *resources.Resources, isSandbox bool) error {
+	log.G(ctx).Trace("hcsshim::allocateLinuxResources")
+
 	if coi.Spec.Root == nil {
 		coi.Spec.Root = &specs.Root{}
 	}

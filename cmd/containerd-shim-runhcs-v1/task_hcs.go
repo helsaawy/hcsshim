@@ -119,12 +119,29 @@ func newHcsStandaloneTask(ctx context.Context, events publisher, req *task.Creat
 
 // createContainer is a generic call to return either a process/hypervisor isolated container, or a job container
 //  based on what is set in the OCI spec.
-func createContainer(ctx context.Context, id, owner, netNS string, s *specs.Spec, parent *uvm.UtilityVM, shimOpts *runhcsopts.Options) (cow.Container, *resources.Resources, error) {
-	var (
-		err       error
-		container cow.Container
-		resources *resources.Resources
-	)
+func createContainer(
+	ctx context.Context,
+	id, owner, netNS string,
+	s *specs.Spec,
+	parent *uvm.UtilityVM,
+	shimOpts *runhcsopts.Options) (container cow.Container, resources *resources.Resources, err error) {
+	uvmID := ""
+	if parent != nil {
+		uvmID = parent.ID()
+	}
+
+	log.G(ctx).WithFields(logrus.Fields{
+		logfields.ContainerID: id,
+		"owner":               owner,
+		"netNS":               netNS,
+		logfields.UVMID:       uvmID,
+	}).Trace("createContainer")
+
+	log.G(ctx).WithFields(logrus.Fields{
+		logfields.ContainerID: id,
+		"spec":                s,
+		"shimOptions":         shimOpts,
+	}).Debug("createContainer options")
 
 	if oci.IsJobContainer(s) {
 		container, resources, err = jobcontainers.Create(ctx, id, s)
@@ -287,11 +304,13 @@ func newClonedHcsTask(
 		uvmID = parent.ID()
 	}
 
-	log.G(ctx).WithFields(logrus.Fields{
+	entry := log.G(ctx).WithFields(logrus.Fields{
 		logfields.TaskID: req.ID,
 		logfields.UVMID:  uvmID,
-		"ownsParent":     ownsParent,
-		"templateID":     templateID,
+	})
+	entry.WithFields(logrus.Fields{
+		"ownsParent": ownsParent,
+		"templateID": templateID,
 	}).Trace("newClonedHcsTask")
 
 	owner := filepath.Base(os.Args[0])
@@ -325,7 +344,14 @@ func newClonedHcsTask(
 		netNS = s.Windows.Network.NetworkNamespace
 	}
 
-	// This is a cloned task. Use the templateid as the ID of the container here
+	// cloneHcsTask doesnt rely on createContainer, so it doesnt log spec and shim options
+	entry.WithFields(logrus.Fields{
+		"netNS":       netNS,
+		"spec":        s,
+		"shimOptions": shimOpts,
+	}).Debug("newClonedHcsTask options")
+
+	// This is a cloned task. Use the templateID as the ID of the container here
 	// because that's the ID of this container inside the UVM.
 	opts := hcsoci.CreateOptions{
 		ID:               templateID,
@@ -477,7 +503,12 @@ func (ht *hcsTask) ID() string {
 	return ht.id
 }
 
-func (ht *hcsTask) CreateExec(ctx context.Context, req *task.ExecProcessRequest, spec *specs.Process) error {
+func (ht *hcsTask) CreateExec(ctx context.Context, req *task.ExecProcessRequest, spec *specs.Process) (err error) {
+	log.G(ctx).WithFields(logrus.Fields{
+		logfields.TaskID: ht.id,
+		logfields.ExecID: req.ExecID,
+	}).Trace("hcsTask::CreateExec")
+
 	ht.ecl.Lock()
 	defer ht.ecl.Unlock()
 
@@ -532,7 +563,16 @@ func (ht *hcsTask) GetExec(eid string) (shimExec, error) {
 	return raw.(shimExec), nil
 }
 
-func (ht *hcsTask) KillExec(ctx context.Context, eid string, signal uint32, all bool) error {
+func (ht *hcsTask) KillExec(ctx context.Context, eid string, signal uint32, all bool) (err error) {
+	entry := log.G(ctx).WithFields(logrus.Fields{
+		logfields.TaskID: ht.id,
+		logfields.ExecID: eid,
+	})
+	entry.WithFields(logrus.Fields{
+		"signal": signal,
+		"all":    all,
+	}).Trace("hcsTask::KillExec")
+
 	e, err := ht.GetExec(eid)
 	if err != nil {
 		return err
@@ -545,10 +585,7 @@ func (ht *hcsTask) KillExec(ctx context.Context, eid string, signal uint32, all 
 		ht.execs.Range(func(key, value interface{}) bool {
 			err := value.(shimExec).Kill(ctx, signal)
 			if err != nil {
-				log.G(ctx).WithFields(logrus.Fields{
-					"eid":           key,
-					logrus.ErrorKey: err,
-				}).Warn("failed to kill exec in task")
+				entry.WithError(err).Warn("failed to kill exec in task")
 			}
 
 			// Iterate all. Returning false stops the iteration. See:
@@ -581,7 +618,18 @@ func (ht *hcsTask) KillExec(ctx context.Context, eid string, signal uint32, all 
 	return e.Kill(ctx, signal)
 }
 
-func (ht *hcsTask) DeleteExec(ctx context.Context, eid string) (int, uint32, time.Time, error) {
+func (ht *hcsTask) DeleteExec(ctx context.Context, eid string) (_ int, _ uint32, _ time.Time, err error) {
+	entry := log.G(ctx).WithFields(logrus.Fields{
+		logfields.TaskID: ht.id,
+		logfields.ExecID: eid,
+	})
+	entry.Trace("hcsTask::DeleteExec")
+	ctx, span := oc.StartSpan(ctx, "hcsTask::DeleteExec")
+	defer span.End()
+	defer func() { oc.SetSpanStatus(span, err) }()
+	span.AddAttributes(trace.StringAttribute(logfields.TaskID, ht.id),
+		trace.StringAttribute(logfields.ExecID, eid))
+
 	e, err := ht.GetExec(eid)
 	if err != nil {
 		return 0, 0, time.Time{}, err
@@ -620,7 +668,7 @@ func (ht *hcsTask) DeleteExec(ctx context.Context, eid string) (int, uint32, tim
 		// and container resources like base vhdx.
 		select {
 		case <-time.After(30 * time.Second):
-			log.G(ctx).Error("timed out waiting for resource cleanup")
+			entry.Error("timed out waiting for resource cleanup")
 			return 0, 0, time.Time{}, errors.Wrap(hcs.ErrTimeout, "waiting for container resource cleanup")
 		case <-ht.closed:
 		}
@@ -663,6 +711,10 @@ func (ht *hcsTask) DeleteExec(ctx context.Context, eid string) (int, uint32, tim
 }
 
 func (ht *hcsTask) Pids(ctx context.Context) ([]runhcsopts.ProcessDetails, error) {
+	log.G(ctx).WithFields(logrus.Fields{
+		logfields.TaskID: ht.id,
+	}).Trace("hcsTask::Pids")
+
 	// Map all user created exec's to pid/exec-id
 	pidMap := make(map[int]string)
 	ht.execs.Range(func(key, value interface{}) bool {

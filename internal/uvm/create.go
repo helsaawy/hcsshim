@@ -213,6 +213,8 @@ func (uvm *UtilityVM) OS() string {
 }
 
 func (uvm *UtilityVM) create(ctx context.Context, doc interface{}) error {
+	uvm.logEntry(ctx).Trace("uvm::create")
+
 	uvm.exitCh = make(chan struct{})
 	system, err := hcs.CreateComputeSystem(ctx, uvm.id, doc)
 	if err != nil {
@@ -276,6 +278,8 @@ func (uvm *UtilityVM) Close() (err error) {
 
 // CreateContainer creates a container in the utility VM.
 func (uvm *UtilityVM) CreateContainer(ctx context.Context, id string, settings interface{}) (cow.Container, error) {
+	uvm.logEntry(ctx).Trace("uvm::CreateContainer")
+
 	if uvm.gc != nil {
 		c, err := uvm.gc.CreateContainer(ctx, id, settings)
 		if err != nil {

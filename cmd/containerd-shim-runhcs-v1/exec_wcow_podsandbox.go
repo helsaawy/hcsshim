@@ -95,6 +95,11 @@ func (wpse *wcowPodSandboxExec) State() shimExecState {
 }
 
 func (wpse *wcowPodSandboxExec) Status() *task.StateResponse {
+	log.L.WithFields(logrus.Fields{
+		logfields.TaskID: wpse.tid,
+		logfields.ExecID: wpse.tid,
+	}).Trace("wcowPodSandboxExec::Status")
+
 	wpse.sl.Lock()
 	defer wpse.sl.Unlock()
 
@@ -124,6 +129,11 @@ func (wpse *wcowPodSandboxExec) Status() *task.StateResponse {
 }
 
 func (wpse *wcowPodSandboxExec) Start(ctx context.Context) error {
+	log.G(ctx).WithFields(logrus.Fields{
+		logfields.TaskID: wpse.tid,
+		logfields.ExecID: wpse.tid,
+	}).Trace("wcowPodSandboxExec::Start")
+
 	wpse.sl.Lock()
 	defer wpse.sl.Unlock()
 	if wpse.state != shimExecStateCreated {
@@ -145,6 +155,12 @@ func (wpse *wcowPodSandboxExec) Start(ctx context.Context) error {
 }
 
 func (wpse *wcowPodSandboxExec) Kill(ctx context.Context, signal uint32) error {
+	log.G(ctx).WithFields(logrus.Fields{
+		logfields.TaskID: wpse.tid,
+		logfields.ExecID: wpse.tid,
+		"signal":         signal,
+	}).Trace("wcowPodSandboxExec::Kill")
+
 	wpse.sl.Lock()
 	defer wpse.sl.Unlock()
 	switch wpse.state {
@@ -173,6 +189,12 @@ func (wpse *wcowPodSandboxExec) Kill(ctx context.Context, signal uint32) error {
 }
 
 func (wpse *wcowPodSandboxExec) ResizePty(ctx context.Context, width, height uint32) error {
+	// useless function, but trace could help track down who is calling it
+	log.G(ctx).WithFields(logrus.Fields{
+		logfields.TaskID: wpse.tid,
+		logfields.ExecID: wpse.tid,
+	}).Trace("wcowPodSandboxExec::ResizePty")
+
 	wpse.sl.Lock()
 	defer wpse.sl.Unlock()
 	// We will never have IO for a sandbox container so we wont have a tty

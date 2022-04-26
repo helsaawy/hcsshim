@@ -49,7 +49,7 @@ func newClonedExec(
 	ce := &clonedExec{
 		he,
 	}
-	go he.waitForContainerExit()
+	go he.waitForContainerExit(ctx)
 	return ce
 }
 
@@ -64,6 +64,11 @@ type clonedExec struct {
 }
 
 func (ce *clonedExec) Start(ctx context.Context) (err error) {
+	log.G(ctx).WithFields(logrus.Fields{
+		logfields.TaskID: ce.tid,
+		logfields.ExecID: ce.id,
+	}).Trace("clonedExec::Start")
+
 	// A cloned exec should never initialize the container as it should
 	// already be running.
 	return ce.startInternal(ctx, false)
