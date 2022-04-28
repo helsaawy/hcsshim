@@ -52,7 +52,7 @@ func encodeTemplateConfig(templateConfig *TemplateConfig) ([]byte, error) {
 
 	encoder := gob.NewEncoder(&buf)
 	if err := encoder.Encode(templateConfig); err != nil {
-		return nil, fmt.Errorf("error while encoding template config: %s", err)
+		return nil, fmt.Errorf("error while encoding template config: %w", err)
 	}
 	return buf.Bytes(), nil
 }
@@ -63,7 +63,7 @@ func decodeTemplateConfig(encodedBytes []byte) (*TemplateConfig, error) {
 	reader := bytes.NewReader(encodedBytes)
 	decoder := gob.NewDecoder(reader)
 	if err := decoder.Decode(&templateConfig); err != nil {
-		return nil, fmt.Errorf("error while decoding template config: %s", err)
+		return nil, fmt.Errorf("error while decoding template config: %w", err)
 	}
 	return &templateConfig, nil
 }
@@ -125,7 +125,7 @@ func removePersistedUVMConfig(id string) error {
 func SaveTemplateConfig(ctx context.Context, templateConfig *TemplateConfig) error {
 	_, err := loadPersistedUVMConfig(templateConfig.TemplateUVMID)
 	if !regstate.IsNotFoundError(err) {
-		return fmt.Errorf("parent VM(ID: %s) config shouldn't exit in registry (%s)", templateConfig.TemplateUVMID, err)
+		return fmt.Errorf("parent VM(ID: %s) config shouldn't exit in registry: %w", templateConfig.TemplateUVMID, err)
 	}
 
 	// set the serial version before encoding
@@ -133,11 +133,11 @@ func SaveTemplateConfig(ctx context.Context, templateConfig *TemplateConfig) err
 
 	encodedBytes, err := encodeTemplateConfig(templateConfig)
 	if err != nil {
-		return fmt.Errorf("failed to encode template config: %s", err)
+		return fmt.Errorf("failed to encode template config: %w", err)
 	}
 
 	if err := storePersistedUVMConfig(templateConfig.TemplateUVMID, encodedBytes); err != nil {
-		return fmt.Errorf("failed to store encoded template config: %s", err)
+		return fmt.Errorf("failed to store encoded template config: %w", err)
 	}
 
 	return nil
@@ -154,12 +154,12 @@ func RemoveSavedTemplateConfig(id string) error {
 func FetchTemplateConfig(ctx context.Context, id string) (*TemplateConfig, error) {
 	encodedBytes, err := loadPersistedUVMConfig(id)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch encoded template config: %s", err)
+		return nil, fmt.Errorf("failed to fetch encoded template config: %w", err)
 	}
 
 	templateConfig, err := decodeTemplateConfig(encodedBytes)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode template config: %s", err)
+		return nil, fmt.Errorf("failed to decode template config: %w", err)
 	}
 
 	if templateConfig.SerialVersionID != templateConfigCurrentSerialVersionID {

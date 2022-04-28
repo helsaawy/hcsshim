@@ -408,7 +408,7 @@ func (w *legacyLayerWriter) initUtilityVM() error {
 		// immutable.
 		err = cloneTree(w.parentRoots[0], w.destRoot, utilityVMFilesPath, mutatedUtilityVMFiles)
 		if err != nil {
-			return fmt.Errorf("cloning the parent utility VM image failed: %s", err)
+			return fmt.Errorf("cloning the parent utility VM image failed: %w", err)
 		}
 		w.HasUtilityVM = true
 	}

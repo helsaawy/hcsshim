@@ -38,7 +38,7 @@ func InstallKernelDriver(ctx context.Context, vm *uvm.UtilityVM, driver string) 
 		options := vm.DefaultVSMBOptions(true)
 		closer, err = vm.AddVSMB(ctx, driver, options)
 		if err != nil {
-			return closer, fmt.Errorf("failed to add VSMB share to utility VM for path %+v: %s", driver, err)
+			return closer, fmt.Errorf("failed to add VSMB share to utility VM for path %+v: %w", driver, err)
 		}
 		uvmPath, err := vm.GetVSMBUvmPath(ctx, driver, true)
 		if err != nil {
@@ -49,7 +49,7 @@ func InstallKernelDriver(ctx context.Context, vm *uvm.UtilityVM, driver string) 
 	uvmPathForShare := fmt.Sprintf(guestpath.LCOWGlobalMountPrefixFmt, vm.UVMMountCounter())
 	scsiCloser, err := vm.AddSCSI(ctx, driver, uvmPathForShare, true, false, []string{}, uvm.VMAccessTypeIndividual)
 	if err != nil {
-		return closer, fmt.Errorf("failed to add SCSI disk to utility VM for path %+v: %s", driver, err)
+		return closer, fmt.Errorf("failed to add SCSI disk to utility VM for path %+v: %w", driver, err)
 	}
 	return scsiCloser, execModprobeInstallDriver(ctx, vm, uvmPathForShare)
 }

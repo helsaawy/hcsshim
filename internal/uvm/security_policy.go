@@ -49,7 +49,7 @@ func (uvm *UtilityVM) SetSecurityPolicy(ctx context.Context, policy string) erro
 	}
 
 	if err := uvm.modify(ctx, modification); err != nil {
-		return fmt.Errorf("uvm::Policy: failed to modify utility VM configuration: %s", err)
+		return fmt.Errorf("uvm::Policy: failed to modify utility VM configuration: %w", err)
 	}
 
 	return nil

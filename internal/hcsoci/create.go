@@ -145,7 +145,7 @@ func validateContainerConfig(ctx context.Context, coi *createOptionsInternal) er
 		// this clone are same.
 		tc, err := clone.FetchTemplateConfig(ctx, coi.HostingSystem.TemplateID)
 		if err != nil {
-			return fmt.Errorf("config validation failed : %s", err)
+			return fmt.Errorf("config validation failed : %w", err)
 		}
 		if err := verifyCloneContainerSpecs(&tc.TemplateContainerSpec, coi.Spec); err != nil {
 			return err
@@ -275,7 +275,7 @@ func CreateContainer(ctx context.Context, createOptions *CreateOptions) (_ cow.C
 	}
 
 	if err := validateContainerConfig(ctx, coi); err != nil {
-		return nil, nil, fmt.Errorf("container config validation failed: %s", err)
+		return nil, nil, fmt.Errorf("container config validation failed: %w", err)
 	}
 
 	r := resources.NewContainerResources(createOptions.ID)
@@ -316,7 +316,7 @@ func CreateContainer(ctx context.Context, createOptions *CreateOptions) (_ cow.C
 		schemaversion.IsV21(coi.actualSchemaVersion) {
 		err = configureSandboxNetwork(ctx, coi, r, ct)
 		if err != nil {
-			return nil, r, fmt.Errorf("failure while creating namespace for container: %s", err)
+			return nil, r, fmt.Errorf("failure while creating namespace for container: %w", err)
 		}
 	}
 

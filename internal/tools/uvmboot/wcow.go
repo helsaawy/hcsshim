@@ -144,7 +144,7 @@ func getLayerChain(layerFolder string) ([]string, error) {
 	var layerChain []string
 	err = json.Unmarshal(content, &layerChain)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal layerchain: %s", err)
+		return nil, fmt.Errorf("failed to unmarshal layerchain: %w", err)
 	}
 	return layerChain, nil
 }

@@ -53,7 +53,7 @@ func CreateScratch(ctx context.Context, lcowUVM *uvm.UtilityVM, destFile string,
 	if cacheFile != "" && sizeGB == DefaultScratchSizeGB {
 		if _, err := os.Stat(cacheFile); err == nil {
 			if err := copyfile.CopyFile(ctx, cacheFile, destFile, false); err != nil {
-				return fmt.Errorf("failed to copy cached file '%s' to '%s': %s", cacheFile, destFile, err)
+				return fmt.Errorf("failed to copy cached file '%s' to '%s': %w", cacheFile, destFile, err)
 			}
 			log.G(ctx).WithFields(logrus.Fields{
 				"dest":  destFile,
@@ -65,7 +65,7 @@ func CreateScratch(ctx context.Context, lcowUVM *uvm.UtilityVM, destFile string,
 
 	// Create the VHDX
 	if err := vhd.CreateVhdx(destFile, sizeGB, defaultVhdxBlockSizeMB); err != nil {
-		return fmt.Errorf("failed to create VHDx %s: %s", destFile, err)
+		return fmt.Errorf("failed to create VHDx %s: %w", destFile, err)
 	}
 
 	var options []string
@@ -105,7 +105,7 @@ func CreateScratch(ctx context.Context, lcowUVM *uvm.UtilityVM, destFile string,
 			break
 		}
 		if _, ok := err.(*cmdpkg.ExitError); !ok {
-			return fmt.Errorf("failed to run %+v following hot-add %s to utility VM: %s", cmd.Spec.Args, destFile, err)
+			return fmt.Errorf("failed to run %+v following hot-add %s to utility VM: %w", cmd.Spec.Args, destFile, err)
 		}
 		time.Sleep(time.Millisecond * 10)
 	}
@@ -117,7 +117,7 @@ func CreateScratch(ctx context.Context, lcowUVM *uvm.UtilityVM, destFile string,
 	lsOutput, err := cmd.Output()
 	cancel()
 	if err != nil {
-		return fmt.Errorf("failed to `%+v` following hot-add %s to utility VM: %s", cmd.Spec.Args, destFile, err)
+		return fmt.Errorf("failed to `%+v` following hot-add %s to utility VM: %w", cmd.Spec.Args, destFile, err)
 	}
 	device := fmt.Sprintf(`/dev/%s`, bytes.TrimSpace(lsOutput))
 	log.G(ctx).WithFields(logrus.Fields{
@@ -133,19 +133,19 @@ func CreateScratch(ctx context.Context, lcowUVM *uvm.UtilityVM, destFile string,
 	err = cmd.Run()
 	cancel()
 	if err != nil {
-		return fmt.Errorf("failed to `%+v` following hot-add %s to utility VM: %s", cmd.Spec.Args, destFile, err)
+		return fmt.Errorf("failed to `%+v` following hot-add %s to utility VM: %w", cmd.Spec.Args, destFile, err)
 	}
 
 	// Hot-Remove before we copy it
 	removeSCSI = false
 	if err := lcowUVM.RemoveSCSI(ctx, destFile); err != nil {
-		return fmt.Errorf("failed to hot-remove: %s", err)
+		return fmt.Errorf("failed to hot-remove: %w", err)
 	}
 
 	// Populate the cache.
 	if cacheFile != "" && (sizeGB == DefaultScratchSizeGB) {
 		if err := copyfile.CopyFile(ctx, destFile, cacheFile, true); err != nil {
-			return fmt.Errorf("failed to seed cache '%s' from '%s': %s", destFile, cacheFile, err)
+			return fmt.Errorf("failed to seed cache '%s' from '%s': %w", destFile, cacheFile, err)
 		}
 	}
 

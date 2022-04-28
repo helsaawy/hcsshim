@@ -135,7 +135,7 @@ func (uvm *UtilityVM) CloneContainer(ctx context.Context, id string) (cow.Contai
 	}
 	c, err := uvm.gc.CloneContainer(ctx, id)
 	if err != nil {
-		return nil, fmt.Errorf("failed to clone container %s: %s", id, err)
+		return nil, fmt.Errorf("failed to clone container %s: %w", id, err)
 	}
 	return c, nil
 }

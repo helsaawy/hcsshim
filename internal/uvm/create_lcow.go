@@ -179,7 +179,7 @@ func NewDefaultOptionsLCOW(id, owner string) *OptionsLCOW {
 func fetchProcessor(ctx context.Context, opts *OptionsLCOW, uvm *UtilityVM) (*hcsschema.Processor2, error) {
 	processorTopology, err := processorinfo.HostProcessorInfo(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get host processor information: %s", err)
+		return nil, fmt.Errorf("failed to get host processor information: %w", err)
 	}
 
 	// To maintain compatibility with Docker we need to automatically downgrade
@@ -777,7 +777,7 @@ func CreateLCOW(ctx context.Context, opts *OptionsLCOW) (_ *UtilityVM, err error
 	log.G(ctx).Tracef("create_lcow::CreateLCOW uvm.create result uvm: %v err %v", uvm, err)
 
 	if err != nil {
-		return nil, fmt.Errorf("error while creating the compute system: %s", err)
+		return nil, fmt.Errorf("error while creating the compute system: %w", err)
 	}
 
 	// Cerate a socket to inject entropy during boot.

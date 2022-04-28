@@ -62,7 +62,7 @@ func createMountsConfig(ctx context.Context, coi *createOptionsInternal) (*mount
 				// about the isolated case.
 				src, err := filepath.EvalSymlinks(mount.Source)
 				if err != nil {
-					return nil, fmt.Errorf("failed to eval symlinks for mount source %q: %s", mount.Source, err)
+					return nil, fmt.Errorf("failed to eval symlinks for mount source %q: %w", mount.Source, err)
 				}
 				mdv2.HostPath = src
 			} else if mount.Type == "virtual-disk" || mount.Type == "physical-disk" || mount.Type == "extensible-virtual-disk" {

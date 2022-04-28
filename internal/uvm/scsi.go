@@ -56,7 +56,7 @@ var (
 // Release frees the resources of the corresponding Scsi Mount
 func (sm *SCSIMount) Release(ctx context.Context) error {
 	if err := sm.vm.RemoveSCSI(ctx, sm.HostPath); err != nil {
-		return fmt.Errorf("failed to remove SCSI device: %s", err)
+		return fmt.Errorf("failed to remove SCSI device: %w", err)
 	}
 	return nil
 }
@@ -270,7 +270,7 @@ func (uvm *UtilityVM) RemoveSCSI(ctx context.Context, hostPath string) error {
 	}
 
 	if err := uvm.modify(ctx, scsiModification); err != nil {
-		return fmt.Errorf("failed to remove SCSI disk %s from container %s: %s", hostPath, uvm.id, err)
+		return fmt.Errorf("failed to remove SCSI disk %s from container %s: %w", hostPath, uvm.id, err)
 	}
 	log.G(ctx).WithFields(sm.logFormat()).Debug("removed SCSI location")
 	uvm.scsiLocations[sm.Controller][sm.LUN] = nil
@@ -459,7 +459,7 @@ func (uvm *UtilityVM) addSCSIActual(ctx context.Context, addReq *addSCSIRequest)
 	}
 
 	if err := uvm.modify(ctx, SCSIModification); err != nil {
-		return nil, fmt.Errorf("failed to modify UVM with new SCSI mount: %s", err)
+		return nil, fmt.Errorf("failed to modify UVM with new SCSI mount: %w", err)
 	}
 	return sm, nil
 }
@@ -659,7 +659,7 @@ func (sm *SCSIMount) Clone(ctx context.Context, vm *UtilityVM, cd *cloneData) er
 		if sm.Controller != 0 || sm.LUN != 0 {
 			dir, err = ioutil.TempDir(cd.scratchFolder, fmt.Sprintf("clone-mount-%d-%d", sm.Controller, sm.LUN))
 			if err != nil {
-				return fmt.Errorf("error while creating directory for scsi mounts of clone vm: %s", err)
+				return fmt.Errorf("error while creating directory for scsi mounts of clone vm: %w", err)
 			}
 		}
 

@@ -194,7 +194,7 @@ func MountContainerLayers(ctx context.Context, containerID string, layerFolders 
 				vm.SetSaveableVSMBOptions(options, options.ReadOnly)
 			}
 			if _, err := vm.AddVSMB(ctx, layerPath, options); err != nil {
-				return "", fmt.Errorf("failed to add VSMB layer: %s", err)
+				return "", fmt.Errorf("failed to add VSMB layer: %w", err)
 			}
 			layersAdded = append(layersAdded, layerPath)
 		} else {
@@ -204,7 +204,7 @@ func MountContainerLayers(ctx context.Context, containerID string, layerFolders 
 			)
 			uvmPath, err = addLCOWLayer(ctx, vm, layerPath)
 			if err != nil {
-				return "", fmt.Errorf("failed to add LCOW layer: %s", err)
+				return "", fmt.Errorf("failed to add LCOW layer: %w", err)
 			}
 			layersAdded = append(layersAdded, layerPath)
 			lcowUvmLayerPaths = append(lcowUvmLayerPaths, uvmPath)
@@ -214,7 +214,7 @@ func MountContainerLayers(ctx context.Context, containerID string, layerFolders 
 	containerScratchPathInUVM := ospath.Join(vm.OS(), guestRoot)
 	hostPath, err := getScratchVHDPath(layerFolders)
 	if err != nil {
-		return "", fmt.Errorf("failed to get scratch VHD path in layer folders: %s", err)
+		return "", fmt.Errorf("failed to get scratch VHD path in layer folders: %w", err)
 	}
 	log.G(ctx).WithField("hostPath", hostPath).Debug("mounting scratch VHD")
 
@@ -229,7 +229,7 @@ func MountContainerLayers(ctx context.Context, containerID string, layerFolders 
 		uvm.VMAccessTypeIndividual,
 	)
 	if err != nil {
-		return "", fmt.Errorf("failed to add SCSI scratch VHD: %s", err)
+		return "", fmt.Errorf("failed to add SCSI scratch VHD: %w", err)
 	}
 
 	// This handles the case where we want to share a scratch disk for multiple containers instead
@@ -285,7 +285,7 @@ func addLCOWLayer(ctx context.Context, vm *uvm.UtilityVM, layerPath string) (uvm
 			}).Debug("Added LCOW layer")
 			return uvmPath, nil
 		} else if err != uvm.ErrNoAvailableLocation && err != uvm.ErrMaxVPMemLayerSize {
-			return "", fmt.Errorf("failed to add VPMEM layer: %s", err)
+			return "", fmt.Errorf("failed to add VPMEM layer: %w", err)
 		}
 	}
 
@@ -293,7 +293,7 @@ func addLCOWLayer(ctx context.Context, vm *uvm.UtilityVM, layerPath string) (uvm
 	uvmPath = fmt.Sprintf(guestpath.LCOWGlobalMountPrefixFmt, vm.UVMMountCounter())
 	sm, err := vm.AddSCSI(ctx, layerPath, uvmPath, true, false, options, uvm.VMAccessTypeNoop)
 	if err != nil {
-		return "", fmt.Errorf("failed to add SCSI layer: %s", err)
+		return "", fmt.Errorf("failed to add SCSI layer: %w", err)
 	}
 	log.G(ctx).WithFields(logrus.Fields{
 		"layerPath": layerPath,
