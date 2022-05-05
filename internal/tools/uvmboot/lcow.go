@@ -226,7 +226,6 @@ func createLCOWOptions(_ context.Context, c *cli.Context, id string) (*uvm.Optio
 
 	if c.IsSet(securityPolicyArgName) {
 		options.SecurityPolicy = c.String(options.SecurityPolicy)
-		options.SecurityPolicyEnabled = true
 	}
 
 	return options, nil
