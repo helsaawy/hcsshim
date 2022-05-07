@@ -4,15 +4,18 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"os"
 
-	cli "github.com/urfave/cli/v2"
+	"github.com/gogo/protobuf/proto"
+	"github.com/gogo/protobuf/types"
+	"github.com/sirupsen/logrus"
 
 	"github.com/Microsoft/go-winio"
 	"github.com/Microsoft/go-winio/pkg/etw"
 	"github.com/Microsoft/go-winio/pkg/etwlogrus"
 	"github.com/Microsoft/go-winio/pkg/guid"
-	"github.com/sirupsen/logrus"
+	"github.com/Microsoft/hcsshim/cmd/differ/payload"
 )
 
 // todo: launch subcommands as process-isolated containers
@@ -20,47 +23,38 @@ import (
 const (
 	mediaTypeEnvVar   = "STREAM_PROCESSOR_MEDIATYPE"
 	payloadPineEnvVar = "STREAM_PROCESSOR_PIPE"
+
+	reExecFlagName = "reexec"
 )
 
 func main() {
-	// because of ExitErrHandler, Run() should not return an error
-	_ = app().Run(os.Args)
-}
-
-func app() *cli.App {
-	app := &cli.App{
-		Name:  "differ",
-		Usage: "containerd differ stream processor utility for windows containers (WCOW and LCOW)",
-		Commands: []*cli.Command{
-			decompressCommand,
-			convertCommand,
-		},
-		ExitErrHandler: func(c *cli.Context, err error) {
-			if err == nil {
-				return
-			}
-			s := c.App.Name
-			if c.Command != nil && c.Command.Name != "" {
-				s += ": " + c.Command.Name
-			}
-			cli.HandleExitCoder(cli.Exit(fmt.Errorf("%s: %w", s, err), 1))
-		},
+	// Run() should not return an error because of ExitErrHandler, but just in case ...
+	if err := app().Run(os.Args); err != nil {
+		log.New(os.Stderr, "", 0).Fatal(err)
 	}
-	return app
 }
 
-func getMediaTypeEnvVar(ctx context.Context) ([]byte, error) {
-	return readAllEnvPipe(ctx, mediaTypeEnvVar)
+func getMediaType(ctx context.Context) string {
+	return os.Getenv(mediaTypeEnvVar)
 }
 
-func getPayload(ctx context.Context) ([]byte, error) {
-	return readAllEnvPipe(ctx, payloadPineEnvVar)
+func getPayload(ctx context.Context, p payload.FromAny) error {
+	b, err := readAllEnvPipe(ctx, payloadPineEnvVar)
+	if err != nil || b == nil {
+		return err
+	}
+
+	a := &types.Any{}
+	if err := proto.Unmarshal(b, a); err != nil {
+		return fmt.Errorf("proto.Unmarshal(): %w", err)
+	}
+	return p.FromAny(a)
 }
 
 func readAllEnvPipe(ctx context.Context, env string) ([]byte, error) {
 	n := os.Getenv(env)
 	if n == "" {
-		return nil, os.ErrNotExist
+		return nil, nil
 	}
 
 	p, err := winio.DialPipeContext(ctx, n)

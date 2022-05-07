@@ -1,19 +1,20 @@
 //go:build windows
 
-package opts
+package payload
 
 import (
 	"fmt"
 
-	"github.com/Microsoft/hcsshim/ext4/tar2ext4"
 	"github.com/containerd/containerd/errdefs"
 	"github.com/containerd/typeurl"
 	"github.com/gogo/protobuf/types"
+
+	"github.com/Microsoft/hcsshim/ext4/tar2ext4"
 )
 
 func init() {
 	typeurl.Register(&Tar2Ext4Options{},
-		"github.com/Microsoft/hcsshim/cmd/differ/opts", "Tar2Ext4Options")
+		"github.com/Microsoft/hcsshim/cmd/differ/payload", "Tar2Ext4Options")
 }
 
 // need to be able to serialize tar2ext4 options across pipe
@@ -27,6 +28,8 @@ type Tar2Ext4Options struct {
 	VHDPath string
 }
 
+var _ FromAny = &Tar2Ext4Options{}
+
 func (o *Tar2Ext4Options) ToAny() (*types.Any, error) {
 	a, err := typeurl.MarshalAny(o)
 	if err != nil {
@@ -37,8 +40,8 @@ func (o *Tar2Ext4Options) ToAny() (*types.Any, error) {
 
 func (o *Tar2Ext4Options) FromAny(a *types.Any) error {
 	v, err := typeurl.UnmarshalAny(a)
-	if err != nil {
-		return fmt.Errorf("unmarshal Tar2Ext4Options: %w", errdefs.ErrInvalidArgument)
+	if err != nil || v == nil {
+		return fmt.Errorf("unmarshal Tar2Ext4Options: %w", err)
 	}
 
 	oo, ok := v.(*Tar2Ext4Options)

@@ -16,8 +16,9 @@ import (
 var decompressCommand = &cli.Command{
 	Name:    "decompress",
 	Aliases: []string{"decomp", "d"},
-	Usage:   fmt.Sprintf("Decompresses %q layers into a %q", images.MediaTypeDockerSchema2LayerGzip, ocispec.MediaTypeImageLayer),
+	Usage:   fmt.Sprintf("Decompress a %q stream into a %q", images.MediaTypeDockerSchema2LayerGzip, ocispec.MediaTypeImageLayer),
 	Action:  decompress,
+	Before:  decompress,
 }
 
 func decompress(c *cli.Context) error {

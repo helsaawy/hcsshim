@@ -4,7 +4,7 @@ go 1.17
 
 require (
 	github.com/BurntSushi/toml v1.1.0
-	github.com/Microsoft/go-winio v0.4.17
+	github.com/Microsoft/go-winio v0.5.2
 	github.com/cenkalti/backoff/v4 v4.1.1
 	github.com/containerd/cgroups v1.0.1
 	github.com/containerd/console v1.0.2
