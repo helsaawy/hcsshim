@@ -303,7 +303,7 @@ func GetActiveProcessorCount(groupNumber uint16) (amount uint32) {
 	return
 }
 
-func CreateRestrictedToken(existing windows.Token, flags uint32, disableSidCount uint32, sidsToDisable *byte, deletePrivilegeCount uint32, privilegesToDelete *byte, restrictedSidCount uint32, sidsToRestrict *byte, newToken *windows.Token) (err error) {
+func createRestrictedToken(existing windows.Token, flags uint32, disableSidCount uint32, sidsToDisable *windows.SIDAndAttributes, deletePrivilegeCount uint32, privilegesToDelete *windows.LUIDAndAttributes, restrictedSidCount uint32, sidsToRestrict *windows.SIDAndAttributes, newToken *windows.Token) (err error) {
 	r1, _, e1 := syscall.Syscall9(procCreateRestrictedToken.Addr(), 9, uintptr(existing), uintptr(flags), uintptr(disableSidCount), uintptr(unsafe.Pointer(sidsToDisable)), uintptr(deletePrivilegeCount), uintptr(unsafe.Pointer(privilegesToDelete)), uintptr(restrictedSidCount), uintptr(unsafe.Pointer(sidsToRestrict)), uintptr(unsafe.Pointer(newToken)))
 	if r1 == 0 {
 		if e1 != 0 {
