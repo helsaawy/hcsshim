@@ -21,6 +21,7 @@ import (
 	"github.com/Microsoft/hcsshim/internal/log"
 	"github.com/Microsoft/hcsshim/internal/logfields"
 	"github.com/Microsoft/hcsshim/internal/oc"
+	"github.com/Microsoft/hcsshim/osversion"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"go.opencensus.io/trace"
@@ -99,7 +100,7 @@ type GuestConnection struct {
 	nextPort   uint32
 	notifyChs  map[string]chan struct{}
 	caps       schema1.GuestDefinedCapabilities
-	os         string
+	os         osversion.Name
 }
 
 var _ cow.ProcessHost = &GuestConnection{}
@@ -224,7 +225,7 @@ func (gc *GuestConnection) CreateProcess(ctx context.Context, settings interface
 }
 
 // OS returns the operating system of the container's host, "windows" or "linux".
-func (gc *GuestConnection) OS() string {
+func (gc *GuestConnection) OS() osversion.Name {
 	return gc.os
 }
 

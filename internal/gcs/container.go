@@ -13,6 +13,7 @@ import (
 	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
 	"github.com/Microsoft/hcsshim/internal/log"
 	"github.com/Microsoft/hcsshim/internal/oc"
+	"github.com/Microsoft/hcsshim/osversion"
 	"go.opencensus.io/trace"
 )
 
@@ -79,7 +80,7 @@ func (gc *GuestConnection) CloneContainer(ctx context.Context, cid string) (_ *C
 }
 
 // OS returns the operating system of the container, "linux" or "windows".
-func (c *Container) OS() string {
+func (c *Container) OS() osversion.Name {
 	return c.gc.os
 }
 

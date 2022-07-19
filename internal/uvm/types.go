@@ -13,6 +13,7 @@ import (
 	"github.com/Microsoft/hcsshim/internal/hcs"
 	"github.com/Microsoft/hcsshim/internal/hcs/schema1"
 	"github.com/Microsoft/hcsshim/internal/hns"
+	"github.com/Microsoft/hcsshim/osversion"
 )
 
 //                    | WCOW | LCOW
@@ -35,7 +36,7 @@ type UtilityVM struct {
 	id               string               // Identifier for the utility VM (user supplied or generated)
 	runtimeID        guid.GUID            // Hyper-V VM ID
 	owner            string               // Owner for the utility VM (user supplied or generated)
-	operatingSystem  string               // "windows" or "linux"
+	operatingSystem  osversion.Name       // "windows" or "linux"
 	hcsSystem        *hcs.System          // The handle to the compute system
 	gcListener       net.Listener         // The GCS connection listener
 	gc               *gcs.GuestConnection // The GCS connection

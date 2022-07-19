@@ -208,7 +208,7 @@ func (uvm *UtilityVM) ID() string {
 }
 
 // OS returns the operating system of the utility VM.
-func (uvm *UtilityVM) OS() string {
+func (uvm *UtilityVM) OS() osversion.Name {
 	return uvm.operatingSystem
 }
 
