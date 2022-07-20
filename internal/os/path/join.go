@@ -1,4 +1,4 @@
-package ospath
+package path
 
 import (
 	"path"

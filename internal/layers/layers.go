@@ -19,7 +19,7 @@ import (
 	"github.com/Microsoft/hcsshim/internal/hcserror"
 	"github.com/Microsoft/hcsshim/internal/log"
 	"github.com/Microsoft/hcsshim/internal/os/name"
-	"github.com/Microsoft/hcsshim/internal/ospath"
+	ospath "github.com/Microsoft/hcsshim/internal/os/path"
 	"github.com/Microsoft/hcsshim/internal/uvm"
 	"github.com/Microsoft/hcsshim/internal/wclayer"
 )
