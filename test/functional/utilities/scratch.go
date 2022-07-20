@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/Microsoft/hcsshim/internal/hcs"
-	"github.com/Microsoft/hcsshim/internal/lcow"
 	"github.com/Microsoft/hcsshim/internal/uvm"
+	"github.com/Microsoft/hcsshim/internal/uvm/lcow"
 	"github.com/Microsoft/hcsshim/internal/wclayer"
 )
 

@@ -17,10 +17,10 @@ import (
 
 	"github.com/Microsoft/hcsshim/internal/cpugroup"
 	"github.com/Microsoft/hcsshim/internal/hcs"
-	"github.com/Microsoft/hcsshim/internal/lcow"
 	osversion "github.com/Microsoft/hcsshim/internal/os/version"
 	"github.com/Microsoft/hcsshim/internal/processorinfo"
 	"github.com/Microsoft/hcsshim/internal/shimdiag"
+	"github.com/Microsoft/hcsshim/internal/uvm/lcow"
 	"github.com/Microsoft/hcsshim/pkg/annotations"
 	testutilities "github.com/Microsoft/hcsshim/test/functional/utilities"
 	"github.com/containerd/containerd/log"

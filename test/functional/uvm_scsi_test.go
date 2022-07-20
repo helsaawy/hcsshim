@@ -15,10 +15,10 @@ import (
 
 	"github.com/Microsoft/hcsshim/internal/wclayer"
 
-	"github.com/Microsoft/hcsshim/internal/lcow"
 	"github.com/Microsoft/hcsshim/internal/os/name"
 	osversion "github.com/Microsoft/hcsshim/internal/os/version"
 	"github.com/Microsoft/hcsshim/internal/uvm"
+	"github.com/Microsoft/hcsshim/internal/uvm/lcow"
 	testutilities "github.com/Microsoft/hcsshim/test/functional/utilities"
 	"github.com/sirupsen/logrus"
 )

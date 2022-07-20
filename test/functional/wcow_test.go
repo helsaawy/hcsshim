@@ -20,9 +20,9 @@ import (
 	"github.com/Microsoft/hcsshim/internal/resources"
 	"github.com/Microsoft/hcsshim/internal/schemaversion"
 	"github.com/Microsoft/hcsshim/internal/uvm"
+	"github.com/Microsoft/hcsshim/internal/uvm/wcow"
 	"github.com/Microsoft/hcsshim/internal/uvmfolder"
 	"github.com/Microsoft/hcsshim/internal/wclayer"
-	"github.com/Microsoft/hcsshim/internal/wcow"
 	testutilities "github.com/Microsoft/hcsshim/test/functional/utilities"
 	specs "github.com/opencontainers/runtime-spec/specs-go"
 )

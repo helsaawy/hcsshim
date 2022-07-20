@@ -6,10 +6,10 @@ import (
 	gcontext "context"
 
 	"github.com/Microsoft/hcsshim/internal/appargs"
-	"github.com/Microsoft/hcsshim/internal/lcow"
 	"github.com/Microsoft/hcsshim/internal/oc"
 	osversion "github.com/Microsoft/hcsshim/internal/os/version"
 	"github.com/Microsoft/hcsshim/internal/uvm"
+	"github.com/Microsoft/hcsshim/internal/uvm/lcow"
 	"github.com/pkg/errors"
 	"github.com/urfave/cli"
 )
