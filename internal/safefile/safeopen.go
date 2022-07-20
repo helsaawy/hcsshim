@@ -12,14 +12,14 @@ import (
 	"unicode/utf16"
 	"unsafe"
 
-	"github.com/Microsoft/hcsshim/internal/longpath"
+	"github.com/Microsoft/hcsshim/internal/os/path/longpath"
 	"github.com/Microsoft/hcsshim/internal/winapi"
 
 	winio "github.com/Microsoft/go-winio"
 )
 
 func OpenRoot(path string) (*os.File, error) {
-	longpath, err := longpath.LongAbs(path)
+	longpath, err := longpath.Abs(path)
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +98,7 @@ func openRelativeInternal(path string, root *os.File, accessMask uint32, shareFl
 		return nil, winapi.RtlNtStatusToDosError(status)
 	}
 
-	fullPath, err := longpath.LongAbs(filepath.Join(root.Name(), path))
+	fullPath, err := longpath.Abs(filepath.Join(root.Name(), path))
 	if err != nil {
 		syscall.Close(syscall.Handle(h))
 		return nil, err

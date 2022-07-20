@@ -5,8 +5,8 @@ import (
 	"strings"
 )
 
-// LongAbs makes a path absolute and returns it in NT long path form.
-func LongAbs(path string) (string, error) {
+// Abs makes a path absolute and returns it in NT long path form.
+func Abs(path string) (string, error) {
 	if strings.HasPrefix(path, `\\?\`) || strings.HasPrefix(path, `\\.\`) {
 		return path, nil
 	}

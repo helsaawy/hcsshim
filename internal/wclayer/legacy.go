@@ -15,7 +15,7 @@ import (
 	"syscall"
 
 	"github.com/Microsoft/go-winio"
-	"github.com/Microsoft/hcsshim/internal/longpath"
+	"github.com/Microsoft/hcsshim/internal/os/path/longpath"
 	"github.com/Microsoft/hcsshim/internal/safefile"
 	"github.com/Microsoft/hcsshim/internal/winapi"
 )
@@ -95,7 +95,7 @@ func readTombstones(path string) (map[string]([]string), error) {
 }
 
 func (r *legacyLayerReader) walkUntilCancelled() error {
-	root, err := longpath.LongAbs(r.root)
+	root, err := longpath.Abs(r.root)
 	if err != nil {
 		return err
 	}
