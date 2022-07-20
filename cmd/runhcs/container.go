@@ -18,7 +18,7 @@ import (
 	"github.com/Microsoft/hcsshim/internal/cni"
 	"github.com/Microsoft/hcsshim/internal/hcs"
 	"github.com/Microsoft/hcsshim/internal/hcsoci"
-	"github.com/Microsoft/hcsshim/internal/logfields"
+	logfields "github.com/Microsoft/hcsshim/internal/log/fields"
 	"github.com/Microsoft/hcsshim/internal/oci"
 	"github.com/Microsoft/hcsshim/internal/os/name"
 	osversion "github.com/Microsoft/hcsshim/internal/os/version"

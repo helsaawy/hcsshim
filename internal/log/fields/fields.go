@@ -1,4 +1,4 @@
-package logfields
+package fields
 
 const (
 	// Identifiers

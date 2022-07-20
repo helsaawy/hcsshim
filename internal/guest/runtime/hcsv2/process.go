@@ -14,7 +14,7 @@ import (
 	"github.com/Microsoft/hcsshim/internal/guest/runtime"
 	"github.com/Microsoft/hcsshim/internal/guest/stdio"
 	"github.com/Microsoft/hcsshim/internal/log"
-	"github.com/Microsoft/hcsshim/internal/logfields"
+	logfields "github.com/Microsoft/hcsshim/internal/log/fields"
 	"github.com/Microsoft/hcsshim/internal/oc"
 	oci "github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/pkg/errors"

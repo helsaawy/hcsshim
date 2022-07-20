@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/Microsoft/hcsshim/internal/log"
-	"github.com/Microsoft/hcsshim/internal/logfields"
+	logfields "github.com/Microsoft/hcsshim/internal/log/fields"
 	"github.com/Microsoft/hcsshim/pkg/annotations"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/sirupsen/logrus"

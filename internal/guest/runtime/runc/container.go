@@ -20,7 +20,7 @@ import (
 
 	"github.com/Microsoft/hcsshim/internal/guest/runtime"
 	"github.com/Microsoft/hcsshim/internal/guest/stdio"
-	"github.com/Microsoft/hcsshim/internal/logfields"
+	logfields "github.com/Microsoft/hcsshim/internal/log/fields"
 )
 
 type container struct {

@@ -26,7 +26,7 @@ import (
 	"github.com/Microsoft/hcsshim/internal/guest/storage"
 	"github.com/Microsoft/hcsshim/internal/guest/transport"
 	"github.com/Microsoft/hcsshim/internal/log"
-	"github.com/Microsoft/hcsshim/internal/logfields"
+	logfields "github.com/Microsoft/hcsshim/internal/log/fields"
 	"github.com/Microsoft/hcsshim/internal/oc"
 	"github.com/Microsoft/hcsshim/internal/protocol/guestrequest"
 	"github.com/Microsoft/hcsshim/internal/protocol/guestresource"

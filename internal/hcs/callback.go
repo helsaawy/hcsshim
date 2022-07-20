@@ -8,7 +8,7 @@ import (
 	"syscall"
 
 	"github.com/Microsoft/hcsshim/internal/interop"
-	"github.com/Microsoft/hcsshim/internal/logfields"
+	logfields "github.com/Microsoft/hcsshim/internal/log/fields"
 	"github.com/Microsoft/hcsshim/internal/vmcompute"
 	"github.com/sirupsen/logrus"
 )

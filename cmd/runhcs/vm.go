@@ -13,7 +13,7 @@ import (
 
 	winio "github.com/Microsoft/go-winio"
 	"github.com/Microsoft/hcsshim/internal/appargs"
-	"github.com/Microsoft/hcsshim/internal/logfields"
+	logfields "github.com/Microsoft/hcsshim/internal/log/fields"
 	"github.com/Microsoft/hcsshim/internal/os/name"
 	"github.com/Microsoft/hcsshim/internal/runhcs"
 	"github.com/Microsoft/hcsshim/internal/uvm"
