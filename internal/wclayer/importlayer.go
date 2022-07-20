@@ -12,7 +12,7 @@ import (
 	"github.com/Microsoft/go-winio"
 	"github.com/Microsoft/hcsshim/internal/hcserror"
 	"github.com/Microsoft/hcsshim/internal/oc"
-	"github.com/Microsoft/hcsshim/internal/safefile"
+	"github.com/Microsoft/hcsshim/internal/os/safe"
 	"go.opencensus.io/trace"
 )
 
@@ -82,16 +82,16 @@ func (r *legacyLayerWriterWrapper) Close() (err error) {
 		return err
 	}
 	for _, name := range r.Tombstones {
-		if err = safefile.RemoveRelative(name, r.destRoot); err != nil && !os.IsNotExist(err) {
+		if err = safe.RemoveRelative(name, r.destRoot); err != nil && !os.IsNotExist(err) {
 			return err
 		}
 	}
 	// Add any hard links that were collected.
 	for _, lnk := range r.PendingLinks {
-		if err = safefile.RemoveRelative(lnk.Path, r.destRoot); err != nil && !os.IsNotExist(err) {
+		if err = safe.RemoveRelative(lnk.Path, r.destRoot); err != nil && !os.IsNotExist(err) {
 			return err
 		}
-		if err = safefile.LinkRelative(lnk.Target, lnk.TargetRoot, lnk.Path, r.destRoot); err != nil {
+		if err = safe.LinkRelative(lnk.Target, lnk.TargetRoot, lnk.Path, r.destRoot); err != nil {
 			return err
 		}
 	}
@@ -110,7 +110,7 @@ func (r *legacyLayerWriterWrapper) Close() (err error) {
 
 	// Prepare the utility VM for use if one is present in the layer.
 	if r.HasUtilityVM {
-		err := safefile.EnsureNotReparsePointRelative("UtilityVM", r.destRoot)
+		err := safe.EnsureNotReparsePointRelative("UtilityVM", r.destRoot)
 		if err != nil {
 			return err
 		}
@@ -139,7 +139,7 @@ func NewLayerWriter(ctx context.Context, path string, parentLayerPaths []string)
 
 	if len(parentLayerPaths) == 0 {
 		// This is a base layer. It gets imported differently.
-		f, err := safefile.OpenRoot(path)
+		f, err := safe.OpenRoot(path)
 		if err != nil {
 			return nil, err
 		}

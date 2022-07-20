@@ -1,7 +1,7 @@
 //go:build windows && admin
 // +build windows,admin
 
-package safefile
+package safe
 
 import (
 	"os"
