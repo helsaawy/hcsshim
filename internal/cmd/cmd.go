@@ -14,6 +14,7 @@ import (
 	"github.com/Microsoft/hcsshim/internal/cow"
 	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
 	"github.com/Microsoft/hcsshim/internal/log"
+	"github.com/Microsoft/hcsshim/internal/os/name"
 	specs "github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
@@ -106,22 +107,22 @@ func escapeArgs(args []string) string {
 }
 
 // Command makes a Cmd for a given command and arguments.
-func Command(host cow.ProcessHost, name string, arg ...string) *Cmd {
-	cmd := &Cmd{
+func Command(host cow.ProcessHost, cmd string, arg ...string) *Cmd {
+	c := &Cmd{
 		Host: host,
 		Spec: &specs.Process{
-			Args: append([]string{name}, arg...),
+			Args: append([]string{cmd}, arg...),
 		},
 		Log:       log.L.Dup(),
 		ExitState: &ExitState{},
 	}
-	if host.OS() == "windows" {
-		cmd.Spec.Cwd = `C:\`
+	if host.OS() == name.Windows {
+		c.Spec.Cwd = `C:\`
 	} else {
-		cmd.Spec.Cwd = "/"
-		cmd.Spec.Env = []string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"}
+		c.Spec.Cwd = "/"
+		c.Spec.Env = []string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"}
 	}
-	return cmd
+	return c
 }
 
 // CommandContext makes a Cmd for a given command and arguments. After
@@ -150,7 +151,7 @@ func (c *Cmd) Start() error {
 		}
 
 		if c.Spec.CommandLine == "" {
-			if c.Host.OS() == "windows" {
+			if c.Host.OS() == name.Windows {
 				wpp.CommandLine = escapeArgs(c.Spec.Args)
 			} else {
 				wpp.CommandArgs = c.Spec.Args

@@ -3,7 +3,7 @@ package testutilities
 import (
 	"testing"
 
-	"github.com/Microsoft/hcsshim/osversion"
+	osversion "github.com/Microsoft/hcsshim/internal/os/version"
 )
 
 func RequiresBuild(t *testing.T, b uint16) {

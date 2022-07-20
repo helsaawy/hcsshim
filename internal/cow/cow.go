@@ -8,7 +8,7 @@ import (
 
 	"github.com/Microsoft/hcsshim/internal/hcs/schema1"
 	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
-	"github.com/Microsoft/hcsshim/osversion"
+	"github.com/Microsoft/hcsshim/internal/os/name"
 )
 
 // Process is the interface for an OS process running in a container or utility VM.
@@ -55,8 +55,8 @@ type ProcessHost interface {
 	// CreateProcess creates a process. The configuration is host specific
 	// (either hcsschema.ProcessParameters or lcow.ProcessParameters).
 	CreateProcess(ctx context.Context, config interface{}) (Process, error)
-	// OS returns the host's operating system, "linux" or "windows".
-	OS() osversion.Name
+	// OS returns the host's operating system, name.Linux or name.Windows.
+	OS() name.OS
 	// IsOCI specifies whether this is an OCI-compliant process host. If true,
 	// then the configuration passed to CreateProcess should have an OCI process
 	// spec (or nil if this is the initial process in an OCI container).

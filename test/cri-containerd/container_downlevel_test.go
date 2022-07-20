@@ -6,7 +6,7 @@ package cri_containerd
 import (
 	"testing"
 
-	"github.com/Microsoft/hcsshim/osversion"
+	osversion "github.com/Microsoft/hcsshim/internal/os/version"
 	testutilities "github.com/Microsoft/hcsshim/test/functional/utilities"
 	runtime "k8s.io/cri-api/pkg/apis/runtime/v1alpha2"
 )

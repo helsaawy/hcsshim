@@ -14,6 +14,7 @@ import (
 	winio "github.com/Microsoft/go-winio"
 	"github.com/Microsoft/hcsshim/internal/appargs"
 	"github.com/Microsoft/hcsshim/internal/logfields"
+	"github.com/Microsoft/hcsshim/internal/os/name"
 	"github.com/Microsoft/hcsshim/internal/runhcs"
 	"github.com/Microsoft/hcsshim/internal/uvm"
 	"github.com/pkg/errors"
@@ -57,7 +58,7 @@ var vmshimCommand = cli.Command{
 		os.Stdin.Close()
 
 		var opts interface{}
-		isLCOW := context.String("os") == "linux"
+		isLCOW := name.IsLinux(context.String("os"))
 		if isLCOW {
 			opts = &uvm.OptionsLCOW{}
 		} else {

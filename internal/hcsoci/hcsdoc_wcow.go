@@ -20,11 +20,12 @@ import (
 	"github.com/Microsoft/hcsshim/internal/layers"
 	"github.com/Microsoft/hcsshim/internal/log"
 	"github.com/Microsoft/hcsshim/internal/oci"
+	"github.com/Microsoft/hcsshim/internal/os/name"
+	osversion "github.com/Microsoft/hcsshim/internal/os/version"
 	"github.com/Microsoft/hcsshim/internal/processorinfo"
 	"github.com/Microsoft/hcsshim/internal/uvm"
 	"github.com/Microsoft/hcsshim/internal/uvmfolder"
 	"github.com/Microsoft/hcsshim/internal/wclayer"
-	"github.com/Microsoft/hcsshim/osversion"
 	"github.com/Microsoft/hcsshim/pkg/annotations"
 )
 
@@ -345,7 +346,7 @@ func createWindowsContainerDocument(ctx context.Context, coi *createOptionsInter
 	} else if coi.isV2Xenon() {
 		// Hosting system was supplied, so is v2 Xenon.
 		v2Container.Storage.Path = coi.Spec.Root.Path
-		if coi.HostingSystem.OS() == "windows" {
+		if coi.HostingSystem.OS() == name.Windows {
 			layers, err := layers.GetHCSLayers(ctx, coi.HostingSystem, coi.Spec.Windows.LayerFolders[:len(coi.Spec.Windows.LayerFolders)-1])
 			if err != nil {
 				return nil, nil, err

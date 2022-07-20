@@ -10,6 +10,7 @@ import (
 	"github.com/Microsoft/hcsshim/internal/cmd"
 	"github.com/Microsoft/hcsshim/internal/guestpath"
 	"github.com/Microsoft/hcsshim/internal/log"
+	"github.com/Microsoft/hcsshim/internal/os/name"
 	"github.com/Microsoft/hcsshim/internal/resources"
 	"github.com/Microsoft/hcsshim/internal/uvm"
 	"github.com/pkg/errors"
@@ -34,7 +35,7 @@ func InstallKernelDriver(ctx context.Context, vm *uvm.UtilityVM, driver string) 
 			closer = nil
 		}
 	}()
-	if vm.OS() == "windows" {
+	if vm.OS() == name.Windows {
 		options := vm.DefaultVSMBOptions(true)
 		closer, err = vm.AddVSMB(ctx, driver, options)
 		if err != nil {

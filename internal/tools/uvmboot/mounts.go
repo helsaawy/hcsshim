@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Microsoft/hcsshim/internal/os/name"
 	"github.com/Microsoft/hcsshim/internal/uvm"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
@@ -38,7 +39,7 @@ func mountSCSI(ctx context.Context, c *cli.Context, vm *uvm.UtilityVM) error {
 
 func shareFiles(ctx context.Context, c *cli.Context, vm *uvm.UtilityVM) error {
 	switch os := vm.OS(); os {
-	case "linux":
+	case name.Linux:
 		return shareFilesLCOW(ctx, c, vm)
 	default:
 		return fmt.Errorf("file shares are not supported for %s UVMs", os)

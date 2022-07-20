@@ -17,10 +17,12 @@ import (
 
 	"github.com/Microsoft/hcsshim/internal/cow"
 	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
+	"github.com/Microsoft/hcsshim/internal/os/name"
 )
 
-type localProcessHost struct {
-}
+type localProcessHost struct{}
+
+var _ cow.ProcessHost = &localProcessHost{}
 
 type localProcess struct {
 	p                     *os.Process
@@ -29,8 +31,10 @@ type localProcess struct {
 	stdin, stdout, stderr *os.File
 }
 
-func (h *localProcessHost) OS() string {
-	return "windows"
+var _ cow.Process = &localProcess{}
+
+func (h *localProcessHost) OS() name.OS {
+	return name.Windows
 }
 
 func (h *localProcessHost) IsOCI() bool {

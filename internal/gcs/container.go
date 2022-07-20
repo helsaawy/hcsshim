@@ -13,7 +13,7 @@ import (
 	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
 	"github.com/Microsoft/hcsshim/internal/log"
 	"github.com/Microsoft/hcsshim/internal/oc"
-	"github.com/Microsoft/hcsshim/osversion"
+	"github.com/Microsoft/hcsshim/internal/os/name"
 	"go.opencensus.io/trace"
 )
 
@@ -79,15 +79,15 @@ func (gc *GuestConnection) CloneContainer(ctx context.Context, cid string) (_ *C
 	return c, nil
 }
 
-// OS returns the operating system of the container, "linux" or "windows".
-func (c *Container) OS() osversion.Name {
+// OS returns the operating system of the container, name.Linux or name.Windows.
+func (c *Container) OS() name.OS {
 	return c.gc.os
 }
 
 // IsOCI specifies whether CreateProcess should be called with an OCI
 // specification in its input.
 func (c *Container) IsOCI() bool {
-	return c.gc.os != "windows"
+	return c.gc.os != name.Windows
 }
 
 // Close releases associated with the container.

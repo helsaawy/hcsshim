@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Microsoft/hcsshim/osversion"
+	osversion "github.com/Microsoft/hcsshim/internal/os/version"
 	_ "github.com/Microsoft/hcsshim/test/functional/manifest"
 	testutilities "github.com/Microsoft/hcsshim/test/functional/utilities"
 	"github.com/containerd/containerd"

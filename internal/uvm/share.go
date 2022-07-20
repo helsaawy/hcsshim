@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
+	"github.com/Microsoft/hcsshim/internal/os/name"
 	"github.com/Microsoft/hcsshim/internal/protocol/guestrequest"
 	"github.com/Microsoft/hcsshim/internal/protocol/guestresource"
 )
@@ -16,7 +17,7 @@ import (
 // Share shares in file(s) from `reqHostPath` on the host machine to `reqUVMPath` inside the UVM.
 // This function handles both LCOW and WCOW scenarios.
 func (uvm *UtilityVM) Share(ctx context.Context, reqHostPath, reqUVMPath string, readOnly bool) (err error) {
-	if uvm.OS() == "windows" {
+	if uvm.OS() == name.Windows {
 		options := uvm.DefaultVSMBOptions(readOnly)
 		vsmbShare, err := uvm.AddVSMB(ctx, reqHostPath, options)
 		if err != nil {

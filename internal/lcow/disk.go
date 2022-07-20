@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/Microsoft/hcsshim/internal/log"
+	"github.com/Microsoft/hcsshim/internal/os/name"
 	"github.com/Microsoft/hcsshim/internal/uvm"
 	"github.com/sirupsen/logrus"
 )
@@ -22,7 +23,7 @@ func FormatDisk(ctx context.Context, lcowUVM *uvm.UtilityVM, destPath string) er
 		return fmt.Errorf("no uvm")
 	}
 
-	if lcowUVM.OS() != "linux" {
+	if lcowUVM.OS() != name.Linux {
 		return errors.New("lcow::FormatDisk requires a linux utility VM to operate")
 	}
 

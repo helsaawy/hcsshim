@@ -19,9 +19,9 @@ import (
 	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
 	"github.com/Microsoft/hcsshim/internal/log"
 	"github.com/Microsoft/hcsshim/internal/oci"
+	osversion "github.com/Microsoft/hcsshim/internal/os/version"
 	"github.com/Microsoft/hcsshim/internal/resources"
 	"github.com/Microsoft/hcsshim/internal/uvm"
-	"github.com/Microsoft/hcsshim/osversion"
 	"github.com/Microsoft/hcsshim/pkg/annotations"
 )
 

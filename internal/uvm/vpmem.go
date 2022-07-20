@@ -15,6 +15,7 @@ import (
 	"github.com/Microsoft/hcsshim/internal/hcs/resourcepaths"
 	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
 	"github.com/Microsoft/hcsshim/internal/log"
+	"github.com/Microsoft/hcsshim/internal/os/name"
 	"github.com/Microsoft/hcsshim/internal/protocol/guestrequest"
 	"github.com/Microsoft/hcsshim/internal/protocol/guestresource"
 )
@@ -236,7 +237,7 @@ func (uvm *UtilityVM) removeVPMemDefault(ctx context.Context, hostPath string) e
 }
 
 func (uvm *UtilityVM) AddVPMem(ctx context.Context, hostPath string) (string, error) {
-	if uvm.operatingSystem != "linux" {
+	if uvm.operatingSystem != name.Linux {
 		return "", errNotSupported
 	}
 
@@ -250,7 +251,7 @@ func (uvm *UtilityVM) AddVPMem(ctx context.Context, hostPath string) (string, er
 }
 
 func (uvm *UtilityVM) RemoveVPMem(ctx context.Context, hostPath string) error {
-	if uvm.operatingSystem != "linux" {
+	if uvm.operatingSystem != name.Linux {
 		return errNotSupported
 	}
 

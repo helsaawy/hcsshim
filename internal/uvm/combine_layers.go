@@ -6,6 +6,7 @@ import (
 	"context"
 
 	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
+	"github.com/Microsoft/hcsshim/internal/os/name"
 	"github.com/Microsoft/hcsshim/internal/protocol/guestrequest"
 	"github.com/Microsoft/hcsshim/internal/protocol/guestresource"
 )
@@ -15,7 +16,7 @@ import (
 //
 // Note: `layerPaths` and `containerRootPath` are paths from within the UVM.
 func (uvm *UtilityVM) CombineLayersWCOW(ctx context.Context, layerPaths []hcsschema.Layer, containerRootPath string) error {
-	if uvm.operatingSystem != "windows" {
+	if uvm.operatingSystem != name.Windows {
 		return errNotSupported
 	}
 	msr := &hcsschema.ModifySettingRequest{
@@ -38,7 +39,7 @@ func (uvm *UtilityVM) CombineLayersWCOW(ctx context.Context, layerPaths []hcssch
 // NOTE: `layerPaths`, `scrathPath`, and `rootfsPath` are paths from within the
 // UVM.
 func (uvm *UtilityVM) CombineLayersLCOW(ctx context.Context, containerID string, layerPaths []string, scratchPath, rootfsPath string) error {
-	if uvm.operatingSystem != "linux" {
+	if uvm.operatingSystem != name.Linux {
 		return errNotSupported
 	}
 

@@ -11,7 +11,7 @@ import (
 
 	"github.com/Microsoft/hcsshim/internal/hcserror"
 	"github.com/Microsoft/hcsshim/internal/oc"
-	"github.com/Microsoft/hcsshim/osversion"
+	osversion "github.com/Microsoft/hcsshim/internal/os/version"
 	"go.opencensus.io/trace"
 )
 

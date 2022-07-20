@@ -18,13 +18,14 @@ import (
 	"github.com/Microsoft/hcsshim/internal/log"
 	"github.com/Microsoft/hcsshim/internal/logfields"
 	"github.com/Microsoft/hcsshim/internal/oc"
+	"github.com/Microsoft/hcsshim/internal/os/name"
+	osversion "github.com/Microsoft/hcsshim/internal/os/version"
 	"github.com/Microsoft/hcsshim/internal/processorinfo"
 	"github.com/Microsoft/hcsshim/internal/protocol/guestrequest"
 	"github.com/Microsoft/hcsshim/internal/schemaversion"
 	"github.com/Microsoft/hcsshim/internal/uvmfolder"
 	"github.com/Microsoft/hcsshim/internal/wclayer"
 	"github.com/Microsoft/hcsshim/internal/wcow"
-	"github.com/Microsoft/hcsshim/osversion"
 )
 
 // OptionsWCOW are the set of options passed to CreateWCOW() to create a utility vm.
@@ -251,7 +252,7 @@ func CreateWCOW(ctx context.Context, opts *OptionsWCOW) (_ *UtilityVM, err error
 	uvm := &UtilityVM{
 		id:                      opts.ID,
 		owner:                   opts.Owner,
-		operatingSystem:         "windows",
+		operatingSystem:         name.Windows,
 		scsiControllerCount:     opts.SCSIControllerCount,
 		vsmbDirShares:           make(map[string]*VSMBShare),
 		vsmbFileShares:          make(map[string]*VSMBShare),

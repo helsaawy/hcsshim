@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"github.com/Microsoft/hcsshim/internal/os/name"
 	digest "github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
@@ -72,7 +73,7 @@ func createBlobFromStruct(blobsDirPath string, data interface{}) (int64, digest.
 func createMinimalConfig(layers []ocispec.Descriptor) ocispec.Image {
 	var img ocispec.Image
 	img.Architecture = "amd64"
-	img.OS = "linux"
+	img.OS = name.Linux.String()
 	img.RootFS.Type = "layers"
 	for _, layer := range layers {
 		img.RootFS.DiffIDs = append(img.RootFS.DiffIDs, layer.Digest)

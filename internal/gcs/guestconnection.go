@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"strings"
 	"sync"
 
 	"github.com/Microsoft/go-winio"
@@ -21,7 +20,7 @@ import (
 	"github.com/Microsoft/hcsshim/internal/log"
 	"github.com/Microsoft/hcsshim/internal/logfields"
 	"github.com/Microsoft/hcsshim/internal/oc"
-	"github.com/Microsoft/hcsshim/osversion"
+	"github.com/Microsoft/hcsshim/internal/os/name"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"go.opencensus.io/trace"
@@ -100,7 +99,7 @@ type GuestConnection struct {
 	nextPort   uint32
 	notifyChs  map[string]chan struct{}
 	caps       schema1.GuestDefinedCapabilities
-	os         osversion.Name
+	os         name.OS
 }
 
 var _ cow.ProcessHost = &GuestConnection{}
@@ -133,9 +132,9 @@ func (gc *GuestConnection) connect(ctx context.Context, isColdStart bool, initGu
 	if resp.Version != protocolVersion {
 		return fmt.Errorf("unexpected version %d returned", resp.Version)
 	}
-	gc.os = strings.ToLower(resp.Capabilities.RuntimeOsType)
-	if gc.os == "" {
-		gc.os = "windows"
+	gc.os, err = name.FromString(resp.Capabilities.RuntimeOsType)
+	if err != nil {
+		gc.os = name.Windows
 	}
 	if isColdStart && resp.Capabilities.SendHostCreateMessage {
 		conf := &uvmConfig{
@@ -224,8 +223,8 @@ func (gc *GuestConnection) CreateProcess(ctx context.Context, settings interface
 	return gc.exec(ctx, nullContainerID, settings)
 }
 
-// OS returns the operating system of the container's host, "windows" or "linux".
-func (gc *GuestConnection) OS() osversion.Name {
+// OS returns the operating system of the container's host, name.Windows or name.Linux.
+func (gc *GuestConnection) OS() name.OS {
 	return gc.os
 }
 

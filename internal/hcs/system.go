@@ -19,6 +19,7 @@ import (
 	"github.com/Microsoft/hcsshim/internal/log"
 	"github.com/Microsoft/hcsshim/internal/logfields"
 	"github.com/Microsoft/hcsshim/internal/oc"
+	"github.com/Microsoft/hcsshim/internal/os/name"
 	"github.com/Microsoft/hcsshim/internal/timeout"
 	"github.com/Microsoft/hcsshim/internal/vmcompute"
 	"github.com/sirupsen/logrus"
@@ -35,9 +36,12 @@ type System struct {
 	waitBlock      chan struct{}
 	waitError      error
 	exitError      error
-	os, typ, owner string
+	os             name.OS
+	typ, owner     string
 	startTime      time.Time
 }
+
+var _ cow.Container = &System{}
 
 func newSystem(id string) *System {
 	return &System{
@@ -139,25 +143,25 @@ func (computeSystem *System) getCachedProperties(ctx context.Context) error {
 		return err
 	}
 	computeSystem.typ = strings.ToLower(props.SystemType)
-	computeSystem.os = strings.ToLower(props.RuntimeOSType)
+	computeSystem.os, _ = name.FromString(props.RuntimeOSType)
 	computeSystem.owner = strings.ToLower(props.Owner)
 	if computeSystem.os == "" && computeSystem.typ == "container" {
 		// Pre-RS5 HCS did not return the OS, but it only supported containers
 		// that ran Windows.
-		computeSystem.os = "windows"
+		computeSystem.os = name.Windows
 	}
 	return nil
 }
 
-// OS returns the operating system of the compute system, "linux" or "windows".
-func (computeSystem *System) OS() string {
+// OS returns the operating system of the compute system, name.Linux or name.Windows.
+func (computeSystem *System) OS() name.OS {
 	return computeSystem.os
 }
 
 // IsOCI returns whether processes in the compute system should be created via
 // OCI.
 func (computeSystem *System) IsOCI() bool {
-	return computeSystem.os == "linux" && computeSystem.typ == "container"
+	return computeSystem.os == name.Linux && computeSystem.typ == "container"
 }
 
 // GetComputeSystems gets a list of the compute systems on the system that match the query
@@ -486,7 +490,7 @@ func (computeSystem *System) PropertiesV2(ctx context.Context, types ...hcsschem
 	properties := &hcsschema.Properties{
 		Id:            computeSystem.id,
 		SystemType:    computeSystem.typ,
-		RuntimeOsType: computeSystem.os,
+		RuntimeOsType: computeSystem.os.String(),
 		Owner:         computeSystem.owner,
 	}
 

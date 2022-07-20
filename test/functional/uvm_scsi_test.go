@@ -16,8 +16,9 @@ import (
 	"github.com/Microsoft/hcsshim/internal/wclayer"
 
 	"github.com/Microsoft/hcsshim/internal/lcow"
+	"github.com/Microsoft/hcsshim/internal/os/name"
+	osversion "github.com/Microsoft/hcsshim/internal/os/version"
 	"github.com/Microsoft/hcsshim/internal/uvm"
-	"github.com/Microsoft/hcsshim/osversion"
 	testutilities "github.com/Microsoft/hcsshim/test/functional/utilities"
 	"github.com/sirupsen/logrus"
 )
@@ -29,7 +30,7 @@ func TestSCSIAddRemoveLCOW(t *testing.T) {
 	u := testutilities.CreateLCOWUVM(context.Background(), t, t.Name())
 	defer u.Close()
 
-	testSCSIAddRemoveMultiple(t, u, `/run/gcs/c/0/scsi`, "linux", []string{})
+	testSCSIAddRemoveMultiple(t, u, `/run/gcs/c/0/scsi`, name.Linux, []string{})
 
 }
 
@@ -42,7 +43,7 @@ func TestSCSIAddRemoveWCOW(t *testing.T) {
 	defer os.RemoveAll(uvmScratchDir)
 	defer u.Close()
 
-	testSCSIAddRemoveSingle(t, u, `c:\`, "windows", layers)
+	testSCSIAddRemoveSingle(t, u, `c:\`, name.Windows, layers)
 }
 
 func testAddSCSI(u *uvm.UtilityVM, disks []string, pathPrefix string, usePath bool, reAdd bool) error {
@@ -74,9 +75,9 @@ func testRemoveAllSCSI(u *uvm.UtilityVM, disks []string) error {
 
 // TODO this test is only needed until WCOW supports adding the same scsi device to
 // multiple containers
-func testSCSIAddRemoveSingle(t *testing.T, u *uvm.UtilityVM, pathPrefix string, operatingSystem string, wcowImageLayerFolders []string) {
+func testSCSIAddRemoveSingle(t *testing.T, u *uvm.UtilityVM, pathPrefix string, operatingSystem name.OS, wcowImageLayerFolders []string) {
 	numDisks := 63 // Windows: 63 as the UVM scratch is at 0:0
-	if operatingSystem == "linux" {
+	if operatingSystem == name.Linux {
 		numDisks++ //
 	}
 
@@ -84,7 +85,7 @@ func testSCSIAddRemoveSingle(t *testing.T, u *uvm.UtilityVM, pathPrefix string, 
 	disks := make([]string, numDisks)
 	for i := 0; i < numDisks; i++ {
 		tempDir := ""
-		if operatingSystem == "windows" {
+		if operatingSystem == name.Windows {
 			tempDir = testutilities.CreateWCOWBlankRWLayer(t, wcowImageLayerFolders)
 		} else {
 			tempDir = testutilities.CreateLCOWBlankRWLayer(context.Background(), t)
@@ -125,9 +126,9 @@ func testSCSIAddRemoveSingle(t *testing.T, u *uvm.UtilityVM, pathPrefix string, 
 	// TODO: Could extend to validate can't add a 64th disk (windows). 65th (linux).
 }
 
-func testSCSIAddRemoveMultiple(t *testing.T, u *uvm.UtilityVM, pathPrefix string, operatingSystem string, wcowImageLayerFolders []string) {
+func testSCSIAddRemoveMultiple(t *testing.T, u *uvm.UtilityVM, pathPrefix string, operatingSystem name.OS, wcowImageLayerFolders []string) {
 	numDisks := 63 // Windows: 63 as the UVM scratch is at 0:0
-	if operatingSystem == "linux" {
+	if operatingSystem == name.Linux {
 		numDisks++ //
 	}
 
@@ -135,7 +136,7 @@ func testSCSIAddRemoveMultiple(t *testing.T, u *uvm.UtilityVM, pathPrefix string
 	disks := make([]string, numDisks)
 	for i := 0; i < numDisks; i++ {
 		tempDir := ""
-		if operatingSystem == "windows" {
+		if operatingSystem == name.Windows {
 			tempDir = testutilities.CreateWCOWBlankRWLayer(t, wcowImageLayerFolders)
 		} else {
 			tempDir = testutilities.CreateLCOWBlankRWLayer(context.Background(), t)

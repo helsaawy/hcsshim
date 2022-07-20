@@ -23,6 +23,7 @@ import (
 	"github.com/Microsoft/hcsshim/internal/jobobject"
 	"github.com/Microsoft/hcsshim/internal/layers"
 	"github.com/Microsoft/hcsshim/internal/log"
+	"github.com/Microsoft/hcsshim/internal/os/name"
 	"github.com/Microsoft/hcsshim/internal/queue"
 	"github.com/Microsoft/hcsshim/internal/resources"
 	"github.com/Microsoft/hcsshim/internal/winapi"
@@ -686,8 +687,8 @@ func (c *JobContainer) IsOCI() bool {
 }
 
 // OS returns the operating system name as a string. This should always be windows.
-func (c *JobContainer) OS() string {
-	return "windows"
+func (c *JobContainer) OS() name.OS {
+	return name.Windows
 }
 
 // For every process in the job `job`, run the function `work`. This can be used to grab/filter the SYSTEM_PROCESS_INFORMATION

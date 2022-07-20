@@ -86,14 +86,6 @@ const (
 	Update
 )
 
-// GuestOS signifies the guest operating system that a Utility VM will be running.
-type GuestOS string
-
-const (
-	Windows GuestOS = "windows"
-	Linux   GuestOS = "linux"
-)
-
 // SCSIDiskType refers to the disk type of the scsi device. This is either a vhd, vhdx, or a physical disk.
 type SCSIDiskType uint8
 

@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
+	osversion "github.com/Microsoft/hcsshim/internal/os/version"
 	"github.com/Microsoft/hcsshim/internal/uvm"
-	"github.com/Microsoft/hcsshim/osversion"
 	testutilities "github.com/Microsoft/hcsshim/test/functional/utilities"
 )
 

@@ -8,8 +8,8 @@ import (
 	"github.com/Microsoft/hcsshim/internal/appargs"
 	"github.com/Microsoft/hcsshim/internal/lcow"
 	"github.com/Microsoft/hcsshim/internal/oc"
+	osversion "github.com/Microsoft/hcsshim/internal/os/version"
 	"github.com/Microsoft/hcsshim/internal/uvm"
-	"github.com/Microsoft/hcsshim/osversion"
 	"github.com/pkg/errors"
 	"github.com/urfave/cli"
 )

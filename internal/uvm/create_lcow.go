@@ -24,10 +24,11 @@ import (
 	"github.com/Microsoft/hcsshim/internal/log"
 	"github.com/Microsoft/hcsshim/internal/logfields"
 	"github.com/Microsoft/hcsshim/internal/oc"
+	"github.com/Microsoft/hcsshim/internal/os/name"
+	osversion "github.com/Microsoft/hcsshim/internal/os/version"
 	"github.com/Microsoft/hcsshim/internal/processorinfo"
 	"github.com/Microsoft/hcsshim/internal/protocol/guestrequest"
 	"github.com/Microsoft/hcsshim/internal/schemaversion"
-	"github.com/Microsoft/hcsshim/osversion"
 )
 
 // General information about how this works at a high level.
@@ -732,7 +733,7 @@ func CreateLCOW(ctx context.Context, opts *OptionsLCOW) (_ *UtilityVM, err error
 	uvm := &UtilityVM{
 		id:                      opts.ID,
 		owner:                   opts.Owner,
-		operatingSystem:         "linux",
+		operatingSystem:         name.Linux,
 		scsiControllerCount:     opts.SCSIControllerCount,
 		vpmemMaxCount:           opts.VPMemDeviceCount,
 		vpmemMaxSizeBytes:       opts.VPMemSizeBytes,

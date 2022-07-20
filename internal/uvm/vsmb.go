@@ -19,9 +19,10 @@ import (
 	"github.com/Microsoft/hcsshim/internal/hcs/resourcepaths"
 	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
 	"github.com/Microsoft/hcsshim/internal/log"
+	"github.com/Microsoft/hcsshim/internal/os/name"
+	osversion "github.com/Microsoft/hcsshim/internal/os/version"
 	"github.com/Microsoft/hcsshim/internal/protocol/guestrequest"
 	"github.com/Microsoft/hcsshim/internal/winapi"
-	"github.com/Microsoft/hcsshim/osversion"
 )
 
 const (
@@ -162,7 +163,7 @@ func forceNoDirectMap(path string) (bool, error) {
 // only added if it isn't already. This is used for read-only layers, mapped directories
 // to a container, and for mapped pipes.
 func (uvm *UtilityVM) AddVSMB(ctx context.Context, hostPath string, options *hcsschema.VirtualSmbShareOptions) (*VSMBShare, error) {
-	if uvm.operatingSystem != "windows" {
+	if uvm.operatingSystem != name.Windows {
 		return nil, errNotSupported
 	}
 
@@ -258,7 +259,7 @@ func (uvm *UtilityVM) AddVSMB(ctx context.Context, hostPath string, options *hcs
 // RemoveVSMB removes a VSMB share from a utility VM. Each VSMB share is ref-counted
 // and only actually removed when the ref-count drops to zero.
 func (uvm *UtilityVM) RemoveVSMB(ctx context.Context, hostPath string, readOnly bool) error {
-	if uvm.operatingSystem != "windows" {
+	if uvm.operatingSystem != name.Windows {
 		return errNotSupported
 	}
 

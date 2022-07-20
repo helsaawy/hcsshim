@@ -20,8 +20,9 @@ import (
 	"github.com/Microsoft/hcsshim/internal/log"
 	"github.com/Microsoft/hcsshim/internal/logfields"
 	"github.com/Microsoft/hcsshim/internal/oc"
+	"github.com/Microsoft/hcsshim/internal/os/name"
+	osversion "github.com/Microsoft/hcsshim/internal/os/version"
 	"github.com/Microsoft/hcsshim/internal/schemaversion"
-	"github.com/Microsoft/hcsshim/osversion"
 )
 
 // Options are the set of options passed to Create() to create a utility vm.
@@ -208,7 +209,7 @@ func (uvm *UtilityVM) ID() string {
 }
 
 // OS returns the operating system of the utility VM.
-func (uvm *UtilityVM) OS() osversion.Name {
+func (uvm *UtilityVM) OS() name.OS {
 	return uvm.operatingSystem
 }
 

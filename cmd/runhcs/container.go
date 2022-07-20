@@ -20,11 +20,12 @@ import (
 	"github.com/Microsoft/hcsshim/internal/hcsoci"
 	"github.com/Microsoft/hcsshim/internal/logfields"
 	"github.com/Microsoft/hcsshim/internal/oci"
+	"github.com/Microsoft/hcsshim/internal/os/name"
+	osversion "github.com/Microsoft/hcsshim/internal/os/version"
 	"github.com/Microsoft/hcsshim/internal/regstate"
 	"github.com/Microsoft/hcsshim/internal/resources"
 	"github.com/Microsoft/hcsshim/internal/runhcs"
 	"github.com/Microsoft/hcsshim/internal/uvm"
-	"github.com/Microsoft/hcsshim/osversion"
 	"github.com/Microsoft/hcsshim/pkg/annotations"
 	specs "github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/sirupsen/logrus"
@@ -231,13 +232,13 @@ func parseSandboxAnnotations(a map[string]string) (string, bool) {
 
 // startVMShim starts a vm-shim command with the specified `opts`. `opts` can be `uvm.OptionsWCOW` or `uvm.OptionsLCOW`
 func (c *container) startVMShim(logFile string, opts interface{}) (*os.Process, error) {
-	var os string
+	var os name.OS
 	if _, ok := opts.(*uvm.OptionsLCOW); ok {
-		os = "linux"
+		os = name.Windows
 	} else {
-		os = "windows"
+		os = name.Windows
 	}
-	args := []string{"--os", os}
+	args := []string{"--os", os.String()}
 	if strings.HasPrefix(logFile, runhcs.SafePipePrefix) {
 		args = append(args, "--log-pipe", logFile)
 	}

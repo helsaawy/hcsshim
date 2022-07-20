@@ -18,6 +18,7 @@ import (
 	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
 	"github.com/Microsoft/hcsshim/internal/hcserror"
 	"github.com/Microsoft/hcsshim/internal/log"
+	"github.com/Microsoft/hcsshim/internal/os/name"
 	"github.com/Microsoft/hcsshim/internal/ospath"
 	"github.com/Microsoft/hcsshim/internal/uvm"
 	"github.com/Microsoft/hcsshim/internal/wclayer"
@@ -72,7 +73,7 @@ func (layers *ImageLayers) Release(ctx context.Context, all bool) error {
 // UVM at which container scratch directory is located. Usually, this path is the path at which the container
 // scratch VHD is mounted. However, in case of scratch sharing this is a directory under the UVM scratch.
 func MountLCOWLayers(ctx context.Context, containerID string, layerFolders []string, guestRoot, volumeMountPath string, vm *uvm.UtilityVM) (_, _ string, err error) {
-	if vm.OS() != "linux" {
+	if vm.OS() != name.Linux {
 		return "", "", errors.New("MountLCOWLayers should only be called for LCOW")
 	}
 
@@ -133,7 +134,7 @@ func MountLCOWLayers(ctx context.Context, containerID string, layerFolders []str
 	// work directories colliding in the UVM.
 	if scsiMount.RefCount() > 1 {
 		scratchFmt := fmt.Sprintf("container_%s", filepath.Base(containerScratchPathInUVM))
-		containerScratchPathInUVM = ospath.Join("linux", scsiMount.UVMPath, scratchFmt)
+		containerScratchPathInUVM = ospath.Join(name.Linux, scsiMount.UVMPath, scratchFmt)
 	}
 
 	defer func() {
@@ -243,7 +244,7 @@ func MountWCOWLayers(ctx context.Context, containerID string, layerFolders []str
 		return mountPath, nil
 	}
 
-	if vm.OS() != "windows" {
+	if vm.OS() != name.Windows {
 		return "", errors.New("MountWCOWLayers should only be called for WCOW")
 	}
 
@@ -427,7 +428,7 @@ func UnmountContainerLayers(ctx context.Context, layerFolders []string, containe
 
 	// Always remove the combined layers as they are part of scsi/vsmb/vpmem
 	// removals.
-	if vm.OS() == "windows" {
+	if vm.OS() == name.Windows {
 		if err := vm.RemoveCombinedLayersWCOW(ctx, containerRootPath); err != nil {
 			log.G(ctx).WithError(err).Warn("failed guest request to remove combined layers")
 			retError = err
@@ -458,7 +459,7 @@ func UnmountContainerLayers(ctx context.Context, layerFolders []string, containe
 	// Remove each of the read-only layers from VSMB. These's are ref-counted and
 	// only removed once the count drops to zero. This allows multiple containers
 	// to share layers.
-	if vm.OS() == "windows" && (op&UnmountOperationVSMB) == UnmountOperationVSMB {
+	if vm.OS() == name.Windows && (op&UnmountOperationVSMB) == UnmountOperationVSMB {
 		for _, layerPath := range layerFolders[:len(layerFolders)-1] {
 			if e := vm.RemoveVSMB(ctx, layerPath, true); e != nil {
 				log.G(ctx).WithError(e).Warn("remove VSMB failed")
@@ -474,7 +475,7 @@ func UnmountContainerLayers(ctx context.Context, layerFolders []string, containe
 	// Remove each of the read-only layers from VPMEM (or SCSI). These's are ref-counted
 	// and only removed once the count drops to zero. This allows multiple containers to
 	// share layers. Note that SCSI is used on large layers.
-	if vm.OS() == "linux" && (op&UnmountOperationVPMEM) == UnmountOperationVPMEM {
+	if vm.OS() == name.Linux && (op&UnmountOperationVPMEM) == UnmountOperationVPMEM {
 		for _, layerPath := range layerFolders[:len(layerFolders)-1] {
 			hostPath := filepath.Join(layerPath, "layer.vhd")
 			if err := removeLCOWLayer(ctx, vm, hostPath); err != nil {
@@ -508,7 +509,7 @@ func GetHCSLayers(ctx context.Context, vm *uvm.UtilityVM, paths []string) (layer
 }
 
 func containerRootfsPath(vm *uvm.UtilityVM, rootPath string) string {
-	if vm.OS() == "windows" {
+	if vm.OS() == name.Windows {
 		return ospath.Join(vm.OS(), rootPath)
 	}
 	return ospath.Join(vm.OS(), rootPath, guestpath.RootfsPath)

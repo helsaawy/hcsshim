@@ -14,6 +14,7 @@ import (
 	cmdpkg "github.com/Microsoft/hcsshim/internal/cmd"
 	"github.com/Microsoft/hcsshim/internal/copyfile"
 	"github.com/Microsoft/hcsshim/internal/log"
+	"github.com/Microsoft/hcsshim/internal/os/name"
 	"github.com/Microsoft/hcsshim/internal/timeout"
 	"github.com/Microsoft/hcsshim/internal/uvm"
 	"github.com/sirupsen/logrus"
@@ -39,7 +40,7 @@ func CreateScratch(ctx context.Context, lcowUVM *uvm.UtilityVM, destFile string,
 		return fmt.Errorf("no uvm")
 	}
 
-	if lcowUVM.OS() != "linux" {
+	if lcowUVM.OS() != name.Linux {
 		return errors.New("lcow::CreateScratch requires a linux utility VM to operate")
 	}
 

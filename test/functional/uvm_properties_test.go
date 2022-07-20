@@ -8,7 +8,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/Microsoft/hcsshim/osversion"
+	osversion "github.com/Microsoft/hcsshim/internal/os/version"
 	testutilities "github.com/Microsoft/hcsshim/test/functional/utilities"
 )
 

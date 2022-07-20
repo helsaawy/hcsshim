@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/Microsoft/go-winio"
+	"github.com/Microsoft/hcsshim/internal/os/name"
 	"github.com/Microsoft/hcsshim/pkg/annotations"
 	"github.com/containerd/containerd/runtime/v2/task"
 	"github.com/containerd/ttrpc"
@@ -144,7 +145,7 @@ func Test_Start_NoPod_Config(t *testing.T) {
 	cmd, stdout, stderr := createStartCommand(t)
 	defer cleanupTestBundle(t, cmd.Dir)
 
-	g, err := generate.New("windows")
+	g, err := generate.New(name.Windows.String())
 	if err != nil {
 		t.Fatalf("failed to generate Windows config with error: %v", err)
 	}
@@ -157,7 +158,7 @@ func Test_Start_Pod_Config(t *testing.T) {
 	cmd, stdout, stderr := createStartCommand(t)
 	defer cleanupTestBundle(t, cmd.Dir)
 
-	g, err := generate.New("windows")
+	g, err := generate.New(name.Windows.String())
 	if err != nil {
 		t.Fatalf("failed to generate Windows config with error: %v", err)
 	}
@@ -176,7 +177,7 @@ func Test_Start_Container_InPod_Config(t *testing.T) {
 	pcmd, _, _ := createStartCommandWithID(t, podID)
 	defer cleanupTestBundle(t, pcmd.Dir)
 
-	pg, perr := generate.New("windows")
+	pg, perr := generate.New(name.Windows.String())
 	if perr != nil {
 		t.Fatalf("failed to generate Windows config with error: %v", perr)
 	}
@@ -195,7 +196,7 @@ func Test_Start_Container_InPod_Config(t *testing.T) {
 	wcmd, wstdout, wstderr := createStartCommand(t)
 	defer cleanupTestBundle(t, wcmd.Dir)
 
-	wg, werr := generate.New("windows")
+	wg, werr := generate.New(name.Windows.String())
 	if werr != nil {
 		t.Fatalf("failed to generate Windows config with error: %v", werr)
 	}
@@ -213,7 +214,7 @@ func Test_Start_Container_InPod_Config_PodShim_Gone(t *testing.T) {
 	cmd, stdout, stderr := createStartCommand(t)
 	defer cleanupTestBundle(t, cmd.Dir)
 
-	g, err := generate.New("windows")
+	g, err := generate.New(name.Windows.String())
 	if err != nil {
 		t.Fatalf("failed to generate Windows config with error: %v", err)
 	}

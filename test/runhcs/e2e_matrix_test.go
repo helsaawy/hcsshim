@@ -17,7 +17,8 @@ import (
 	"testing"
 
 	"github.com/Microsoft/go-winio/vhd"
-	"github.com/Microsoft/hcsshim/osversion"
+	"github.com/Microsoft/hcsshim/internal/os/name"
+	osversion "github.com/Microsoft/hcsshim/internal/os/version"
 	runhcs "github.com/Microsoft/hcsshim/pkg/go-runhcs"
 	testutilities "github.com/Microsoft/hcsshim/test/functional/utilities"
 	runc "github.com/containerd/go-runc"
@@ -182,7 +183,7 @@ func testWindows(t *testing.T, version int, isolated bool) {
 	}()
 
 	// Generate the Spec
-	g, err := generate.New("windows")
+	g, err := generate.New(name.Windows.String())
 	if err != nil {
 		t.Errorf("failed to generate Windows config with error: %v", err)
 		return

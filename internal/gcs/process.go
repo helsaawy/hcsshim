@@ -15,6 +15,7 @@ import (
 	"github.com/Microsoft/hcsshim/internal/log"
 	"github.com/Microsoft/hcsshim/internal/logfields"
 	"github.com/Microsoft/hcsshim/internal/oc"
+	"github.com/Microsoft/hcsshim/internal/os/name"
 	"github.com/sirupsen/logrus"
 	"go.opencensus.io/trace"
 )
@@ -70,7 +71,7 @@ func (gc *GuestConnection) exec(ctx context.Context, cid string, params interfac
 	// instead of vsock ports.
 	var hvsockSettings executeProcessStdioRelaySettings
 	var vsockSettings executeProcessVsockStdioRelaySettings
-	if gc.os == "windows" {
+	if gc.os == name.Windows {
 		req.Settings.StdioRelaySettings = &hvsockSettings
 	} else {
 		req.Settings.VsockStdioRelaySettings = &vsockSettings

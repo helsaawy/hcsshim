@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/Microsoft/hcsshim/internal/memory"
-	"github.com/Microsoft/hcsshim/osversion"
+	osversion "github.com/Microsoft/hcsshim/internal/os/version"
 	"github.com/Microsoft/hcsshim/pkg/annotations"
 	testutilities "github.com/Microsoft/hcsshim/test/functional/utilities"
 	runtime "k8s.io/cri-api/pkg/apis/runtime/v1alpha2"

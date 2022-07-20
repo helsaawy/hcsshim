@@ -9,6 +9,7 @@ import (
 	"github.com/Microsoft/go-winio/pkg/guid"
 	"github.com/Microsoft/hcsshim/internal/hcs"
 	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
+	"github.com/Microsoft/hcsshim/internal/os/name"
 	"github.com/Microsoft/hcsshim/internal/vm"
 	"github.com/pkg/errors"
 	"golang.org/x/sys/windows"
@@ -18,7 +19,7 @@ var _ vm.UVM = &utilityVM{}
 
 type utilityVM struct {
 	id           string
-	guestOS      vm.GuestOS
+	guestOS      name.OS
 	cs           *hcs.System
 	backingType  vm.MemoryBackingType
 	vmmemProcess windows.Handle

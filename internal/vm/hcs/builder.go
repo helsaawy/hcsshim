@@ -7,6 +7,7 @@ import (
 
 	"github.com/Microsoft/hcsshim/internal/hcs"
 	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
+	"github.com/Microsoft/hcsshim/internal/os/name"
 	"github.com/Microsoft/hcsshim/internal/schemaversion"
 	"github.com/Microsoft/hcsshim/internal/vm"
 	"github.com/pkg/errors"
@@ -16,11 +17,11 @@ var _ vm.UVMBuilder = &utilityVMBuilder{}
 
 type utilityVMBuilder struct {
 	id      string
-	guestOS vm.GuestOS
+	guestOS name.OS
 	doc     *hcsschema.ComputeSystem
 }
 
-func NewUVMBuilder(id string, owner string, guestOS vm.GuestOS) (vm.UVMBuilder, error) {
+func NewUVMBuilder(id string, owner string, guestOS name.OS) (vm.UVMBuilder, error) {
 	doc := &hcsschema.ComputeSystem{
 		Owner:                             owner,
 		SchemaVersion:                     schemaversion.SchemaV21(),
@@ -47,9 +48,9 @@ func NewUVMBuilder(id string, owner string, guestOS vm.GuestOS) (vm.UVMBuilder, 
 	}
 
 	switch guestOS {
-	case vm.Windows:
+	case name.Windows:
 		doc.VirtualMachine.Devices.VirtualSmb = &hcsschema.VirtualSmb{}
-	case vm.Linux:
+	case name.Linux:
 		doc.VirtualMachine.Devices.Plan9 = &hcsschema.Plan9{}
 	default:
 		return nil, vm.ErrUnknownGuestOS

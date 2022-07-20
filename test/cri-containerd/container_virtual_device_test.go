@@ -11,7 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Microsoft/hcsshim/osversion"
+	"github.com/Microsoft/hcsshim/internal/os/name"
+	osversion "github.com/Microsoft/hcsshim/internal/os/version"
 	"github.com/Microsoft/hcsshim/pkg/annotations"
 	runtime "k8s.io/cri-api/pkg/apis/runtime/v1alpha2"
 )
@@ -22,9 +23,9 @@ const gpuWin32InstanceIDPrefix = "PCI#VEN_10DE"
 // makeGPUExecCommand constructs the container command to check for the
 // existence of a nvidia GPU device and returns the command in an
 // ExecSyncRequest
-func makeGPUExecCommand(os string, containerID string) *runtime.ExecSyncRequest {
+func makeGPUExecCommand(os name.OS, containerID string) *runtime.ExecSyncRequest {
 	cmd := []string{"ls", "/dev/nvidia0"}
-	if os == "windows" {
+	if os == name.Windows {
 		cmd = []string{containerDeviceUtilPath, "obj-dir"}
 	}
 
@@ -38,7 +39,7 @@ func makeGPUExecCommand(os string, containerID string) *runtime.ExecSyncRequest 
 // verifyGPUIsPresent is a helper function that runs a command in the container
 // to verify the existence of a GPU and fails the running test is none are found
 func verifyGPUIsPresentLCOW(t *testing.T, client runtime.RuntimeServiceClient, ctx context.Context, containerID string) {
-	execReq := makeGPUExecCommand("linux", containerID)
+	execReq := makeGPUExecCommand(name.Linux, containerID)
 	response := execSync(t, client, ctx, execReq)
 	if len(response.Stderr) != 0 {
 		t.Fatalf("expected to see no error, instead saw %s", string(response.Stderr))
@@ -49,7 +50,7 @@ func verifyGPUIsPresentLCOW(t *testing.T, client runtime.RuntimeServiceClient, c
 }
 
 func isGPUPresentWCOW(t *testing.T, client runtime.RuntimeServiceClient, ctx context.Context, containerID string) bool {
-	execReq := makeGPUExecCommand("windows", containerID)
+	execReq := makeGPUExecCommand(name.Windows, containerID)
 	response := execSync(t, client, ctx, execReq)
 	if len(response.Stderr) != 0 {
 		t.Fatalf("expected to see no error, instead saw %s", string(response.Stderr))
@@ -71,7 +72,7 @@ func isGPUPresentWCOW(t *testing.T, client runtime.RuntimeServiceClient, ctx con
 // to verify that there are no GPUs present in the container and fails the running test
 // if any are found
 func verifyGPUIsNotPresentLCOW(t *testing.T, client runtime.RuntimeServiceClient, ctx context.Context, containerID string) {
-	execReq := makeGPUExecCommand("linux", containerID)
+	execReq := makeGPUExecCommand(name.Linux, containerID)
 	response := execSync(t, client, ctx, execReq)
 	if len(response.Stderr) == 0 {
 		t.Fatal("expected to see an error as file /dev/nvidia0 should not exist, instead saw none")

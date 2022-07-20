@@ -19,6 +19,7 @@ import (
 	"github.com/Microsoft/hcsshim/internal/hcs/resourcepaths"
 	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
 	"github.com/Microsoft/hcsshim/internal/log"
+	"github.com/Microsoft/hcsshim/internal/os/name"
 	"github.com/Microsoft/hcsshim/internal/protocol/guestrequest"
 	"github.com/Microsoft/hcsshim/internal/protocol/guestresource"
 	"github.com/Microsoft/hcsshim/internal/security"
@@ -247,7 +248,7 @@ func (uvm *UtilityVM) RemoveSCSI(ctx context.Context, hostPath string) error {
 	// Note: We always send a guest eject even if there is no UVM path in lcow
 	// so that we synchronize the guest state. This seems to always avoid SCSI
 	// related errors if this index quickly reused by another container.
-	if uvm.operatingSystem == "windows" && sm.UVMPath != "" {
+	if uvm.operatingSystem == name.Windows && sm.UVMPath != "" {
 		scsiModification.GuestRequest = guestrequest.ModificationRequest{
 			ResourceType: guestresource.ResourceTypeMappedVirtualDisk,
 			RequestType:  guestrequest.RequestTypeRemove,
@@ -426,7 +427,7 @@ func (uvm *UtilityVM) addSCSIActual(ctx context.Context, addReq *addSCSIRequest)
 			RequestType:  guestrequest.RequestTypeAdd,
 		}
 
-		if uvm.operatingSystem == "windows" {
+		if uvm.operatingSystem == name.Windows {
 			guestReq.Settings = guestresource.WCOWMappedVirtualDisk{
 				ContainerPath: sm.UVMPath,
 				Lun:           sm.LUN,

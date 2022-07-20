@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
+	osversion "github.com/Microsoft/hcsshim/internal/os/version"
 	"github.com/Microsoft/hcsshim/internal/schemaversion"
-	"github.com/Microsoft/hcsshim/osversion"
 	_ "github.com/Microsoft/hcsshim/test/functional/manifest"
 	"github.com/sirupsen/logrus"
 )

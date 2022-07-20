@@ -19,9 +19,10 @@ import (
 	"github.com/Microsoft/hcsshim/internal/hns"
 	"github.com/Microsoft/hcsshim/internal/log"
 	"github.com/Microsoft/hcsshim/internal/ncproxyttrpc"
+	"github.com/Microsoft/hcsshim/internal/os/name"
+	osversion "github.com/Microsoft/hcsshim/internal/os/version"
 	"github.com/Microsoft/hcsshim/internal/protocol/guestrequest"
 	"github.com/Microsoft/hcsshim/internal/protocol/guestresource"
-	"github.com/Microsoft/hcsshim/osversion"
 )
 
 var (
@@ -343,7 +344,7 @@ func (uvm *UtilityVM) AddNetNS(ctx context.Context, hcnNamespace *hcn.HostComput
 	if uvm.isNetworkNamespaceSupported() {
 		// Add a Guest Network namespace. On LCOW we add the adapters
 		// dynamically.
-		if uvm.operatingSystem == "windows" {
+		if uvm.operatingSystem == name.Windows {
 			guestNamespace := hcsschema.ModifySettingRequest{
 				GuestRequest: guestrequest.ModificationRequest{
 					ResourceType: guestresource.ResourceTypeNetworkNamespace,
@@ -460,7 +461,7 @@ func (uvm *UtilityVM) RemoveNetNS(ctx context.Context, id string) error {
 		}
 		// Remove the Guest Network namespace
 		if uvm.isNetworkNamespaceSupported() {
-			if uvm.operatingSystem == "windows" {
+			if uvm.operatingSystem == name.Windows {
 				hcnNamespace, err := hcn.GetNamespaceByID(id)
 				if err != nil {
 					return err
@@ -555,7 +556,7 @@ func getNetworkModifyRequest(adapterID string, requestType guestrequest.RequestT
 // addNIC adds a nic to the Utility VM.
 func (uvm *UtilityVM) addNIC(ctx context.Context, id string, endpoint *hns.HNSEndpoint) error {
 	// First a pre-add. This is a guest-only request and is only done on Windows.
-	if uvm.operatingSystem == "windows" {
+	if uvm.operatingSystem == name.Windows {
 		preAddRequest := hcsschema.ModifySettingRequest{
 			GuestRequest: guestrequest.ModificationRequest{
 				ResourceType: guestresource.ResourceTypeNetwork,
@@ -581,7 +582,7 @@ func (uvm *UtilityVM) addNIC(ctx context.Context, id string, endpoint *hns.HNSEn
 		},
 	}
 
-	if uvm.operatingSystem == "windows" {
+	if uvm.operatingSystem == name.Windows {
 		request.GuestRequest = guestrequest.ModificationRequest{
 			ResourceType: guestresource.ResourceTypeNetwork,
 			RequestType:  guestrequest.RequestTypeAdd,
@@ -629,7 +630,7 @@ func (uvm *UtilityVM) removeNIC(ctx context.Context, id string, endpoint *hns.HN
 		},
 	}
 
-	if uvm.operatingSystem == "windows" {
+	if uvm.operatingSystem == name.Windows {
 		request.GuestRequest = hcsschema.ModifySettingRequest{
 			RequestType: guestrequest.RequestTypeRemove,
 			Settings: getNetworkModifyRequest(

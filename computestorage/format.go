@@ -9,7 +9,7 @@ import (
 
 	"github.com/Microsoft/go-winio/vhd"
 	"github.com/Microsoft/hcsshim/internal/oc"
-	"github.com/Microsoft/hcsshim/osversion"
+	osversion "github.com/Microsoft/hcsshim/internal/os/version"
 	"github.com/pkg/errors"
 	"golang.org/x/sys/windows"
 )

@@ -11,6 +11,7 @@ import (
 
 	"github.com/Microsoft/hcsshim/internal/jobobject"
 	"github.com/Microsoft/hcsshim/internal/log"
+	"github.com/Microsoft/hcsshim/internal/os/name"
 	"github.com/Microsoft/hcsshim/internal/vm"
 	"github.com/Microsoft/hcsshim/internal/vmservice"
 	"github.com/containerd/ttrpc"
@@ -23,13 +24,13 @@ var _ vm.UVMBuilder = &utilityVMBuilder{}
 
 type utilityVMBuilder struct {
 	id      string
-	guestOS vm.GuestOS
+	guestOS name.OS
 	job     *jobobject.JobObject
 	config  *vmservice.VMConfig
 	client  vmservice.VMService
 }
 
-func NewUVMBuilder(ctx context.Context, id, owner, binPath, addr string, guestOS vm.GuestOS) (vm.UVMBuilder, error) {
+func NewUVMBuilder(ctx context.Context, id, owner, binPath, addr string, guestOS name.OS) (vm.UVMBuilder, error) {
 	var job *jobobject.JobObject
 	if binPath != "" {
 		log.G(ctx).WithFields(logrus.Fields{

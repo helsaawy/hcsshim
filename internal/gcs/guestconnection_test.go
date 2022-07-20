@@ -22,6 +22,7 @@ import (
 	"go.opencensus.io/trace/tracestate"
 
 	"github.com/Microsoft/hcsshim/internal/oc"
+	"github.com/Microsoft/hcsshim/internal/os/name"
 )
 
 const pipePortFmt = `\\.\pipe\gctest-port-%d`
@@ -58,7 +59,7 @@ func simpleGcsLoop(t *testing.T, rw io.ReadWriter) error {
 			err := sendJSON(t, rw, msgTypeResponse|msgType(proc), id, &negotiateProtocolResponse{
 				Version: protocolVersion,
 				Capabilities: gcsCapabilities{
-					RuntimeOsType: "linux",
+					RuntimeOsType: name.Linux.String(),
 				},
 			})
 			if err != nil {

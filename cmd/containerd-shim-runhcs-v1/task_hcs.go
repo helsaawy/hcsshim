@@ -34,13 +34,14 @@ import (
 	"github.com/Microsoft/hcsshim/internal/memory"
 	"github.com/Microsoft/hcsshim/internal/oc"
 	"github.com/Microsoft/hcsshim/internal/oci"
+	"github.com/Microsoft/hcsshim/internal/os/name"
+	osversion "github.com/Microsoft/hcsshim/internal/os/version"
 	"github.com/Microsoft/hcsshim/internal/processorinfo"
 	"github.com/Microsoft/hcsshim/internal/protocol/guestrequest"
 	"github.com/Microsoft/hcsshim/internal/protocol/guestresource"
 	"github.com/Microsoft/hcsshim/internal/resources"
 	"github.com/Microsoft/hcsshim/internal/shimdiag"
 	"github.com/Microsoft/hcsshim/internal/uvm"
-	"github.com/Microsoft/hcsshim/osversion"
 	"github.com/Microsoft/hcsshim/pkg/annotations"
 )
 
@@ -283,7 +284,7 @@ func newClonedHcsTask(
 
 	owner := filepath.Base(os.Args[0])
 
-	if parent.OS() != "windows" {
+	if parent.OS() != name.Windows {
 		return nil, fmt.Errorf("cloned task can only be created inside a windows host")
 	}
 

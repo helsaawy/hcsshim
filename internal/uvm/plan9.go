@@ -11,9 +11,10 @@ import (
 	"github.com/Microsoft/hcsshim/internal/hcs"
 	"github.com/Microsoft/hcsshim/internal/hcs/resourcepaths"
 	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
+	"github.com/Microsoft/hcsshim/internal/os/name"
+	osversion "github.com/Microsoft/hcsshim/internal/os/version"
 	"github.com/Microsoft/hcsshim/internal/protocol/guestrequest"
 	"github.com/Microsoft/hcsshim/internal/protocol/guestresource"
-	"github.com/Microsoft/hcsshim/osversion"
 )
 
 // Plan9Share is a struct containing host paths for the UVM
@@ -35,7 +36,7 @@ const plan9Port = 564
 
 // AddPlan9 adds a Plan9 share to a utility VM.
 func (uvm *UtilityVM) AddPlan9(ctx context.Context, hostPath string, uvmPath string, readOnly bool, restrict bool, allowedNames []string) (*Plan9Share, error) {
-	if uvm.operatingSystem != "linux" {
+	if uvm.operatingSystem != name.Linux {
 		return nil, errNotSupported
 	}
 	if restrict && osversion.Build() < osversion.V19H1 {
@@ -111,7 +112,7 @@ func (uvm *UtilityVM) AddPlan9(ctx context.Context, hostPath string, uvmPath str
 // RemovePlan9 removes a Plan9 share from a utility VM. Each Plan9 share is ref-counted
 // and only actually removed when the ref-count drops to zero.
 func (uvm *UtilityVM) RemovePlan9(ctx context.Context, share *Plan9Share) error {
-	if uvm.operatingSystem != "linux" {
+	if uvm.operatingSystem != name.Linux {
 		return errNotSupported
 	}
 

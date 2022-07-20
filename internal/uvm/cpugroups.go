@@ -10,7 +10,7 @@ import (
 	"github.com/Microsoft/hcsshim/internal/cpugroup"
 	"github.com/Microsoft/hcsshim/internal/hcs/resourcepaths"
 	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
-	"github.com/Microsoft/hcsshim/osversion"
+	osversion "github.com/Microsoft/hcsshim/internal/os/version"
 )
 
 var errCPUGroupCreateNotSupported = fmt.Errorf("cpu group assignment on create requires a build of %d or higher", osversion.V21H1)

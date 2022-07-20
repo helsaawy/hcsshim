@@ -8,7 +8,7 @@ import (
 	"fmt"
 
 	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
-	"github.com/Microsoft/hcsshim/osversion"
+	osversion "github.com/Microsoft/hcsshim/internal/os/version"
 	"github.com/sirupsen/logrus"
 )
 

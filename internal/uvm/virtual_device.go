@@ -10,6 +10,7 @@ import (
 
 	"github.com/Microsoft/hcsshim/internal/hcs/resourcepaths"
 	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
+	"github.com/Microsoft/hcsshim/internal/os/name"
 	"github.com/Microsoft/hcsshim/internal/protocol/guestrequest"
 	"github.com/Microsoft/hcsshim/internal/protocol/guestresource"
 )
@@ -119,7 +120,7 @@ func (uvm *UtilityVM) AssignDevice(ctx context.Context, deviceID string, index u
 
 	// WCOW (when supported) does not require a guest request as part of the
 	// device assignment
-	if uvm.operatingSystem != "windows" {
+	if uvm.operatingSystem != name.Windows {
 		// for LCOW, we need to make sure that specific paths relating to the
 		// device exist so they are ready to be used by later
 		// work in openGCS

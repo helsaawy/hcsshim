@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 
 	"github.com/Microsoft/hcsshim/internal/oc"
-	"github.com/Microsoft/hcsshim/osversion"
+	osversion "github.com/Microsoft/hcsshim/internal/os/version"
 	"github.com/pkg/errors"
 	"go.opencensus.io/trace"
 	"golang.org/x/sys/windows"

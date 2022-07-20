@@ -9,6 +9,7 @@ import (
 
 	"github.com/Microsoft/hcsshim/internal/log"
 	"github.com/Microsoft/hcsshim/internal/logfields"
+	"github.com/Microsoft/hcsshim/internal/os/name"
 	"github.com/Microsoft/hcsshim/internal/uvm"
 )
 
@@ -26,7 +27,7 @@ func ExecInUvm(ctx context.Context, vm *uvm.UtilityVM, req *CmdProcessRequest) (
 	if req.Workdir != "" {
 		cmd.Spec.Cwd = req.Workdir
 	}
-	if vm.OS() == "windows" {
+	if vm.OS() == name.Windows {
 		cmd.Spec.User.Username = `NT AUTHORITY\SYSTEM`
 	}
 	cmd.Spec.Terminal = req.Terminal

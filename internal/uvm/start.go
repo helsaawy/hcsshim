@@ -23,6 +23,7 @@ import (
 	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
 	"github.com/Microsoft/hcsshim/internal/log"
 	"github.com/Microsoft/hcsshim/internal/logfields"
+	"github.com/Microsoft/hcsshim/internal/os/name"
 	"github.com/Microsoft/hcsshim/internal/protocol/guestrequest"
 	"github.com/Microsoft/hcsshim/internal/protocol/guestresource"
 )
@@ -128,7 +129,7 @@ func parseLogrus(vmid string) func(r io.Reader) {
 // connection we should do that setup here after we connect with the GCS.
 // This only applies for WCOW
 func (uvm *UtilityVM) configureHvSocketForGCS(ctx context.Context) (err error) {
-	if uvm.OS() != "windows" {
+	if uvm.OS() != name.Windows {
 		return nil
 	}
 
@@ -234,7 +235,7 @@ func (uvm *UtilityVM) Start(ctx context.Context) (err error) {
 		}
 
 		var initGuestState *gcs.InitialGuestState
-		if uvm.OS() == "windows" {
+		if uvm.OS() == name.Windows {
 			// Default to setting the time zone in the UVM to the hosts time zone unless the client asked to avoid this behavior. If so, assign
 			// to UTC.
 			if uvm.noInheritHostTimezone {

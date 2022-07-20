@@ -9,8 +9,9 @@ import (
 	"os"
 	"testing"
 
+	"github.com/Microsoft/hcsshim/internal/os/name"
+	osversion "github.com/Microsoft/hcsshim/internal/os/version"
 	"github.com/Microsoft/hcsshim/internal/uvm"
-	"github.com/Microsoft/hcsshim/osversion"
 	testutilities "github.com/Microsoft/hcsshim/test/functional/utilities"
 	"github.com/sirupsen/logrus"
 )
@@ -26,7 +27,7 @@ func runMemStartWCOWTest(t *testing.T, opts *uvm.OptionsWCOW) {
 	u.Close()
 }
 
-func runMemTests(t *testing.T, os string) {
+func runMemTests(t *testing.T, os name.OS) {
 	type testCase struct {
 		allowOvercommit      bool
 		enableDeferredCommit bool
@@ -39,7 +40,7 @@ func runMemTests(t *testing.T, os string) {
 	}
 
 	for _, bt := range testCases {
-		if os == "windows" {
+		if os == name.Windows {
 			wopts := uvm.NewDefaultOptionsWCOW(t.Name(), "")
 			wopts.MemorySizeInMB = 512
 			wopts.AllowOvercommit = bt.allowOvercommit
@@ -57,12 +58,12 @@ func runMemTests(t *testing.T, os string) {
 
 func TestMemBackingTypeWCOW(t *testing.T) {
 	testutilities.RequiresBuild(t, osversion.RS5)
-	runMemTests(t, "windows")
+	runMemTests(t, name.Windows)
 }
 
 func TestMemBackingTypeLCOW(t *testing.T) {
 	testutilities.RequiresBuild(t, osversion.RS5)
-	runMemTests(t, "linux")
+	runMemTests(t, name.Linux)
 }
 
 func runBenchMemStartTest(b *testing.B, opts *uvm.OptionsLCOW) {
