@@ -9,11 +9,13 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	specs "github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/pkg/errors"
 
 	"github.com/Microsoft/hcsshim/internal/devices"
+	"github.com/Microsoft/hcsshim/internal/devices/utility"
 	"github.com/Microsoft/hcsshim/internal/guestpath"
 	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
 	"github.com/Microsoft/hcsshim/internal/log"
@@ -22,17 +24,61 @@ import (
 	"github.com/Microsoft/hcsshim/internal/uvm"
 	"github.com/Microsoft/hcsshim/osversion"
 	"github.com/Microsoft/hcsshim/pkg/annotations"
+	"github.com/Microsoft/hcsshim/pkg/annotations/payload"
 )
-
-const deviceUtilExeName = "device-util.exe"
 
 // getSpecKernelDrivers gets any device drivers specified on the spec.
 // Drivers are optional, therefore do not return an error if none are on the spec.
-func getSpecKernelDrivers(annots map[string]string) ([]string, error) {
-	drivers := oci.ParseAnnotationCommaSeparated(annotations.VirtualMachineKernelDrivers, annots)
+// os is used to set the appropriate driver type if the annotation payload is comma-separated
+// list.
+func getSpecKernelDrivers(annots map[string]string, osName string) ([]*payload.Driver, error) {
+	// `osName` and not `os` to avoid collision with "os" package
+	s := annots[annotations.VirtualMachineKernelDrivers]
+	if s == "" {
+		return nil, nil
+	}
+
+	drivers, err := parseKernelDrivers(s, osName)
+	if err != nil {
+		return nil, err
+	}
+
 	for _, driver := range drivers {
-		if _, err := os.Stat(driver); err != nil {
-			return nil, errors.Wrapf(err, "failed to find path to drivers at %s", driver)
+		if err := driver.Validate(); err != nil {
+			return nil, err
+		}
+	}
+	return drivers, nil
+}
+
+func parseKernelDrivers(s string, osName string) (drivers []*payload.Driver, err error) {
+	if err = json.Unmarshal([]byte(s), &drivers); err == nil {
+		return drivers, nil
+	}
+
+	// if the error is not a syntax error at the first character, then its not a string of paths,
+	// and is invalid json (want to avoid checking error message for "invalid character" string)
+	// then its
+	se := &json.SyntaxError{}
+	if !(errors.As(err, &se) && se.Offset == 1) {
+		return nil, err
+	}
+
+	var t payload.DriverType
+	switch osName {
+	case "windows":
+		t = payload.DriverTypeWindows
+	case "linux":
+		t = payload.DriverTypeLinux
+	default:
+		return nil, fmt.Errorf("unknown OS %q", osName)
+	}
+	paths := strings.Split(s, ",")
+	drivers = make([]*payload.Driver, len(paths))
+	for i, p := range paths {
+		drivers[i] = &payload.Driver{
+			Path: p,
+			Type: t,
 		}
 	}
 	return drivers, nil
@@ -52,7 +98,7 @@ func getDeviceExtensionPaths(annots map[string]string) ([]string, error) {
 
 // getGPUVHDPath gets the gpu vhd path from the shim options or uses the default if no
 // shim option is set. Right now we only support Nvidia gpus, so this will default to
-// a gpu vhd with nvidia files
+// a gpu vhd with nvidia files.
 func getGPUVHDPath(annot map[string]string) (string, error) {
 	gpuVHDPath, ok := annot[annotations.GPUVHDPath]
 	if !ok || gpuVHDPath == "" {
@@ -62,11 +108,6 @@ func getGPUVHDPath(annot map[string]string) (string, error) {
 		return "", errors.Wrapf(err, "failed to find gpu support vhd %s", gpuVHDPath)
 	}
 	return gpuVHDPath, nil
-}
-
-// getDeviceUtilHostPath is a simple helper function to find the host path of the device-util tool
-func getDeviceUtilHostPath() string {
-	return filepath.Join(filepath.Dir(os.Args[0]), deviceUtilExeName)
 }
 
 func isDeviceExtensionsSupported() bool {
@@ -132,14 +173,8 @@ func handleAssignedDevicesWindows(
 	}()
 
 	// install the device util tool in the UVM
-	toolHostPath := getDeviceUtilHostPath()
-	options := vm.DefaultVSMBOptions(true)
-	toolsShare, err := vm.AddVSMB(ctx, toolHostPath, options)
-	if err != nil {
-		return nil, closers, fmt.Errorf("failed to add VSMB share to utility VM for path %+v: %s", toolHostPath, err)
-	}
-	closers = append(closers, toolsShare)
-	deviceUtilPath, err := vm.GetVSMBUvmPath(ctx, toolHostPath, true)
+	deviceUtilPath, toolCloser, err := utility.InstallDeviceUtility(ctx, vm)
+	closers = append(closers, toolCloser)
 	if err != nil {
 		return nil, closers, err
 	}
@@ -198,7 +233,9 @@ func handleAssignedDevicesLCOW(
 			pciID, index := getDeviceInfoFromPath(d.ID)
 			vpci, err := vm.AssignDevice(ctx, pciID, index, "")
 			if err != nil {
-				return resultDevs, closers, errors.Wrapf(err, "failed to assign device %s, function %d to pod %s", pciID, index, vm.ID())
+				return resultDevs, closers, errors.Wrapf(err,
+					"failed to assign device %s, function %d to pod %s",
+					pciID, index, vm.ID())
 			}
 			closers = append(closers, vpci)
 
@@ -230,7 +267,9 @@ func handleAssignedDevicesLCOW(
 			uvm.VMAccessTypeNoop,
 		)
 		if err != nil {
-			return resultDevs, closers, errors.Wrapf(err, "failed to add scsi device %s in the UVM %s at %s", gpuSupportVhdPath, vm.ID(), guestpath.LCOWNvidiaMountPath)
+			return resultDevs, closers, errors.Wrapf(err,
+				"failed to add scsi device %s in the UVM %s at %s",
+				gpuSupportVhdPath, vm.ID(), guestpath.LCOWNvidiaMountPath)
 		}
 		closers = append(closers, scsiMount)
 	}
@@ -238,7 +277,15 @@ func handleAssignedDevicesLCOW(
 	return resultDevs, closers, nil
 }
 
-func installPodDrivers(ctx context.Context, vm *uvm.UtilityVM, annotations map[string]string) (closers []resources.ResourceCloser, err error) {
+// installPodDrivers installs the kernel drivers on the pod.
+// It skips over legacy drivers if reinstall is true, since those drivers cannot be reinstalled
+// without first stopping and removing the underlying service.
+func installPodDrivers(
+	ctx context.Context,
+	vm *uvm.UtilityVM,
+	annots map[string]string,
+	reinstall bool,
+) (closers []resources.ResourceCloser, err error) {
 	defer func() {
 		if err != nil {
 			// best effort clean up allocated resources on failure
@@ -251,16 +298,20 @@ func installPodDrivers(ctx context.Context, vm *uvm.UtilityVM, annotations map[s
 	}()
 
 	// get the spec specified kernel drivers and install them on the UVM
-	drivers, err := getSpecKernelDrivers(annotations)
+	drivers, err := getSpecKernelDrivers(annots, vm.OS())
 	if err != nil {
 		return closers, err
 	}
 	for _, d := range drivers {
-		driverCloser, err := devices.InstallKernelDriver(ctx, vm, d)
+		// cannot re-install drivers without first stopping and removing them
+		if reinstall && d.Type == payload.DriverTypeWindowsLegacy {
+			continue
+		}
+		driverClosers, err := devices.InstallKernelDriver(ctx, vm, d) //nolint:govet
 		if err != nil {
 			return closers, err
 		}
-		closers = append(closers, driverCloser)
+		closers = append(closers, driverClosers...)
 	}
 	return closers, err
 }

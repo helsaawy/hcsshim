@@ -6,8 +6,12 @@ package devices
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
+	"net"
+	"strings"
 
 	"github.com/Microsoft/hcsshim/internal/cmd"
+	"github.com/Microsoft/hcsshim/internal/devices/utility"
 	"github.com/Microsoft/hcsshim/internal/log"
 	"github.com/Microsoft/hcsshim/internal/uvm"
 	"github.com/pkg/errors"
@@ -68,7 +72,7 @@ func getChildrenDeviceLocationPaths(ctx context.Context, vm *uvm.UtilityVM, vmBu
 
 	go readCsPipeOutput(l, errChan, &pipeResults)
 
-	args := createDeviceUtilChildrenCommand(deviceUtilPath, vmBusInstanceID)
+	args := utility.CreateChildrenCommand(deviceUtilPath, vmBusInstanceID)
 	cmdReq := &cmd.CmdProcessRequest{
 		Args:   args,
 		Stdout: p,
@@ -91,17 +95,31 @@ func getChildrenDeviceLocationPaths(ctx context.Context, vm *uvm.UtilityVM, vmBu
 	return pipeResults, nil
 }
 
-// createDeviceUtilChildrenCommand constructs a device-util command to query the UVM for
-// device information
-//
-// `deviceUtilPath` is the UVM path to device-util
-//
-// `vmBusInstanceID` is a string of the vmbus instance ID already assigned to the UVM
-//
-// Returns a slice of strings that represent the location paths in the UVM of the
-// target devices
-func createDeviceUtilChildrenCommand(deviceUtilPath string, vmBusInstanceID string) []string {
-	parentIDsFlag := fmt.Sprintf("--parentID=%s", vmBusInstanceID)
-	args := []string{deviceUtilPath, "children", parentIDsFlag, "--property=location"}
-	return args
+// readCsPipeOutput is a helper function that connects to a listener and reads
+// the connection's comma separated output until done. resulting comma separated
+// values are returned in the `result` param. The `errChan` param is used to
+// propagate an errors to the calling function.
+func readCsPipeOutput(l net.Listener, errChan chan<- error, result *[]string) {
+	defer close(errChan)
+	c, err := l.Accept()
+	if err != nil {
+		errChan <- errors.Wrapf(err, "failed to accept named pipe")
+		return
+	}
+	bytes, err := ioutil.ReadAll(c)
+	if err != nil {
+		errChan <- err
+		return
+	}
+
+	elementsAsString := strings.TrimSuffix(string(bytes), "\n")
+	elements := strings.Split(elementsAsString, ",")
+	*result = append(*result, elements...)
+
+	if len(*result) == 0 {
+		errChan <- errNoExecOutput
+		return
+	}
+
+	errChan <- nil
 }

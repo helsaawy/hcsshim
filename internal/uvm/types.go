@@ -73,6 +73,7 @@ type UtilityVM struct {
 	// unrestricted mappings of directories. `vsmbFileShares` tracks shares that
 	// are restricted to some subset of files in the directory. This is used as
 	// part of a temporary fix to allow WCOW single-file mapping to function.
+	// For file shares, the directory containing the files is the map key, not the file path itself.
 	vsmbDirShares   map[string]*VSMBShare
 	vsmbFileShares  map[string]*VSMBShare
 	vsmbCounter     uint64 // Counter to generate a unique share name for each VSMB share.

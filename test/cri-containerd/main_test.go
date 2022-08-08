@@ -87,10 +87,12 @@ var (
 // Flags
 var (
 	flagFeatures              = testutilities.NewStringSetFlag()
-	flagCRIEndpoint           = flag.String("cri-endpoint", "tcp://127.0.0.1:2376", "Address of CRI runtime and image service.")
+	flagCRIEndpoint           = flag.String("cri-endpoint", "tcp://127.0.0.1:2376", "`address` of CRI runtime and image service.")
 	flagVirtstack             = flag.String("virtstack", "", "Virtstack to use for hypervisor isolated containers")
-	flagVMServiceBinary       = flag.String("vmservice-binary", "", "Path to a binary implementing the vmservice ttrpc service")
-	flagContainerdServiceName = flag.String("containerd-service-name", "containerd", "Name of the containerd Windows service")
+	flagVMServiceBinary       = flag.String("vmservice-binary", "", "`path` to a binary implementing the vmservice ttrpc service")
+	flagContainerdServiceName = flag.String("containerd-service-name", "containerd", "name of the containerd Windows `service`")
+	flagLegacyDriversDir      = flag.String("legacy-drivers", `C:\ContainerPlat\testdrivers`,
+		"`directory` containtaining legacy drivers to install with \""+featureLegacyDrivers+`" feature`)
 )
 
 // Features
@@ -102,6 +104,7 @@ const (
 	featureHostProcess        = "HostProcess"
 	featureGMSA               = "GMSA"
 	featureGPU                = "GPU"
+	featureLegacyDrivers      = "LegacyDrivers"
 	featureCRIUpdateContainer = "UpdateContainer"
 	featureTerminateOnRestart = "TerminateOnRestart"
 	featureLCOWIntegrity      = "LCOWIntegrity"
@@ -114,6 +117,7 @@ var allFeatures = []string{
 	featureHostProcess,
 	featureGMSA,
 	featureGPU,
+	featureLegacyDrivers,
 	featureCRIUpdateContainer,
 	featureTerminateOnRestart,
 }

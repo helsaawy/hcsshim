@@ -7,12 +7,13 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Microsoft/hcsshim/internal/cmd"
 	"github.com/Microsoft/hcsshim/internal/guestpath"
 	"github.com/Microsoft/hcsshim/internal/log"
+	"github.com/Microsoft/hcsshim/internal/logfields"
 	"github.com/Microsoft/hcsshim/internal/resources"
 	"github.com/Microsoft/hcsshim/internal/uvm"
-	"github.com/pkg/errors"
+	"github.com/Microsoft/hcsshim/pkg/annotations/payload"
+	"github.com/sirupsen/logrus"
 )
 
 // InstallKernelDriver mounts a specified kernel driver, then installs it in the UVM.
@@ -24,73 +25,56 @@ import (
 //
 // Returns a ResourceCloser for the added mount. On failure, the mounted share will be released,
 // the returned ResourceCloser will be nil, and an error will be returned.
-func InstallKernelDriver(ctx context.Context, vm *uvm.UtilityVM, driver string) (closer resources.ResourceCloser, err error) {
+func InstallKernelDriver(ctx context.Context, vm *uvm.UtilityVM, driver *payload.Driver) (closers []resources.ResourceCloser, err error) {
+	log.G(ctx).WithFields(logrus.Fields{
+		logfields.UVMID: vm.ID(),
+		"driver":        driver,
+	}).Trace("Installing kernrel driver")
+
 	defer func() {
-		if err != nil && closer != nil {
+		if err == nil {
+			return
+		}
+		for _, closer := range closers {
 			// best effort clean up allocated resource on failure
 			if releaseErr := closer.Release(ctx); releaseErr != nil {
 				log.G(ctx).WithError(releaseErr).Error("failed to release container resource")
 			}
-			closer = nil
 		}
+		closers = nil
 	}()
+
 	if vm.OS() == "windows" {
 		options := vm.DefaultVSMBOptions(true)
-		closer, err = vm.AddVSMB(ctx, driver, options)
-		if err != nil {
-			return closer, fmt.Errorf("failed to add VSMB share to utility VM for path %+v: %s", driver, err)
+		closer, err := vm.AddVSMB(ctx, driver.Path, options)
+		if closer != nil {
+			closers = append(closers, closer)
 		}
-		uvmPath, err := vm.GetVSMBUvmPath(ctx, driver, true)
 		if err != nil {
-			return closer, err
+			return closers, fmt.Errorf("failed to add VSMB share to utility VM for path %+v: %s", driver, err)
 		}
-		return closer, execPnPInstallDriver(ctx, vm, uvmPath)
+		uvmPath, err := vm.GetVSMBUvmPath(ctx, driver.Path, true)
+		if err != nil {
+			return closers, err
+		}
+		switch driver.Type {
+		case payload.DriverTypeWindows:
+			return closers, execPnPInstallDriver(ctx, vm, uvmPath)
+		case payload.DriverTypeWindowsLegacy:
+			closer, err := execDeviceUtilInstallDriver(ctx, vm, uvmPath, driver.Name)
+			closers = append(closers, closer)
+			return closers, err
+		default:
+		}
+		return closers, fmt.Errorf("unknown driver type %v", driver.Type)
 	}
 	uvmPathForShare := fmt.Sprintf(guestpath.LCOWGlobalMountPrefixFmt, vm.UVMMountCounter())
-	scsiCloser, err := vm.AddSCSI(ctx, driver, uvmPathForShare, true, false, []string{}, uvm.VMAccessTypeIndividual)
+	closer, err := vm.AddSCSI(ctx, driver.Path, uvmPathForShare, true, false, []string{}, uvm.VMAccessTypeIndividual)
+	if closer != nil {
+		closers = append(closers, closer)
+	}
 	if err != nil {
-		return closer, fmt.Errorf("failed to add SCSI disk to utility VM for path %+v: %s", driver, err)
+		return closers, fmt.Errorf("failed to add SCSI disk to utility VM for path %+v: %w", driver, err)
 	}
-	return scsiCloser, execModprobeInstallDriver(ctx, vm, uvmPathForShare)
-}
-
-func execModprobeInstallDriver(ctx context.Context, vm *uvm.UtilityVM, driverDir string) error {
-	p, l, err := cmd.CreateNamedPipeListener()
-	if err != nil {
-		return err
-	}
-	defer l.Close()
-
-	var stderrOutput string
-	errChan := make(chan error)
-
-	go readAllPipeOutput(l, errChan, &stderrOutput)
-
-	args := []string{
-		"/bin/install-drivers",
-		driverDir,
-	}
-	req := &cmd.CmdProcessRequest{
-		Args:   args,
-		Stderr: p,
-	}
-
-	exitCode, execErr := cmd.ExecInUvm(ctx, vm, req)
-
-	// wait to finish parsing stdout results
-	select {
-	case err := <-errChan:
-		if err != nil {
-			return errors.Wrap(err, execErr.Error())
-		}
-	case <-ctx.Done():
-		return errors.Wrap(ctx.Err(), execErr.Error())
-	}
-
-	if execErr != nil && execErr != noExecOutputErr {
-		return errors.Wrapf(execErr, "failed to install driver %s in uvm with exit code %d: %v", driverDir, exitCode, stderrOutput)
-	}
-
-	log.G(ctx).WithField("added drivers", driverDir).Debug("installed drivers")
-	return nil
+	return closers, execModprobeInstallDriver(ctx, vm, uvmPathForShare)
 }

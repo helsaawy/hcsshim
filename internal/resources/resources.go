@@ -98,6 +98,16 @@ type ResourceCloser interface {
 	Release(context.Context) error
 }
 
+type nopResourceCloser struct{}
+
+var _ ResourceCloser = nopResourceCloser{}
+
+// NopResourceCloser returns a no-op ResourceCloser that should be returned instead of nil
+// closers
+func NopResourceCloser() ResourceCloser { return nopResourceCloser{} }
+
+func (rc nopResourceCloser) Release(context.Context) error { return nil }
+
 // NewContainerResources returns a new empty container Resources struct with the
 // given container id
 func NewContainerResources(id string) *Resources {

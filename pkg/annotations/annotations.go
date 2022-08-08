@@ -77,10 +77,16 @@ const (
 	ContainerGPUCapabilities = "io.microsoft.container.gpu.capabilities"
 
 	// VirtualMachineKernelDrivers indicates what drivers to install in the pod.
-	// This value should contain a list of comma separated directories containing all
-	// files and information needed to install given driver(s). For windows, this may
-	// include .sys, .inf, .cer, and/or other files used during standard installation with pnputil.
-	// For LCOW, this may include a vhd file that contains kernel modules as *.ko files.
+	// This value should contain either a list of comma separated paths containing all
+	// files and information needed to install given driver(s), or an array of
+	// [Driver] structs encoded via [CreateDriverAnnotationPayload].
+	//
+	// For Windows, the paths should be directories that include the relevant .sys, .inf,
+	// .cer, or .cat files used during installation with pnputil.exe or by creating a
+	// kerne-driver type service (depending on the driver type).
+	//
+	// For Linux, the paths should be for for vhd(x) files that contains kernel modules as
+	// .ko files under  /lib/modules/`uname -r` for use with depmod and modprobe.
 	VirtualMachineKernelDrivers = "io.microsoft.virtualmachine.kerneldrivers"
 
 	// DeviceExtensions contains a comma separated list of full paths to device extension files.

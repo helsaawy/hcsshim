@@ -5,6 +5,7 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -314,8 +315,33 @@ func (c *Cmd) Run() error {
 // Output runs a command via Run and collects its stdout into a buffer,
 // which it returns.
 func (c *Cmd) Output() ([]byte, error) {
+	if c.Stdout != nil {
+		return nil, errors.New("command stdout already set")
+	}
 	var b bytes.Buffer
 	c.Stdout = &b
 	err := c.Run()
 	return b.Bytes(), err
+}
+
+// sharing a single buffer between stdout and stderr caused the streams to overwrite each other
+// todo: have hcs and gcs be signalled to only create one pipe and use it for both stdout and stderr
+// otherwise, cannot replicate "exec".Cmd.CombinedOuput
+//
+// Can use io.MultiReader, but that does not add any ergonomics, nor does it allow interleaving
+// of sources in real-time.
+
+// Output runs the command and returns the stdout and stderr output.
+func (c *Cmd) Outputs() ([]byte, []byte, error) {
+	if c.Stdout != nil {
+		return nil, nil, errors.New("stdout already set")
+	}
+	if c.Stderr != nil {
+		return nil, nil, errors.New("stderr already set")
+	}
+	var o, e bytes.Buffer
+	c.Stdout = &o
+	c.Stderr = &e
+	err := c.Run()
+	return o.Bytes(), e.Bytes(), err
 }

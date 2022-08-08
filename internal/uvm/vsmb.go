@@ -29,25 +29,47 @@ const (
 	vsmbCurrentSerialVersionID uint32 = 1
 )
 
-// VSMBShare contains the host path for a Vsmb Mount
+// VSMBShare contains the host path for a vSMB mount.
 type VSMBShare struct {
 	// UVM the resource belongs to
-	vm              *UtilityVM
-	HostPath        string
-	refCount        uint32
-	name            string
+	vm       *UtilityVM
+	HostPath string
+	refCount uint32
+	name     string
+	// files within HostPath that the vSMB share is making available to the uVM.
+	// This is only non-nil iff vsmb.options.SingleFileMapping & vsmb.options.RestrictFileAccess are true.
+	// Only append, do not delete
 	allowedFiles    []string
 	guestPath       string
 	options         hcsschema.VirtualSmbShareOptions
 	serialVersionID uint32
 }
 
-// Release frees the resources of the corresponding vsmb Mount
+var _ = (Cloneable)(&VSMBShare{})
+
+// Release frees the resources of the corresponding vSMB mount.
 func (vsmb *VSMBShare) Release(ctx context.Context) error {
-	if err := vsmb.vm.RemoveVSMB(ctx, vsmb.HostPath, vsmb.options.ReadOnly); err != nil {
-		return fmt.Errorf("failed to remove VSMB share: %s", err)
+	log.G(ctx).WithFields(logrus.Fields{
+		"path": vsmb.HostPath,
+		"ref":  vsmb.refCount,
+	}).Trace("releasing vSMB mount")
+
+	// uvm.RemoveVSMB uses the host path to decide which map to look for the file share
+	// use file host path to signal that file shares should be searched, not directory shares
+	path := vsmb.HostPath
+	if vsmb.IsFileShare() {
+		path = vsmb.allowedFiles[0]
+	}
+
+	if err := vsmb.vm.RemoveVSMB(ctx, path, vsmb.options.ReadOnly); err != nil {
+		return fmt.Errorf("failed to remove vSMB share: %w", err)
 	}
 	return nil
+}
+
+func (vsmb *VSMBShare) IsFileShare() bool {
+	// allowedFiles != nil iff (vsmb.options.SingleFileMapping && vsmb.options.RestrictFileAccess)
+	return len(vsmb.allowedFiles) > 0
 }
 
 // DefaultVSMBOptions returns the default VSMB options. If readOnly is specified,
@@ -87,12 +109,11 @@ func (uvm *UtilityVM) SetSaveableVSMBOptions(opts *hcsschema.VirtualSmbShareOpti
 }
 
 // findVSMBShare finds a share by `hostPath`. If not found returns `ErrNotAttached`.
-func (uvm *UtilityVM) findVSMBShare(ctx context.Context, m map[string]*VSMBShare, shareKey string) (*VSMBShare, error) {
-	share, ok := m[shareKey]
-	if !ok {
-		return nil, ErrNotAttached
+func (uvm *UtilityVM) findVSMBShare(_ context.Context, m map[string]*VSMBShare, shareKey string) (*VSMBShare, error) {
+	if share, ok := m[shareKey]; ok {
+		return share, nil
 	}
-	return share, nil
+	return nil, ErrNotAttached
 }
 
 // openHostPath opens the given path and returns the handle. The handle is opened with
@@ -100,7 +121,6 @@ func (uvm *UtilityVM) findVSMBShare(ctx context.Context, m map[string]*VSMBShare
 // function is intended to return a handle suitable for use with GetFileInformationByHandleEx.
 //
 // We are not able to use builtin Go functionality for opening a directory path:
-//
 //   - os.Open on a directory returns a os.File where Fd() is a search handle from FindFirstFile.
 //   - syscall.Open does not provide a way to specify FILE_FLAG_BACKUP_SEMANTICS, which is needed to
 //     open a directory.
@@ -164,6 +184,8 @@ func forceNoDirectMap(path string) (bool, error) {
 // only added if it isn't already. This is used for read-only layers, mapped directories
 // to a container, and for mapped pipes.
 func (uvm *UtilityVM) AddVSMB(ctx context.Context, hostPath string, options *hcsschema.VirtualSmbShareOptions) (*VSMBShare, error) {
+	entry := log.G(ctx).WithField("path", hostPath)
+	entry.Trace("Adding VSMB mount")
 	if uvm.operatingSystem != "windows" {
 		return nil, errNotSupported
 	}
@@ -181,25 +203,26 @@ func (uvm *UtilityVM) AddVSMB(ctx context.Context, hostPath string, options *hcs
 	// access to that file. If the directory has been mapped before for
 	// single-file use, add the new file to the `AllowedFileList` and issue an
 	// Update operation.
-	st, err := os.Stat(hostPath)
+	isDir, err := isPathDir(hostPath)
 	if err != nil {
 		return nil, err
 	}
 	var file string
 	m := uvm.vsmbDirShares
-	if !st.IsDir() {
+	if !isDir {
 		m = uvm.vsmbFileShares
 		file = hostPath
 		hostPath = filepath.Dir(hostPath)
 		options.RestrictFileAccess = true
 		options.SingleFileMapping = true
 	}
+	log.G(ctx).WithFields(logrus.Fields{"file shares": uvm.vsmbFileShares, "dir shares": uvm.vsmbDirShares}).Info("current shares are")
 	hostPath = filepath.Clean(hostPath)
 
 	if force, err := forceNoDirectMap(hostPath); err != nil {
 		return nil, err
 	} else if force {
-		log.G(ctx).WithField("path", hostPath).Info("Forcing NoDirectmap for VSMB mount")
+		entry.Info("Forcing NoDirectmap for VSMB mount")
 		options.NoDirectmap = true
 	}
 
@@ -220,7 +243,9 @@ func (uvm *UtilityVM) AddVSMB(ctx context.Context, hostPath string, options *hcs
 		}
 	}
 	newAllowedFiles := share.allowedFiles
+	//todo: prevent duplicate files, and prevent updating if no new files are added
 	if options.RestrictFileAccess {
+		entry.Debugf("adding %s to %s", file, newAllowedFiles)
 		newAllowedFiles = append(newAllowedFiles, file)
 	}
 
@@ -229,12 +254,13 @@ func (uvm *UtilityVM) AddVSMB(ctx context.Context, hostPath string, options *hcs
 	// isn't set (e.g. if used on an unrestricted share). So we only call Modify
 	// if we are either doing an Add, or if RestrictFileAccess is set.
 	if requestType == guestrequest.RequestTypeAdd || options.RestrictFileAccess {
-		log.G(ctx).WithFields(logrus.Fields{
-			"name":      share.name,
-			"path":      hostPath,
-			"options":   fmt.Sprintf("%+#v", options),
-			"operation": requestType,
-		}).Info("Modifying VSMB share")
+		entry.WithFields(logrus.Fields{
+			"name":         share.name,
+			"path":         hostPath,
+			"allowedFiles": newAllowedFiles,
+			"options":      fmt.Sprintf("%+#v", options),
+			"operation":    requestType,
+		}).Info("Modifying vSMB share")
 		modification := &hcsschema.ModifySettingRequest{
 			RequestType: requestType,
 			Settings: hcsschema.VirtualSmbShare{
@@ -252,6 +278,7 @@ func (uvm *UtilityVM) AddVSMB(ctx context.Context, hostPath string, options *hcs
 
 	share.allowedFiles = newAllowedFiles
 	share.refCount++
+	entry.WithField("ref", share.refCount).Debug("increased vSMB ref count")
 	share.options = *options
 	m[shareKey] = share
 	return share, nil
@@ -260,6 +287,9 @@ func (uvm *UtilityVM) AddVSMB(ctx context.Context, hostPath string, options *hcs
 // RemoveVSMB removes a VSMB share from a utility VM. Each VSMB share is ref-counted
 // and only actually removed when the ref-count drops to zero.
 func (uvm *UtilityVM) RemoveVSMB(ctx context.Context, hostPath string, readOnly bool) error {
+	entry := log.G(ctx).WithField("path", hostPath)
+	entry.Trace("Removing vSMB mount")
+
 	if uvm.operatingSystem != "windows" {
 		return errNotSupported
 	}
@@ -267,12 +297,12 @@ func (uvm *UtilityVM) RemoveVSMB(ctx context.Context, hostPath string, readOnly 
 	uvm.m.Lock()
 	defer uvm.m.Unlock()
 
-	st, err := os.Stat(hostPath)
+	isDir, err := isPathDir(hostPath)
 	if err != nil {
 		return err
 	}
 	m := uvm.vsmbDirShares
-	if !st.IsDir() {
+	if !isDir {
 		m = uvm.vsmbFileShares
 		hostPath = filepath.Dir(hostPath)
 	}
@@ -285,6 +315,7 @@ func (uvm *UtilityVM) RemoveVSMB(ctx context.Context, hostPath string, readOnly 
 
 	share.refCount--
 	if share.refCount > 0 {
+		entry.WithField("ref", share.refCount).Debug("vSMB share still in use")
 		return nil
 	}
 
@@ -294,7 +325,7 @@ func (uvm *UtilityVM) RemoveVSMB(ctx context.Context, hostPath string, readOnly 
 		ResourcePath: resourcepaths.VSMBShareResourcePath,
 	}
 	if err := uvm.modify(ctx, modification); err != nil {
-		return fmt.Errorf("failed to remove vsmb share %s from %s: %+v: %s", hostPath, uvm.id, modification, err)
+		return fmt.Errorf("failed to remove vsmb share %s from %s: %+v: %w", share.HostPath, uvm.id, modification, err)
 	}
 
 	delete(m, shareKey)
@@ -303,6 +334,8 @@ func (uvm *UtilityVM) RemoveVSMB(ctx context.Context, hostPath string, readOnly 
 
 // GetVSMBUvmPath returns the guest path of a VSMB mount.
 func (uvm *UtilityVM) GetVSMBUvmPath(ctx context.Context, hostPath string, readOnly bool) (string, error) {
+	// todo: can this be done directly from a vSMB share object? or does the guest path have to be
+	// looked up every time?
 	if hostPath == "" {
 		return "", fmt.Errorf("no hostPath passed to GetVSMBUvmPath")
 	}
@@ -310,13 +343,13 @@ func (uvm *UtilityVM) GetVSMBUvmPath(ctx context.Context, hostPath string, readO
 	uvm.m.Lock()
 	defer uvm.m.Unlock()
 
-	st, err := os.Stat(hostPath)
+	isDir, err := isPathDir(hostPath)
 	if err != nil {
 		return "", err
 	}
 	m := uvm.vsmbDirShares
 	f := ""
-	if !st.IsDir() {
+	if !isDir {
 		m = uvm.vsmbFileShares
 		hostPath, f = filepath.Split(hostPath)
 	}
@@ -329,9 +362,7 @@ func (uvm *UtilityVM) GetVSMBUvmPath(ctx context.Context, hostPath string, readO
 	return filepath.Join(share.guestPath, f), nil
 }
 
-var _ = (Cloneable)(&VSMBShare{})
-
-// GobEncode serializes the VSMBShare struct
+// GobEncode serializes the VSMBShare struct.
 func (vsmb *VSMBShare) GobEncode() ([]byte, error) {
 	var buf bytes.Buffer
 	encoder := gob.NewEncoder(&buf)
@@ -361,7 +392,7 @@ func (vsmb *VSMBShare) GobEncode() ([]byte, error) {
 }
 
 // GobDecode deserializes the VSMBShare struct into the struct on which this is called
-// (i.e the vsmb pointer)
+// (i.e the vsmb pointer).
 func (vsmb *VSMBShare) GobDecode(data []byte) error {
 	buf := bytes.NewBuffer(data)
 	decoder := gob.NewDecoder(buf)
@@ -434,4 +465,12 @@ func getVSMBShareKey(hostPath string, readOnly bool) string {
 
 func (vsmb *VSMBShare) GetSerialVersionID() uint32 {
 	return vsmbCurrentSerialVersionID
+}
+
+func isPathDir(p string) (bool, error) {
+	st, err := os.Stat(p)
+	if err != nil {
+		return false, err
+	}
+	return st.IsDir(), nil
 }
