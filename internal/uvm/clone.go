@@ -90,11 +90,7 @@ func (uvm *UtilityVM) GenerateTemplateConfig() (*UVMTemplateConfig, error) {
 		CreateOpts: uvm.createOpts.(OptionsWCOW),
 	}
 
-	for _, vsmbShare := range uvm.vsmbDirShares {
-		templateConfig.Resources = append(templateConfig.Resources, vsmbShare)
-	}
-
-	for _, vsmbShare := range uvm.vsmbFileShares {
+	for _, vsmbShare := range uvm.vsmb.Shares() {
 		templateConfig.Resources = append(templateConfig.Resources, vsmbShare)
 	}
 

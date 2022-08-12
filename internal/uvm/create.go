@@ -401,7 +401,7 @@ func (uvm *UtilityVM) DevicesPhysicallyBacked() bool {
 
 // VSMBNoDirectMap returns if VSMB devices should be mounted with `NoDirectMap` set to true
 func (uvm *UtilityVM) VSMBNoDirectMap() bool {
-	return uvm.vsmbNoDirectMap
+	return uvm.vsmb.noDirectMap
 }
 
 func (uvm *UtilityVM) NoWritableFileShares() bool {

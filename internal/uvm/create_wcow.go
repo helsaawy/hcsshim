@@ -270,16 +270,14 @@ func CreateWCOW(ctx context.Context, opts *OptionsWCOW) (_ *UtilityVM, err error
 		owner:                   opts.Owner,
 		operatingSystem:         "windows",
 		scsiControllerCount:     opts.SCSIControllerCount,
-		vsmbDirShares:           make(map[string]*VSMBShare),
-		vsmbFileShares:          make(map[string]*VSMBShare),
 		vpciDevices:             make(map[VPCIDeviceKey]*VPCIDevice),
 		noInheritHostTimezone:   opts.NoInheritHostTimezone,
 		physicallyBacked:        !opts.AllowOvercommit,
 		devicesPhysicallyBacked: opts.FullyPhysicallyBacked,
-		vsmbNoDirectMap:         opts.NoDirectMap,
 		noWritableFileShares:    opts.NoWritableFileShares,
 		createOpts:              *opts,
 	}
+	uvm.vsmb = NewController(uvm, opts.NoDirectMap)
 
 	defer func() {
 		if err != nil {

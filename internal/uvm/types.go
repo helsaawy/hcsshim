@@ -41,7 +41,7 @@ type UtilityVM struct {
 	gc               *gcs.GuestConnection // The GCS connection
 	processorCount   int32
 	physicallyBacked bool       // If the uvm is backed by physical memory and not virtual memory
-	m                sync.Mutex // Lock for adding/removing devices
+	m                sync.Mutex // Lock for enumerating as well as adding and removing devices
 
 	exitErr error
 	exitCh  chan struct{}
@@ -67,16 +67,7 @@ type UtilityVM struct {
 	// This option does not prevent writable SCSI mounts.
 	noWritableFileShares bool
 
-	// VSMB shares that are mapped into a Windows UVM. These are used for read-only
-	// layers and mapped directories.
-	// We maintain two sets of maps, `vsmbDirShares` tracks shares that are
-	// unrestricted mappings of directories. `vsmbFileShares` tracks shares that
-	// are restricted to some subset of files in the directory. This is used as
-	// part of a temporary fix to allow WCOW single-file mapping to function.
-	vsmbDirShares   map[string]*VSMBShare
-	vsmbFileShares  map[string]*VSMBShare
-	vsmbCounter     uint64 // Counter to generate a unique share name for each VSMB share.
-	vsmbNoDirectMap bool   // indicates if VSMB devices should be added with the `NoDirectMap` option
+	vsmb *vsmbManager
 
 	// VPMEM devices that are mapped into a Linux UVM. These are used for read-only layers, or for
 	// booting from VHD.
@@ -87,9 +78,11 @@ type UtilityVM struct {
 	vpmemDevicesMultiMapped [MaxVPMEMCount]*vPMemInfoMulti
 
 	// SCSI devices that are mapped into a Windows or Linux utility VM
-	scsiLocations       [4][64]*SCSIMount // Hyper-V supports 4 controllers, 64 slots per controller. Limited to 1 controller for now though.
-	scsiControllerCount uint32            // Number of SCSI controllers in the utility VM
-	encryptScratch      bool              // Enable scratch encryption
+
+	// Hyper-V supports 4 controllers, 64 slots per controller. Limited to 1 controller for now though.
+	scsiLocations       [4][64]*SCSIMount
+	scsiControllerCount uint32 // Number of SCSI controllers in the utility VM
+	encryptScratch      bool   // Enable scratch encryption
 
 	vpciDevices map[VPCIDeviceKey]*VPCIDevice // map of device instance id to vpci device
 
