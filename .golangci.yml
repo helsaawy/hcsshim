@@ -1,5 +1,9 @@
 run:
   timeout: 8m
+  tests: true
+  build-tags:
+    - functional
+    - admin
 
 linters:
   enable:
