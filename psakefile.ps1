@@ -1,54 +1,95 @@
-# https://psake.readthedocs.io/en/latest/structure-of-a-psake-build-script/
-#
-# overide with properties flag:
-#  Invoke-psake ? -properties @{"Verbose"=$true}
-
 <#
-    .PARAMETER: $GoPath
+    Use -Verbose flag to enable verbose output
+
+    .PARAMETER $GoPath
     Path to the go executable
 
-    .PARAMETER: $ExtraGoBuildFlag
+    .PARAMETER $ExtraGoBuildFlag
     Additional build flags to add to the $GoBuildFlag property
 
-    .PARAMETER: $ExtraGoTestFlag
+    .PARAMETER $ExtraGoTestFlag
     Additional test flags to add to the $GoTestFlag property
 
-    .PARAMETER: $LinterPath
+    .PARAMETER $LinterPath
     Path to the golangci-lint executable
 
-    .PARAMETER: $Verbose
-    Enable verbose output
+    .EXAMPLE
+    Invoke-psake ?
+
+    List all tasks. Use '??' or '???' to increase the information shown
+
+    .EXAMPLE
+    Invoke-psake -Verbose -properties @{GoPath="C:\go\bin\go.exe"} List
+
+    Show all internal variables, as used by tasks.
+
+    .EXAMPLE
+    Invoke-psake -Verbose Lint
+
+    Lint the entire repo, with verbose output.
+
+    .LINK
+    https://psake.readthedocs.io/en/latest/structure-of-a-psake-build-script/
 #>
 
 Properties {
-    $Verbose = $true # TODO: remove me
-    $Script:VerbosePreference = ( $Verbose ? 'Continue' : $Global:VerbosePreference )
-
-    $Go = Confirm-Path ($GoPath ?? 'go.exe') 'go'
+    $go = Confirm-CommandPath ($GoPath ?? 'go') 'go'
     # use parameter $ExtraGoBuildFlag to add more flags, or property $GoBuildFlag to override
-    $GoBuildFlag = [string[]]'-ldflags=-s -w' + $ExtraGoBuildFlag
+    $GoBuildFlag = [string[]]'-ldflags=-s -w' + ($ExtraGoBuildFlag ?? @())
     # use parameter $ExtraGoTestFlag to add more flags, or property $GoTestFlag to override
-    $GoTestFlag = [string[]]'-gcflags=all=-d=checkptr' + $ExtraGoTestFlag
+    $GoTestFlag = [string[]]'-gcflags=all=-d=checkptr' + ($ExtraGoTestFlag ?? @())
     $FuzzTime = '20s'
 
-    $linter = Confirm-Path ($LinterPath ?? 'golangci-lint.exe') 'golangci-lint'
+    $linter = Confirm-CommandPath ($LinterPath ?? 'golangci-lint') 'golangci-lint'
     $LintTimeout = '5m'
+    $LintConfig = Confirm-Path './.golangci.yml' 'linter config'
 
-    $CmdsBin = './bin/cmd/'
-    $ToolsBin = './bin/tool/'
-    $TestsBin = './bin/test/'
+    $BinDir = Join-Path (Get-Location) 'bin/'
+    $CmdsBin = Join-Path $BinDir 'cmd/'
+    $ToolsBin = Join-Path $BinDir 'tool/'
+    $TestsBin = Join-Path $BinDir 'test/'
     $OutDir = './out/'
+
     $ProtobufDir = './.protobuf/'
+
+
+    $CPlatDir = Confirm-Path 'C:/ContainerPlat' 'ContainerPlat Directory'
+    $CPlatDataDir = Confirm-Path 'C:/ContainerPlatData' 'ContainerPlat Data Directory'
 }
 
-# todo: allow building and (fuzz) testing individual package
+#TODO: allow building and (fuzz) testing individual package
+#TODO: protobuff
+#TODO: move shim
 
 Task default -depends Mod
 
-Task noop -action {}
-
-Task ? -description 'show documentation' { WriteDocumentation }
-Task ?? -description 'show detailed documentation' { WriteDocumentation($true) }
+Task ? -description 'show documentation' -preaction { Disable-TimingReport } `
+    -action { WriteDocumentation }
+Task ?? -description 'show detailed documentation' -preaction { Disable-TimingReport } `
+    -action { WriteDocumentation $True }
+Task ??? -description 'show even more detailed documentation' -preaction { Disable-TimingReport } `
+    -action {
+    $psake.context.Peek().tasks.Keys |
+        Where-Object {
+            $_ -ne 'default' -and $_ -notmatch '^\?+$'
+        } | ForEach-Object {
+            $task = $currentContext.tasks.$_
+            New-Object PSObject -Property @{
+                Name          = $task.Name;
+                Alias         = $task.Alias;
+                Description   = $task.Description;
+                DependsOn     = $task.DependsOn -join ', ' ;
+                Precondition  = $task.Precondition;
+                Preaction     = $task.Preaction;
+                Action        = $task.Action;
+                Postaction    = $task.Postaction;
+                Postcondition = $task.Postcondition;
+            }
+        } |
+        Sort-Object 'Name' |
+        Format-List -Property Name, Alias, Description, `
+            Precondition, Preaction, Action, Postaction, Postcondition
+}
 
 BuildSetup {
     #
@@ -59,20 +100,20 @@ BuildSetup {
     $toolbuildtasks = [string[]]@()
     $linuxbuildtasks = [string[]]@()
     @(
-        @{Package = './cmd/containerd-shim-runhcs-v1'; Name = 'shim' }
-        @{Package = './cmd/runhcs'; OutDir = $CmdsBin }
-        @{Package = './cmd/ncproxy'; OutDir = $CmdsBin }
+        @{ Name = 'shim' ; Package = './cmd/containerd-shim-runhcs-v1' }
+        @{ Package = './cmd/runhcs'; OutDir = $CmdsBin }
+        @{ Package = './cmd/ncproxy'; OutDir = $CmdsBin }
 
-        @{Package = './cmd/device-util'; OutDir = $ToolsBin }
-        @{Package = './cmd/wclayer'; OutDir = $ToolsBin }
-        @{Package = './cmd/tar2ext4'; OutDir = $ToolsBin }
-        @{Package = './cmd/shimdiag'; OutDir = $ToolsBin }
-        @{Package = './internal/tools/uvmboot'; OutDir = $ToolsBin }
-        @{Package = './internal/tools/zapdir'; OutDir = $ToolsBin }
+        @{ Package = './cmd/device-util'; OutDir = $ToolsBin }
+        @{ Package = './cmd/wclayer'; OutDir = $ToolsBin }
+        @{ Package = './cmd/tar2ext4'; OutDir = $ToolsBin }
+        @{ Package = './cmd/shimdiag'; OutDir = $ToolsBin }
+        @{ Package = './internal/tools/uvmboot'; OutDir = $ToolsBin }
+        @{ Package = './internal/tools/zapdir'; OutDir = $ToolsBin }
 
-        @{Package = './cmd/gcs'; OutDir = $CmdsBin; GoOS = 'linux' }
-        @{Package = './cmd/gcstools'; OutDir = $CmdsBin; GoOS = 'linux' }
-        @{Package = './cmd/hooks/wait-paths'; OutDir = $CmdsBin; GoOS = 'linux' }
+        @{ Package = './cmd/gcs'; OutDir = $CmdsBin; GoOS = 'linux' }
+        @{ Package = './cmd/gcstools'; OutDir = $CmdsBin; GoOS = 'linux' }
+        @{ Package = './cmd/hooks/wait-paths'; OutDir = $CmdsBin; GoOS = 'linux' }
     ) | ForEach-Object {
         $build = $_
         $name = New-GoBuildTask @build
@@ -95,12 +136,12 @@ BuildSetup {
 
     $testbuildtasks = [string[]]@()
     @(
-        @{Name = 'shimtest'; Package = './test/containerd-shim-runhcs-v1'; OutDir = $TestsBin }
-        @{Name = 'critest'; Package = './test/cri-containerd'; OutDir = $TestsBin }
-        @{Name = 'functest'; Package = './test/functional'; OutDir = $TestsBin ; Alias = 'func' }
-        @{Name = 'runhcstest'; Package = './test/runhcs'; OutDir = $TestsBin }
+        @{ Name = 'shimtest'; Package = './containerd-shim-runhcs-v1'; OutDir = $TestsBin }
+        @{ Name = 'critest'; Package = './cri-containerd'; OutDir = $TestsBin }
+        @{ Name = 'functest'; Alias = 'func' ; Package = './functional'; OutDir = $TestsBin }
+        @{ Name = 'runhcstest'; Package = './runhcs'; OutDir = $TestsBin }
 
-        # @{Name = 'gcstest'; Package = './test/gcs'; OutDir = $TestsBin; GoOS = 'linux' }
+        # @{Name = 'gcstest'; Package = './gcs'; OutDir = $TestsBin; GoOS = 'linux' }
     ) | ForEach-Object {
         $build = $_
         $name = New-GoBuildTask @build -IsTest
@@ -114,11 +155,58 @@ BuildSetup {
 #   Linting
 #
 
-Task LintRepo -alias Lint -description 'Lint the entire repo' -depends LintRoot, LintTest
+#TODO: make autogeneragted
+#TODO: use env variables instead of `go env -w`
 
-Task LintRoot -description 'Lint the root go module' { New-LintCmd | MyExec }
+Task LintRepo -alias Lint -description 'Lint the entire repo' -depends LintRoot, LintTest, LintLinux
 
-Task LintTest -description 'Lint the ''./test'' go module' { New-LintCmd './test' | MyExec }
+Task LintRoot -description 'Lint the root go module' -preaction {
+    Assert ([bool]$linter) 'Unable to find golangci-linter executable'
+    $Env:GOWORK = 'off'
+} -action {
+    New-LintCmd | MyExec
+} -postaction {
+    $Env:GOWORK = $null
+}
+
+Task LintTest -description 'Lint the ''./test'' go module' -preaction {
+    Assert ([bool]$linter) 'Unable to find golangci-linter executable'
+    $Env:GOWORK = 'off'
+    Set-Location ./test
+} -action {
+    New-LintCmd | MyExec
+} -postaction {
+    Set-Location ..
+    $Env:GOWORK = $null
+}
+
+Task LintLinux -description 'Lint the entire repo for Linux' -depends LintRootLinux, LintTestLinux
+
+Task LintRootLinux -description 'Lint the root go module' -preaction {
+    Assert ([bool]$linter) 'Unable to find golangci-linter executable'
+    Assert-GoPath
+    $Env:GOWORK = 'off'
+    New-SetGoOSCmd -GoOS 'linux' | MyExec
+} -action {
+    New-LintCmd ./cmd/gcs/... ./cmd/gcstools/... ./internal/guest... ./internal/tools/... ./pkg/... | MyExec
+} -postaction {
+    $Env:GOWORK = $null
+    New-ResetGoOSCmd | MyExec
+}
+
+Task LintTestLinux -description 'Lint the ''./test'' go module' -preaction {
+    Assert ([bool]$linter) 'Unable to find golangci-linter executable'
+    Assert-GoPath
+    $Env:GOWORK = 'off'
+    New-SetGoOSCmd -GoOS 'linux' | MyExec
+    Set-Location ./test
+} -action {
+    New-LintCmd | MyExec
+} -postaction {
+    Set-Location ..
+    $Env:GOWORK = $null
+    New-ResetGoOSCmd | MyExec
+}
 
 #
 #   go mod tidy and vendor
@@ -126,41 +214,35 @@ Task LintTest -description 'Lint the ''./test'' go module' { New-LintCmd './test
 
 Task ModRepo -alias Mod -description 'Tidy and vendor the entire repo' -depends ModRoot, ModTest
 
-Task ModRoot -description 'Tidy and vendor the root go module' {
-    $gomod = "`"$go`" mod "
-    (('tidy', 'vendor') | ForEach-Object { $gomod + $_ } | ConvertTo-Command) |
-        Join-Scriptblock -NoCall |
-        MyExec
-}
+Task ModRoot -description 'Tidy and vendor the root go module' `
+    -preaction { Assert-GoPath } `
+    -action { ( (Join-Cmd $go mod tidy), (Join-Cmd $go mod vendor) ) |
+        ConvertTo-Command | Join-Scriptblock -NoCall | MyExec }
 
-Task ModTest -description 'Tidy the ''./test'' go module' -preaction {
-    Set-Location ./test
-} -action {
-    Join-Cmd $go mod tidy | ConvertTo-Command | MyExec
-}
+Task ModTest -description 'Tidy the ''./test'' go module' `
+    -preaction { Assert-GoPath ; Set-Location ./test } `
+    -action { Join-Cmd $go mod tidy | ConvertTo-Command | MyExec } `
+    -postaction { Set-Location .. }
 
 #
 #   go generate
 #
 
-Task GoGen -description "Run 'go generate' on the repo" {
-    Join-Cmd $go generate -x ./... | ConvertTo-Command | MyExec
-}
+Task GoGen -description "Run 'go generate' on the repo" -preaction { Assert-GoPath } `
+    -action { Join-Cmd $go generate -x ./... | ConvertTo-Command | MyExec }
 
 #
 #   go test
 #
 
-Task Test -description 'Run all go unit tests in the repo' {
-    Join-Cmd $go test @GoTestFlag ($Verbose ? '-v' : '') ./... | ConvertTo-Command | MyExec
-}
+Task Test -description 'Run all go unit tests in the repo' -preaction { Assert-GoPath } `
+    -action { Join-Cmd $go test @GoTestFlag ($Verbose ? '-v' : '') ./... | ConvertTo-Command | MyExec }
 
 # can only  call `go test -fuzz ..` per package, not on entire repo
-Task Fuzz -description 'Run all go fuzzing tests in the repo' {
-    if ( (Get-GoVersion) -lt '1.18' ) {
-        Write-Warning 'Fuzzing not supported for go1.17 or less'
-        return
-    }
+Task Fuzz -description 'Run all go fuzzing tests in the repo' -precondition {
+    Assert-GoPath # preconditions run before preactions, but checking go version requires go ...
+    ((Get-GoVersion) -gt '1.17') -or (Write-Warning 'Fuzzing not supported for go1.17 or less')
+} -action {
     Get-GoTestDirs -Package '.' |
         ForEach-Object {
             Join-Cmd $go test @GoTestFlag -v -run='^#' -fuzz=. "-fuzztime=$FuzzTime" $_ |
@@ -169,17 +251,45 @@ Task Fuzz -description 'Run all go fuzzing tests in the repo' {
 }
 
 #
-#   Clean
+#   Clean & misc
 #
 
 Task Clean -description 'Clean binaries and build artifacts' {
-    ($CmdsBin, $ToolsBin, $TestBin) | ForEach-Object {
-        if ( Get-Item $_ -ErrorAction SilentlyContinue ) {
+    ($CmdsBin, $ToolsBin, $TestsBin, $BinDir, $OutDir, $ProtobufDir) | ForEach-Object {
+        if ( $_ -and (Get-Item $_ -ErrorAction SilentlyContinue) ) {
             Write-Verbose "removing $_"
             Remove-Item -Recurse -Force $_
         }
     }
 }
+
+Task List -description 'List properties and parameters (for debugging)' `
+    -preaction { Disable-TimingReport } `
+    -action {
+    MyExec { Write-Output 'sdfsd' }
+    return
+    ('Verbose',
+    'VerbosePreference',
+    'Go',
+    'GoBuildFlag',
+    'ExtraGoBuildFlag',
+    'GoTestFlag',
+    'ExtraGoTestFlag',
+    'FuzzTime',
+    'linter',
+    'LintTimeout',
+    'CmdsBin',
+    'ToolsBin',
+    'TestsBin',
+    'OutDir',
+    'ProtobufDir') | ForEach-Object {
+        $scope, $name = $_ -split ':'
+        $a = ( -not $name ) ? @{Name = $scope } : @{Name = $name; Scope = $scope }
+        Get-Variable @a -ErrorAction SilentlyContinue
+    }
+}
+
+Task Noop -description 'do nothing' -action {}
 
 ################################################################################
 #   Helper Functions
@@ -189,9 +299,10 @@ function New-LintCmd {
     [OutputType([scriptblock])]
     [CmdletBinding()]
     param (
-        [Parameter(Position = 0)]
-        [string]
-        $Dir = '.',
+        [Parameter(Position = 0, ValueFromRemainingArguments)]
+        [AllowEmptyCollection()]
+        [string[]]
+        $ExtraArgs,
 
         [string]
         $linter = $linter,
@@ -202,10 +313,12 @@ function New-LintCmd {
         [switch]
         $NoCall
     )
-    Join-Cmd $linter run ('--timeout=' + $Timeout) --config=.golangci.yml `
-        --max-issues-per-linter=0 --max-same-issues=0 --modules-download-mode=readonly `
-    (( $Verbose )  ? '--verbose' : '') "$Dir/..." |
-        ConvertTo-Command -NoCall:$NoCall
+    Join-Cmd $linter run ('--timeout=' + $Timeout) `
+        --max-issues-per-linter=0 `
+        --max-same-issues=0 `
+        --modules-download-mode=readonly `
+        --config=$LintConfig ( $Verbose ? '--verbose' : '') `
+        @ExtraArgs | ConvertTo-Command -NoCall:$NoCall
 }
 
 function New-GoBuildTask {
@@ -233,18 +346,26 @@ function New-GoBuildTask {
         [switch]
         $IsTest
     )
-    # use hashtable keep default GoOS if not specified
-    $preargs = @{} + (( $GoOS ) ? @{GoOS = $GoOS } : @{})
-    $cmdargs = @{Package = $Package; OutDir = $OutDir}
-    $cmd = $IsTest ? (New-GoBuildTestCmd @cmdargs) : (New-GoBuildCmd @cmdargs)
-    $desc = "Build go " + ($IsTest ? "test executable for" : "package")+ " '$Package'"
+    $pre = ( { Assert-GoPath }, { $env:GOWORK = 'off' },
+        ($IsTest ? { Set-Location .\test } : {}),
+        ('New-SetGoOSCmd' + ( $GoOS ? " -GoOS $GoOS" : '') + ' | MyExec' |
+            ConvertTo-Command -NoCall ) ) |
+            Join-Scriptblock -NoCall -NoNewline
+    $post = ( { New-ResetGoOSCmd | MyExec }, { $env:GOWORK = $null },
+        ($IsTest ? { Set-Location .. } : {})) |
+        Join-Scriptblock -NoCall -NoNewline
+    # we want the command to be created in the scope of the task action, but before
+    # it is passed into (My)Exec
+    $cmd = $IsTest ? 'New-GoBuildTestCmd' : 'New-GoBuildCmd'
+    $cmd = ( "$cmd -Package `"$Package`" -OutDir `"$OutDir`" | MyExec" ) | ConvertTo-Command -NoCall
+    $desc = 'Build go ' + ($IsTest ? 'test executable for' : 'package') + " '$Package'"
 
-    # -preaction ((New -NoCall), (New-SetGoOSCmd @preargs) | Join-Scriptblock -NoCall)
     Task $Name -alias $Alias -description $desc `
-        -preaction (New-SetGoOSCmd @preargs) `
-        -action ( "MyExec { $cmd }" | ConvertTo-Command -NoCall ) `
-        -postaction (New-ResetGoOSCmd)
+        -preaction $pre `
+        -action $cmd `
+        -postaction $post
 
+    Write-Output sdf ssss
     $Name
 }
 
@@ -270,7 +391,7 @@ function New-GoBuildCmd {
         $Flags = $GoBuildFlag,
 
         [string]
-        $GoVar = '$go',
+        $go = $go,
 
         [switch]
         $NoCall
@@ -279,7 +400,7 @@ function New-GoBuildCmd {
     if ( $tags ) {
         $tagparam = '-tags=' + ($Tags -join ',')
     }
-    Join-Cmd $GoVar build @Flags $tagparam ('-o=' + $OutDir) $Package | ConvertTo-Command -NoCall:$NoCall
+    Join-Cmd $go build @Flags $tagparam ('-o=' + $OutDir) $Package | ConvertTo-Command -NoCall:$NoCall
 }
 
 function New-GoBuildTestCmd {
@@ -303,7 +424,7 @@ function New-GoBuildTestCmd {
         $Flags = $GoTestFlag,
 
         [string]
-        $GoVar = '$go',
+        $go = $go,
 
         [switch]
         $NoCall
@@ -313,8 +434,8 @@ function New-GoBuildTestCmd {
         $tagparam = '-tags=' + ($Tags -join ',')
     }
     # `go test -c` parses `-o` as the output file, not the directory (different from `go build`)
-    $out = (Join-Path $OutDir (Split-Path -Leaf $Package)) + ".test`$(& '$Go' env GOEXE)"
-    Join-Cmd $GoVar test @Flags $tagparam ('-o=' + $out) '-c' $Package | ConvertTo-Command -NoCall:$NoCall
+    $out = (Join-Path $OutDir (Split-Path -Leaf $Package)) + ".test`$(& `"$go`" env GOEXE)"
+    Join-Cmd $go test @Flags $tagparam ('-o=' + $out) '-c' $Package | ConvertTo-Command -NoCall:$NoCall
 }
 
 function New-SetGoOSCmd {
@@ -326,12 +447,12 @@ function New-SetGoOSCmd {
         $GoOS = 'windows',
 
         [string]
-        $GoVar = '$go',
+        $go = $go,
 
         [switch]
         $NoCall
     )
-    Join-Cmd $GoVar env -w ('GOOS=' + ($GoOS.ToLower())) | ConvertTo-Command -NoCall:$NoCall
+    Join-Cmd $go env -w ('GOOS=' + ($GoOS.ToLower())) | ConvertTo-Command -NoCall:$NoCall
 }
 
 function New-ResetGoOSCmd {
@@ -339,30 +460,13 @@ function New-ResetGoOSCmd {
     [CmdletBinding()]
     param (
         [string]
-        $GoVar = '$go',
+        $go = $go,
 
         [switch]
         $NoCall
     )
-    Join-Cmd $GoVar env -u GOOS | ConvertTo-Command -NoCall:$NoCall
+    Join-Cmd $go env -u GOOS | ConvertTo-Command -NoCall:$NoCall
 }
-
-# function New-FindGoCmd {
-#     [OutputType([scriptblock])]
-#     [CmdletBinding()]
-#     param (
-#         [string]
-#         $GoPath = $GoPath,
-
-#         [string]
-#         $GoVar = '$Script:go',
-
-#         [switch]
-#         $NoCall
-#     )
-#     "if ( -not $GoVar ) { $GoVar = Confirm-Path `"$GoPath`" '$GoVar' }" |
-#         ConvertTo-Command -NoCall:$NoCall
-# }
 
 function Get-GoTestDirs {
     [CmdletBinding()]
@@ -396,6 +500,20 @@ function Get-GoVersion {
     [version]((& $go env GOVERSION) -replace 'go', '')
 }
 
+function Assert-GoPath {
+    param (
+        [string]
+        $go = $go
+    )
+    Assert ([bool]$go) 'Unable to find go executable'
+}
+
+function Disable-TimingReport {
+    # disable timing report at the bottom
+    # set-variable doesnt find the variable first...
+    (Get-Variable notr).Value = $True
+}
+
 function MyExec {
     # todo: pass all parameters to Exec
     [CmdletBinding()]
@@ -404,7 +522,7 @@ function MyExec {
         [scriptblock]$cmd
     )
     # creating a new scriptblock and invoking $cmd from in it causes scoping and recursion concerns ....
-    Write-Verbose "task action:`n$cmd"
+    Write-Verbose "execing in $(Get-Location):`n$cmd"
     Exec -cmd $cmd
 }
 
@@ -418,11 +536,14 @@ function Join-Scriptblock {
         $Script,
 
         [switch]
-        $NoCall
+        $NoCall,
+
+        [switch]
+        $NoNewline
     )
     Begin {
-        $b = ( $NoCall ? '' : "{`n" )
-        $first = $true
+        $b = $NoCall ? '' : ('{' + ($NoNewline ? '' : "`n") )
+        $first = $True
     }
     Process {
         # foreach-item has weirdness with the `$_` variable
@@ -431,14 +552,15 @@ function Join-Scriptblock {
                 if ( $first ) {
                     $first = $false
                 } else {
-                    $b += "`n"
+                    $b += $NoNewline ? '; ' : "`n"
                 }
                 $b += "$s"
             }
         }
     }
     End {
-        $b + ( $NoCall ? '' : "`n}" ) | ConvertTo-Command -NoCall:$NoCall
+        $b + ( $NoCall ? '' : (($NoNewline ? '' : "`n") + '}') ) |
+            ConvertTo-Command -NoCall:$NoCall
     }
 }
 
@@ -469,7 +591,7 @@ function Join-Cmd {
     }) -join ' '
 }
 
-function Confirm-Path {
+function Confirm-CommandPath {
     [OutputType([string])]
     [CmdletBinding()]
     param(
@@ -487,9 +609,41 @@ function Confirm-Path {
 
     $p = (Get-Command $Path -CommandType $CommandType -ErrorAction SilentlyContinue).Source
 
-    $s = 'Invalid path' + (( $Name ) ? " to `"$Name`"" : '' )
-    Assert ([bool]$p) "${s}: $Path"
+    if ( -not $p ) {
+        'Could not find executable' + (($Name) ? " for $Name" : "`"$Path`"" ) | Write-Warning
+        return
+    }
+    if ( $p -is [System.Array] -and $p.Count -gt 1 ) {
+        'Multiple executables found' + (( $Name) ? " for $Name" : '' ) + ': ' + ($p -join ', ') | Write-Warning
+        $p = $p[0]
+    }
 
-    "Using `"$p`"" + (( $Name) ? " for `"$Name`"" : '' ) | Write-Verbose
+
+    "Using `"$p`"" + (( $Name) ? " for $Name" : '' ) | Write-Verbose
     $p
+}
+
+function Confirm-Path {
+    [OutputType([string])]
+    [CmdletBinding()]
+    param(
+        [Parameter(Position = 0, Mandatory)]
+        [string]
+        $Path,
+
+        [Parameter(Position = 1)]
+        [string]
+        $Name,
+
+        [Microsoft.PowerShell.Commands.TestPathType]
+        $PathType = 'Any'
+    )
+
+    if (Test-Path $Path -PathType $PathType) {
+        $p = (Get-Item $Path).FullName
+        "Using `"$p`"" + (( $Name) ? " for $Name" : '' ) | Write-Verbose
+        return $p
+    }
+
+    "Could not find $PathType " + ($Name ? "for $Name " : "at `"$Path`"" ) | Write-Warning
 }
