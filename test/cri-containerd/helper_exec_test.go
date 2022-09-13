@@ -20,6 +20,7 @@ import (
 func execSync(t *testing.T, client runtime.RuntimeServiceClient, ctx context.Context, request *runtime.ExecSyncRequest) *runtime.ExecSyncResponse {
 	response, err := client.ExecSync(ctx, request)
 	if err != nil {
+		t.Helper()
 		t.Fatalf("failed ExecSync request with: %v", err)
 	}
 	return response
@@ -28,6 +29,7 @@ func execSync(t *testing.T, client runtime.RuntimeServiceClient, ctx context.Con
 func execRequest(t *testing.T, client runtime.RuntimeServiceClient, ctx context.Context, request *runtime.ExecRequest) string {
 	response, err := client.Exec(ctx, request)
 	if err != nil {
+		t.Helper()
 		t.Fatalf("failed Exec request with: %v", err)
 	}
 	return response.Url

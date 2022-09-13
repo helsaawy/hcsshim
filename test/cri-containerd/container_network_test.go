@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -170,4 +171,231 @@ func Test_Container_Network_Hostname(t *testing.T) {
 			}
 		})
 	}
+}
+
+func Test_Container_Network_PingHost(t *testing.T) {
+	client := newTestRuntimeClient(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	tests := []struct {
+		name    string
+		feature string
+		runtime string
+		image   string
+		command []string
+		ping    []string
+	}{
+		{
+			name:    "LCOW",
+			feature: featureLCOW,
+			runtime: lcowRuntimeHandler,
+			image:   imageLcowAlpine,
+			command: []string{
+				"ash",
+				"-c",
+				"tail -f /dev/null",
+			},
+			ping: []string{"ping", "-q", "-c", "4"},
+		},
+		{
+			name:    "WCOW_Hypervisor",
+			feature: featureWCOWHypervisor,
+			runtime: wcowHypervisorRuntimeHandler,
+			image:   imageWindowsNanoserver,
+			command: []string{
+				"cmd",
+				"/c",
+				"ping -t 127.0.0.1",
+			},
+			ping: []string{"cmd", "/c", "ping -n 4"},
+		},
+		{
+			name:    "WCOW_Process",
+			feature: featureWCOWProcess,
+			runtime: wcowProcessRuntimeHandler,
+			image:   imageWindowsNanoserver,
+			command: []string{
+				"cmd",
+				"/c",
+				"ping -t 127.0.0.1",
+			},
+			ping: []string{"cmd", "/c", "ping -n 4"},
+		},
+	}
+
+	b, err := exec.CommandContext(
+		ctx,
+		"powershell.exe",
+		"/c",
+		`(Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias "*ContainerPlat*").IPAddress`,
+	).Output()
+	if err != nil {
+		t.Fatalf("could not retrieve ContainerPlat IP address: %v", err)
+	}
+	hostIP := strings.TrimSpace(string(b))
+	t.Log("host IP:", hostIP)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			requireFeatures(t, tt.feature)
+
+			switch tt.feature {
+			case featureLCOW:
+				pullRequiredLCOWImages(t, append([]string{imageLcowK8sPause}, tt.image))
+			case featureWCOWHypervisor, featureWCOWProcess:
+				pullRequiredImages(t, []string{tt.image})
+			}
+
+			sandboxRequest := getRunPodSandboxRequest(t, tt.runtime)
+			podID := runPodSandbox(t, client, ctx, sandboxRequest)
+			defer removePodSandbox(t, client, ctx, podID)
+			defer stopPodSandbox(t, client, ctx, podID)
+
+			request := getCreateContainerRequest(podID, t.Name()+"-Container", tt.image, tt.command, sandboxRequest.Config)
+			containerID := createContainer(t, client, ctx, request)
+			startContainer(t, client, ctx, containerID)
+			defer removeContainer(t, client, ctx, containerID)
+			defer stopContainer(t, client, ctx, containerID)
+
+			pingCmd := append(tt.ping, hostIP)
+			req := execSync(t, client, ctx, &runtime.ExecSyncRequest{
+				ContainerId: containerID,
+				Cmd:         pingCmd,
+				Timeout:     30,
+			})
+			if req.ExitCode != 0 {
+				t.Fatalf("exec %v failed with exit code %d: %s", pingCmd, req.ExitCode, string(req.Stderr))
+			}
+			t.Logf("exec: %s, %s", pingCmd, req.Stdout)
+		})
+	}
+}
+
+func Test_Container_Network_PingContainer(t *testing.T) {
+	client := newTestRuntimeClient(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	tests := []struct {
+		name    string
+		feature string
+		runtime string
+		image   string
+		command []string
+		port    int32
+		ping    []string
+	}{
+		{
+			name:    "LCOW",
+			feature: featureLCOW,
+			runtime: lcowRuntimeHandler,
+			image:   imageLcowAlpine,
+			command: []string{
+				"ash",
+				"-c",
+				"tail -f /dev/null",
+			},
+			port: 445,
+			ping: []string{"ping", "-q", "-c", "4"},
+		},
+		{
+			name:    "WCOW_Hypervisor",
+			feature: featureWCOWHypervisor,
+			runtime: wcowHypervisorRuntimeHandler,
+			image:   imageWindowsNanoserver,
+			command: []string{
+				"cmd",
+				"/c",
+				"ping -t 127.0.0.1",
+			},
+			port: 445,
+			ping: []string{"cmd", "/c", "ping -n 4"},
+		},
+		{
+			name:    "WCOW_Process",
+			feature: featureWCOWProcess,
+			runtime: wcowProcessRuntimeHandler,
+			image:   imageWindowsNanoserver,
+			command: []string{
+				"cmd",
+				"/c",
+				"ping -t 127.0.0.1",
+			},
+			port: 445,
+			ping: []string{"cmd", "/c", "ping -n 4"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			requireFeatures(t, tt.feature)
+
+			switch tt.feature {
+			case featureLCOW:
+				pullRequiredLCOWImages(t, append([]string{imageLcowK8sPause}, tt.image))
+			case featureWCOWHypervisor, featureWCOWProcess:
+				pullRequiredImages(t, []string{tt.image})
+			}
+
+			sandboxRequest := getRunPodSandboxRequest(t, tt.runtime, WithPortMapping(runtime.Protocol_TCP, tt.port, 8446, ""))
+			podID := runPodSandbox(t, client, ctx, sandboxRequest)
+			defer removePodSandbox(t, client, ctx, podID)
+			defer stopPodSandbox(t, client, ctx, podID)
+			status := getPodSandboxStatus(t, client, ctx, podID)
+			podIP := status.Network.Ip
+			t.Log("pod IP:", podIP)
+
+			request := getCreateContainerRequest(podID, t.Name()+"-Container", tt.image, tt.command, sandboxRequest.Config)
+			containerID := createContainer(t, client, ctx, request)
+			startContainer(t, client, ctx, containerID)
+			defer removeContainer(t, client, ctx, containerID)
+			defer stopContainer(t, client, ctx, containerID)
+
+			pingCmd := []string{"/c", "exit -not (Test-NetConnection -InformationLevel Quiet -p 8446 " + podIP + ")"}
+			t.Logf("ping command: powershell %s", pingCmd)
+			b, err := exec.CommandContext(ctx, "powershell", pingCmd...).CombinedOutput()
+			if err != nil {
+				t.Fatalf("could not ping container: %v\n%s", err, b)
+			}
+			t.Logf("%s", b)
+		})
+	}
+}
+
+func Test_Container_Network_WebServer_PortForward(t *testing.T) {
+	client := newTestRuntimeClient(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cPort := 80
+	hostPort := 8080
+
+	tests := []struct {
+		name    string
+		feature string
+		runtime string
+		image   string
+	}{
+		{
+			name:    "LCOW",
+			feature: featureLCOW,
+			runtime: lcowRuntimeHandler,
+			image:   imageLinuxPython,
+		},
+		{
+			name:    "WCOW_Hypervisor",
+			feature: featureWCOWHypervisor,
+			runtime: wcowHypervisorRuntimeHandler,
+			image:   imageWindowsPython,
+		},
+		{
+			name:    "WCOW_Process",
+			feature: featureWCOWProcess,
+			runtime: wcowProcessRuntimeHandler,
+			image:   imageWindowsPython,
+		},
+	}
+	// TODO:
+	// curl self from inside container
+	// curl from host
 }

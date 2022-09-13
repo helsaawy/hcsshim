@@ -62,6 +62,8 @@ const (
 	imageJobContainerVHD     = "cplatpublic.azurecr.io/jobcontainer_vhd:latest"
 	imageJobContainerCmdline = "cplatpublic.azurecr.io/jobcontainer_cmdline:latest"
 	imageJobContainerWorkDir = "cplatpublic.azurecr.io/jobcontainer_workdir:latest"
+	imageWindowsPython       = " docker.io/library/python:windowsservercore-ltsc2022"
+	imageLinuxPython         = "docker.io/library/python:alpine"
 	alpineAspNet             = "mcr.microsoft.com/dotnet/core/aspnet:3.1-alpine3.11"
 	alpineAspnetUpgrade      = "mcr.microsoft.com/dotnet/core/aspnet:3.1.2-alpine3.11"
 	// Default account name for use with GMSA related tests. This will not be

@@ -37,6 +37,18 @@ func WithSandboxLabels(labels map[string]string) SandboxConfigOpt {
 	}
 }
 
+func WithPortMapping(protocol runtime.Protocol, containerPort, hostPort int32, hostIP string) SandboxConfigOpt {
+	return func(config *runtime.PodSandboxConfig) error {
+		config.PortMappings = append(config.PortMappings, &runtime.PortMapping{
+			Protocol:      protocol,
+			ContainerPort: containerPort,
+			HostPort:      hostPort,
+			HostIp:        hostIP,
+		})
+		return nil
+	}
+}
+
 func runPodSandbox(t *testing.T, client runtime.RuntimeServiceClient, ctx context.Context, request *runtime.RunPodSandboxRequest) string {
 	response, err := client.RunPodSandbox(ctx, request)
 	if err != nil {
