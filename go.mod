@@ -17,6 +17,7 @@ require (
 	github.com/google/go-cmp v0.5.7
 	github.com/google/go-containerregistry v0.5.1
 	github.com/linuxkit/virtsock v0.0.0-20201010232012-f8cee7dfc7a3
+	github.com/magefile/mage v1.13.0
 	github.com/mattn/go-shellwords v1.0.12
 	github.com/open-policy-agent/opa v0.42.2
 	github.com/opencontainers/runc v1.1.2

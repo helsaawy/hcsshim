@@ -5,6 +5,7 @@ run:
     - admin
     - functional
     - integration
+    - mage
   skip-dirs:
     # paths are relative to module root
     - cri-containerd/test-images
@@ -28,6 +29,10 @@ issues:
         - stylecheck
       text: "^ST1003: should not use underscores in package names$"
       source: "^package cri_containerd$"
+
+    - path: magefile
+      linters:
+        - deadcode
 
     # This repo has a LOT of generated schema files, operating system bindings, and other
     # things that ST1003 from stylecheck won't like (screaming case Windows api constants for example).
