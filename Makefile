@@ -23,7 +23,7 @@ SRCROOT=$(dir $(abspath $(firstword $(MAKEFILE_LIST))))
 # additional directories to search for rule prerequisites and targets
 VPATH=$(SRCROOT)
 
-DELTA_TARGET=out/delta.tar.gz
+DELTA_TARGET=out/delta.win.tar.gz
 
 ifeq "$(DEV_BUILD)" "1"
 DELTA_TARGET=out/delta-dev.tar.gz
@@ -42,7 +42,7 @@ all: out/initrd.img out/rootfs.tar.gz
 
 clean:
 	find -name '*.o' -print0 | xargs -0 -r rm
-	rm -rf bin deps rootfs out
+	rm -rf bin deps out/rootfs out
 
 test:
 	cd $(SRCROOT) && $(GO) test -v ./internal/guest/...
@@ -54,11 +54,11 @@ out/rootfs.vhd: out/rootfs.tar.gz bin/cmd/tar2ext4
 	bin/cmd/tar2ext4 -vhd -i ./out/rootfs.tar -o $@
 
 out/rootfs.tar.gz: out/initrd.img
-	rm -rf rootfs-conv
-	mkdir rootfs-conv
-	gunzip -c out/initrd.img | (cd rootfs-conv && cpio -imd)
-	tar -zcf $@ -C rootfs-conv .
-	rm -rf rootfs-conv
+	rm -rf out/rootfs-conv
+	mkdir out/rootfs-conv
+	gunzip -c out/initrd.img | (cd out/rootfs-conv && cpio -imd)
+	tar -zcf $@ -C out/rootfs-conv .
+	rm -rf out/rootfs-conv
 
 out/initrd.img: $(BASE) $(DELTA_TARGET) $(SRCROOT)/hack/catcpio.sh
 	$(SRCROOT)/hack/catcpio.sh "$(BASE)" $(DELTA_TARGET) > out/initrd.img.uncompressed
@@ -67,32 +67,31 @@ out/initrd.img: $(BASE) $(DELTA_TARGET) $(SRCROOT)/hack/catcpio.sh
 
 # This target includes utilities which may be useful for testing purposes.
 out/delta-dev.tar.gz: out/delta.tar.gz bin/internal/tools/snp-report
-	rm -rf rootfs-dev
-	mkdir rootfs-dev
-	tar -xzf out/delta.tar.gz -C rootfs-dev
-	cp bin/internal/tools/snp-report rootfs-dev/bin/
-	tar -zcf $@ -C rootfs-dev .
-	rm -rf rootfs-dev
+	rm -rf out/rootfs-dev
+	mkdir out/rootfs-dev
+	tar -xzf out/delta.tar.gz -C out/rootfs-dev
+	cp bin/internal/tools/snp-report out/rootfs-dev/bin/
+	tar -zcf $@ -C out/rootfs-dev .
+	rm -rf out/rootfs-dev
 
 out/delta.tar.gz: bin/init bin/vsockexec bin/cmd/gcs bin/cmd/gcstools bin/cmd/hooks/wait-paths Makefile
 	@mkdir -p out
-	rm -rf rootfs
-	mkdir -p rootfs/bin/
-	mkdir -p rootfs/info/
-	cp bin/init rootfs/
-	cp bin/vsockexec rootfs/bin/
-	cp bin/cmd/gcs rootfs/bin/
-	cp bin/cmd/gcstools rootfs/bin/
-	cp bin/cmd/hooks/wait-paths rootfs/bin/
-	for tool in $(GCS_TOOLS); do ln -s gcstools rootfs/bin/$$tool; done
-	git -C $(SRCROOT) rev-parse HEAD > rootfs/info/gcs.commit && \
-	git -C $(SRCROOT) rev-parse --abbrev-ref HEAD > rootfs/info/gcs.branch && \
-	date --iso-8601=minute --utc > rootfs/info/tar.date
+	rm -rf out/rootfs
+	mkdir -p out/rootfs/bin/
+	mkdir -p out/rootfs/info/
+	cp bin/init out/rootfs/
+	cp bin/vsockexec out/rootfs/bin/
+	cp bin/cmd/gcs out/rootfs/bin/
+	cp bin/cmd/gcstools out/rootfs/bin/
+	cp bin/cmd/hooks/wait-paths out/rootfs/bin/
+	for tool in $(GCS_TOOLS); do ln -s gcstools out/rootfs/bin/$$tool; done
+	git -C $(SRCROOT) rev-parse HEAD > out/rootfs/info/gcs.commit && \
+	git -C $(SRCROOT) rev-parse --abbrev-ref HEAD > out/rootfs/info/gcs.branch && \
+	date --iso-8601=minute --utc > out/rootfs/info/tar.date
 	$(if $(and $(realpath $(subst .tar,.testdata.json,$(BASE))), $(shell which jq)), \
-		jq -r '.IMAGE_NAME' $(subst .tar,.testdata.json,$(BASE)) 2>/dev/null > rootfs/info/image.name && \
-		jq -r '.DATETIME' $(subst .tar,.testdata.json,$(BASE)) 2>/dev/null > rootfs/info/build.date)
-	tar -zcf $@ -C rootfs .
-	rm -rf rootfs
+		jq -r '.IMAGE_NAME' $(subst .tar,.testdata.json,$(BASE)) 2>/dev/null > out/rootfs/info/image.name && \
+		jq -r '.DATETIME' $(subst .tar,.testdata.json,$(BASE)) 2>/dev/null > out/rootfs/info/build.date)
+	tar -zcf $@ -C out/rootfs .
 
 -include deps/cmd/gcs.gomake
 -include deps/cmd/gcstools.gomake

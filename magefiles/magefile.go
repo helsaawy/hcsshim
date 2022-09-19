@@ -22,6 +22,19 @@ import (
 //
 // see: https://github.com/magefile/mage/issues/213
 
+// todo: -gcflags (go build -gcflags -help)
+// -N to disable optimizations
+// -m print optimization decisions
+// -race enable race detector
+// -c <count> set to num cpus
+// -buildid id set build id
+
+// todo: -ldflags (go tool link -help)
+// -race enable race detector
+// -s    disable symbol table
+// -w    disable DWARF generation
+// -n    dump symbol table
+
 var (
 	goBuildFlags = []string{`-ldflags=-s -w`}
 	goTestFlags  = []string{`-gcflags=all=-d=checkptr`}
@@ -92,8 +105,9 @@ type Release mg.Namespace
 
 // Shim builds a release version of containerd-shim-runhcs-v1.
 func (Release) Shim(version string) error {
+	//todo: git tag? build date?
 	return buildGoExe(filepath.Join(rootDir, "cmd/containerd-shim-runhcs-v1"), cmdBin,
-		varMap{"GOOS": "windows"}, varMap{"main.version": version}, nil, []string{"admin"})
+		varMap{"GOOS": "windows"}, varMap{"main.version": version}, nil, nil)
 }
 
 func buildGoExe(pkg, outDir string, env, vars varMap, extraFlags, tags []string) error {
