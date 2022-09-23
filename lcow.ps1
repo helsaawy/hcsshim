@@ -59,6 +59,6 @@ tar.exe -cf out/rootfs.tar --uid 0 --gid 0 --uname root --gname root ('@' + $bas
 Move-Item -Force out/initrd.img 'C:\ContainerPlat\LinuxBootFiles\initrd.img'
 
 # go build -o .\bin\tool .\internal\tools\uvmboot
-.\bin\tool\uvmboot.exe -gcs lcow -fwd-stdout -fwd-stderr -output-handling stdout `
+.\bin\cmd\uvmboot.exe -gcs lcow -fwd-stdout -fwd-stderr -output-handling stdout `
     -boot-files-path 'C:\ContainerPlat\LinuxBootFiles' `
     -root-fs-type vhd -exec 'echo hello from linux'

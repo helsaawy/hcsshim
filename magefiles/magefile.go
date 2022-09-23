@@ -20,9 +20,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Microsoft/hcsshim/ext4/tar2ext4"
 	"github.com/magefile/mage/mg"
 	"github.com/magefile/mage/sh"
 	"github.com/magefile/mage/target"
+	"github.com/u-root/u-root/pkg/cpio"
 )
 
 // Currently, there is no support to change the working directory using sh.Exec/Run/etc...
@@ -110,11 +112,13 @@ type varMap = map[string]string
 var Default = ModRepo
 
 var Aliases = map[string]interface{}{
-	"pr":    Validate,
-	"mod":   ModRepo,
-	"gen":   GoGenerate,
-	"delta": DeltaTarGz,
-	"lint":  Lint.Repo,
+	"pr":     Validate,
+	"mod":    ModRepo,
+	"gen":    GoGenerate,
+	"delta":  DeltaTarGz,
+	"rootfs": RootfsVHD,
+	"init":   Initramfs,
+	"lint":   Lint.Repo,
 
 	// default build target is the shim
 	"build": Build.Shim,
@@ -255,6 +259,7 @@ func buildGoExe(ctx context.Context, pkg, outDir string, env, vars varMap, extra
 
 	if _, err := Exec(ctx, goCmd(), args,
 		execInDir(rootDir),
+		execInheritEnv, // needs %LocalAppData% and other system variables
 		execWithEnv(env),
 		execVerbose,
 	); err != nil {
@@ -324,6 +329,7 @@ func buildGoTestExe(ctx context.Context, pkg, outDir string, env varMap, extraFl
 
 	if _, err := Exec(ctx, goCmd(), args,
 		execInDir(testDir),
+		execInheritEnv, // needs %LocalAppData% and other system variables
 		execWithEnv(env),
 		execVerbose,
 	); err != nil {
@@ -375,12 +381,124 @@ func getFileStampKey(file string) string {
 }
 
 //
-// file generation (go gen and protoc)
+// general file and artifact generation (go gen and protoc)
 //
+
+var rootfsVHDPath = filepath.Join(outDir, "rootfs.vhd")
+
+func RootfsVHD(_ context.Context, baseTar string) error {
+	mg.Deps(mg.F(mkdir, filepath.Dir(rootfsVHDPath)), mg.F(RootfsTar, baseTar))
+	build, err := target.Path(rootfsVHDPath, rootfsTarPath)
+	if !build {
+		if mg.Verbose() {
+			log.Printf(nopTargetFmt, rootfsVHDPath)
+		}
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("%v: %w", errMissingDep, err)
+	}
+
+	rootTar, err := os.Open(rootfsTarPath)
+	if err != nil {
+		return fmt.Errorf("open rootfs tar file %q: %w", rootfsTarPath, err)
+	}
+	defer rootTar.Close()
+
+	rootVHD, err := os.Create(rootfsVHDPath)
+	if err != nil {
+		return fmt.Errorf("create rootfs VHD file %q: %w", rootfsVHDPath, err)
+	}
+	defer rootVHD.Close()
+
+	if err = tar2ext4.Convert(rootTar, rootVHD, tar2ext4.AppendVhdFooter); err != nil {
+		return fmt.Errorf("converting rootfs tar file %q to VHD %q: %w",
+			rootfsTarPath, rootfsVHDPath, err)
+	}
+
+	if mg.Verbose() {
+		log.Printf("created rootfs VHD file %q\n", rootfsVHDPath)
+	}
+	return nil
+}
+
+var initramfsPath = filepath.Join(outDir, "initrd.img")
+
+func Initramfs(_ context.Context, baseTar string) error {
+	mg.Deps(mg.F(mkdir, filepath.Dir(initramfsPath)), mg.F(RootfsTar, baseTar))
+	build, err := target.Path(initramfsPath, rootfsTarPath)
+	if !build {
+		if mg.Verbose() {
+			log.Printf(nopTargetFmt, initramfsPath)
+		}
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("%v: %w", errMissingDep, err)
+	}
+
+	rootTar, cleanup, err := openTarFile(rootfsTarPath)
+	if err != nil {
+		return fmt.Errorf("open rootfs tar file %q: %w", rootfsTarPath, err)
+	}
+	defer cleanup()
+
+	f, err := os.Create(initramfsPath)
+	if err != nil {
+		return fmt.Errorf("create initramfs file %q: %w", initramfsPath, err)
+	}
+	defer f.Close()
+	gw := gzip.NewWriter(f)
+	defer gw.Close()
+
+	img := cpio.Newc.Writer(gw)
+	// u-root doesnt support converting filesystem info to records on windows
+	// plus, files are in a tar archive, so create records on the fly
+	if err := copyTarToCPIO(img, *rootTar); err != nil {
+		return fmt.Errorf("copying rootfs tar %q to initramfs %q: %w",
+			rootfsTarPath, initramfsPath, err)
+	}
+
+	if err := cpio.WriteTrailer(img); err != nil {
+		return fmt.Errorf("writing CPIO trailer to %q: %w", initramfsPath, err)
+	}
+	if mg.Verbose() {
+		log.Printf("created initramfs file %q\n", initramfsPath)
+	}
+	return nil
+}
+
+func copyTarToCPIO(dst cpio.RecordWriter, src tar.Reader) error {
+	var inode uint64
+	for {
+		hdr, err := src.Next()
+		switch err {
+		case nil:
+		case io.EOF:
+			return nil
+		default:
+			return err
+		}
+		r := cpio.Record{}
+
+		switch hdr.Typeflag {
+		case tar.TypeReg:
+		case tar.TypeDir:
+		case tar.TypeSymlink:
+			// cpio.Symlink()
+		default:
+			return fmt.Errorf("unsupported tar type %x", hdr.Typeflag)
+		}
+
+		inode++
+	}
+
+}
 
 var rootfsTarPath = filepath.Join(outDir, "rootfs.tar")
 
 func RootfsTar(_ context.Context, baseTar string) error {
+	//todo: intermediary unpacking of base and delta saves ~4% (and prevents duplicates)
 	mg.Deps(mg.F(mkdir, filepath.Dir(rootfsTarPath)), DeltaTarGz)
 	build, err := target.Path(rootfsTarPath, baseTar, deltaTarGzPath)
 	if !build {
@@ -412,10 +530,10 @@ func RootfsTar(_ context.Context, baseTar string) error {
 	}
 	defer cleanup()
 
-	if err := copyTarFile(rootfs, base); err != nil {
+	if err := copyTarFiles(rootfs, base); err != nil {
 		return fmt.Errorf("error reading tar file %q: %w", baseTar, err)
 	}
-	if err := copyTarFile(rootfs, delta); err != nil {
+	if err := copyTarFiles(rootfs, delta); err != nil {
 		return fmt.Errorf("error reading tar file %q: %w", deltaTarGzPath, err)
 	}
 
@@ -424,13 +542,13 @@ func RootfsTar(_ context.Context, baseTar string) error {
 	// {dest: "./info/image.build.date", data: nil},
 
 	if mg.Verbose() {
-		log.Printf("created rootfs tar file %q\n", deltaTarGzPath)
+		log.Printf("created rootfs tar file %q\n", rootfsTarPath)
 	}
 
 	return nil
 }
 
-func copyTarFile(dst *tar.Writer, src *tar.Reader) error {
+func copyTarFiles(dst *tar.Writer, src *tar.Reader) error {
 	for {
 		hdr, err := src.Next()
 		switch err {
@@ -727,7 +845,7 @@ func lint(ctx context.Context, dir, goos string, paths ...string) error {
 	if _, err := Exec(ctx, "golangci-lint", args,
 		// if _, err := Exec(ctx, "cmd", []string{"/c", "set"},
 		execInDir(dir),
-		execInheritEnv(), // golangci-lint needs %LocalAppData% for caching
+		execInheritEnv, // golangci-lint needs %LocalAppData% for caching
 		execWithEnv(varMap{
 			"PATH":   addToPath(toolBin),
 			"GOOS":   goos,

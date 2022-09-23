@@ -32,19 +32,17 @@ func execWithEnv(env map[string]string) execOpt {
 	}
 }
 
-func execInheritEnv() execOpt {
-	return func(c *exec.Cmd) error {
-		c.Env = append(c.Env, os.Environ()...)
-		return nil
-	}
-}
-
 func flattenEnv(env map[string]string) []string {
 	e := make([]string, 0, len(env))
 	for k, v := range env {
 		e = append(e, k+"="+v)
 	}
 	return e
+}
+
+func execInheritEnv(c *exec.Cmd) error {
+	c.Env = append(c.Env, os.Environ()...)
+	return nil
 }
 
 //nolint:unused
