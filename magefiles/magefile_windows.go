@@ -18,7 +18,8 @@ var (
 
 // mergeTarFiles combines multiple tar(.gz) files together into one.
 func mergeTarFiles(dst string, srcs ...string) error {
-	//todo: intermediary unpacking of base and delta saves ~4% (and prevents duplicates)
+	//intermediary unpacking of base and delta saves ~4% (and prevents duplicates)
+	//todo: use mtree to enumerate permissions and recreate tar after unpacking (after de-dup)
 
 	// This does not flatten the tar file, so there will be duplicate directories
 	// Unpacking then repacking will lose all permissions, and would require storing it somewhere

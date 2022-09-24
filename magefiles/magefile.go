@@ -49,7 +49,16 @@ var (
 	testDir = filepath.Join(rootDir, "test")
 )
 
+// var testFlag = flag.Bool("test", false, "test flag")
+// var trueArgs = os.Args
+
 func init() {
+	// // todo: strip out custom flags from os.Args to be none-the-wiser
+	// fmt.Println(os.Args)
+	// fmt.Println("true args", trueArgs)
+	// flag.Parse()
+	// fmt.Println("the test flag is:", *testFlag)
+
 	if err := os.Chdir(rootDir); err != nil {
 		panic(fmt.Errorf("could not change to root directory: %w", err))
 	}
@@ -415,6 +424,26 @@ func Clean(_ context.Context) error {
 		}
 	}
 	return nil
+}
+
+// Rebuild (re)creates the mage executable in the root of the repo.
+func (Util) Self(ctx context.Context) error {
+	// output is relative to the magefile directory
+	args := []string{"run", "./magefiles/mage.go", "-f", "-d", "./magefiles", "-compile", "../build.exe"}
+	if mg.Verbose() {
+		args = append(args, "-debug")
+	}
+	_, err := Exec(ctx, goCmd(),
+		args,
+		execInDir(rootDir),
+		execInheritEnv,
+		execWithEnv(varMap{
+			"MAGEFILE_HASHFAST":     "false",
+			"MAGEFILE_ENABLE_COLOR": "true",
+		}),
+		execVerbose,
+	)
+	return err
 }
 
 //
