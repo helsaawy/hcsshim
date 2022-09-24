@@ -28,14 +28,16 @@ service/pkg/
 
 # Make stuff
 .rootfs-done
-bin/*
-rootfs/*
-rootfs-conv/*
 *.o
-/build/
 
-deps/*
-out/*
+# artifact folders at the root of the repo
+/bin/
+/rootfs/
+/rootfs-conv/
+/build/
+/deps/
+/out/
+/protobuf/
 
 # test results
 test/results

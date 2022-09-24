@@ -15,6 +15,14 @@ import (
 	"github.com/magefile/mage/sh"
 )
 
+// Currently, there is no support to change the working directory using sh.Exec/Run/etc...
+// Targets that need a specific working directory could [os.Chdir] at the begining of execution, but
+// this is not thread safe, since multiple go-routines could cd and overlap.
+//
+// Use custom [Exec] until mage updates API.
+//
+// see: https://github.com/magefile/mage/issues/213
+
 type execOpt func(*exec.Cmd) error
 
 func execInDir(dir string) execOpt {
