@@ -52,7 +52,7 @@ type Release mg.Namespace
 func (Release) Shim(ctx context.Context, version string) error {
 	//todo: git tag? build date?
 	return buildGoExe(ctx, "cmd/containerd-shim-runhcs-v1", cmdBin,
-		varMap{"GOWORK": "off", "GOOS": "windows"}, varMap{"main.version": version}, nil, nil)
+		varMap{"GOWORK": "off", "GOOS": "windows"}, varMap{"main.version": version, "main.gitCommit": "testste"}, nil, nil)
 }
 
 type Build mg.Namespace
@@ -144,28 +144,11 @@ func buildGoExe(ctx context.Context, pkg, outDir string, env, vars varMap, extra
 	mkdir(outDir)
 
 	pkgPath := filepath.Join(rootDir, pkg)
-	outPath := filepath.Join(outDir, filepath.Base(pkg))
-	if env["GOOS"] == "windows" {
-		outPath += ".exe"
-	}
+	outPath := filepath.Join(outDir, filepath.Base(pkg)+binaryExt)
 
-	args := make([]string, 0, len(goBuildFlags)+len(extraFlags)+6)
-	args = append(args, "build", "-o", outPath)
-	args = append(args, goBuildFlags...)
-	args = append(args, extraFlags...)
-	if len(tags) > 0 {
-		args = append(args, "-tags="+strings.Join(tags, ","))
-	}
-	if len(vars) > 0 {
-		fs := make([]string, len(vars))
-		for k, v := range vars {
-			fs = append(fs, "-X "+k+"="+v)
-		}
-		args = append(args, "-ldflags="+strings.Join(fs, " "))
-	}
-	args = append(args, pkgPath)
-
-	if _, err := Exec(ctx, goCmd(), args,
+	//todo: check for prior ldflags, add varargs to the last instance of `-ldflags`
+	if _, err := Exec(ctx, goCmd(),
+		mergeArgs(args("build", "-o="+outPath, tagsArg(tags), ldflagsVarArg(vars)), goBuildFlags, extraFlags, args(pkgPath)),
 		execInDir(rootDir),
 		execInheritEnv, // needs %LocalAppData% and other system variables
 		execWithEnv(env),
@@ -191,27 +174,27 @@ func (BuildTest) All(ctx context.Context) {
 
 func (BuildTest) CRIContainerd(ctx context.Context) error {
 	return buildGoTestExe(ctx, "cri-container", testBin,
-		varMap{"GOWORK": "off", "GOOS": "windows"}, nil, []string{"functional"})
+		varMap{"GOWORK": "off", "GOOS": "windows"}, nil, args("functional"))
 }
 
 func (BuildTest) Shim(ctx context.Context) error {
 	return buildGoTestExe(ctx, "containerd-shim-runhcs-v1", testBin,
-		varMap{"GOWORK": "off", "GOOS": "windows"}, nil, []string{"functional"})
+		varMap{"GOWORK": "off", "GOOS": "windows"}, nil, args("functional"))
 }
 
 func (BuildTest) RunHCS(ctx context.Context) error {
 	return buildGoTestExe(ctx, "runhcs", testBin,
-		varMap{"GOWORK": "off", "GOOS": "windows"}, nil, []string{"functional"})
+		varMap{"GOWORK": "off", "GOOS": "windows"}, nil, args("functional"))
 }
 
 func (BuildTest) Functional(ctx context.Context) error {
 	return buildGoTestExe(ctx, "functional", testBin,
-		varMap{"GOWORK": "off", "GOOS": "windows"}, nil, []string{"functional"})
+		varMap{"GOWORK": "off", "GOOS": "windows"}, nil, args("functional"))
 }
 
 func (BuildTest) GCS(ctx context.Context) error {
 	return buildGoTestExe(ctx, "gcs", testBin,
-		varMap{"GOWORK": "off", "GOOS": "linux"}, nil, []string{"functional"})
+		varMap{"GOWORK": "off", "GOOS": "linux"}, nil, args("functional"))
 }
 
 // pkg should be relative to testDir directory, outDir can be relative or abs
@@ -221,21 +204,10 @@ func buildGoTestExe(ctx context.Context, pkg, outDir string, env varMap, extraFl
 	pkgPath := filepath.Join(testDir, pkg)
 	// unlike `go build -o <path> ...`, `go test -c -o <path> ...` requires that path is
 	// the target executable, and not the directory
-	outPath := filepath.Join(outDir, filepath.Base(pkgPath)+".test")
-	if env["GOOS"] == "windows" {
-		outPath += ".exe"
-	}
+	outPath := filepath.Join(outDir, filepath.Base(pkgPath)+".test"+binaryExt)
 
-	args := make([]string, 0, len(goBuildTestFlags)+len(extraFlags)+6)
-	args = append(args, "test", "-c", "-o", outPath)
-	args = append(args, goBuildTestFlags...)
-	args = append(args, extraFlags...)
-	if len(tags) > 0 {
-		args = append(args, "-tags="+strings.Join(tags, ","))
-	}
-	args = append(args, pkgPath)
-
-	if _, err := Exec(ctx, goCmd(), args,
+	if _, err := Exec(ctx, goCmd(),
+		mergeArgs(args("test", "-c", "-o", outPath, tagsArg(tags)), goBuildTestFlags, extraFlags, args(pkgPath)),
 		execInDir(testDir),
 		execInheritEnv, // needs %LocalAppData% and other system variables
 		execWithEnv(env),
@@ -248,6 +220,28 @@ func buildGoTestExe(ctx context.Context, pkg, outDir string, env varMap, extraFl
 		log.Printf("updating %q timestamp and hash failed: %v", pkgPath, err)
 	}
 	return nil
+}
+
+func ldflagsVarArg(vars varMap) string {
+	if len(vars) == 0 {
+		return ""
+	}
+	fs := make([]string, 0, len(vars))
+	for k, v := range vars {
+		fs = append(fs, "-X="+k+"="+v)
+	}
+	log.Printf("%q", fs)
+	s := "-ldflags=" + strings.Join(fs, " ")
+	log.Print(s)
+	return s
+	// return `-ldflags="` + strings.Join(fs, " ") + `"`
+}
+
+func tagsArg(tags []string) string {
+	if len(tags) == 0 {
+		return ""
+	}
+	return "-tags=" + strings.Join(tags, ",")
 }
 
 // todo: merge stamps together in one file?

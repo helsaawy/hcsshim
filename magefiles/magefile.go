@@ -49,33 +49,55 @@ var (
 	testDir = filepath.Join(rootDir, "test")
 )
 
-// var testFlag = flag.Bool("test", false, "test flag")
-// var trueArgs = os.Args
-
 func init() {
-	// // todo: strip out custom flags from os.Args to be none-the-wiser
-	// fmt.Println(os.Args)
-	// fmt.Println("true args", trueArgs)
-	// flag.Parse()
-	// fmt.Println("the test flag is:", *testFlag)
+	if !mg.Verbose() {
+		log.Default().SetOutput(io.Discard)
+	}
 
 	if err := os.Chdir(rootDir); err != nil {
 		panic(fmt.Errorf("could not change to root directory: %w", err))
 	}
 }
 
+// convenience type defs and functions
+
 type varMap = map[string]string
+
+// args is a fancy wrapper for []string, but strips out empty strings
+func args(a ...string) []string {
+	x := make([]string, 0, len(a))
+	for _, s := range a {
+		if len(s) == 0 {
+			continue
+		}
+		x = append(x, s)
+	}
+	return x
+}
+
+func mergeArgs(as ...[]string) []string {
+	var n int
+	for _, x := range as {
+		n += len(x)
+	}
+	aa := make([]string, 0, n)
+	for _, a := range as {
+		aa = append(aa, a...)
+	}
+	return aa
+}
 
 var Default = ModRepo
 
 var Aliases = map[string]interface{}{
-	"pr":     Validate,
-	"mod":    ModRepo,
-	"gen":    GoGenerate,
-	"lint":   Lint.Repo,
-	"delta":  DeltaTarGz,
-	"rootfs": RootfsVHD,
-	"initrd": Initramfs,
+	"pr":      Validate,
+	"mod":     ModRepo,
+	"gen":     GoGenerate,
+	"lint":    Lint.Repo,
+	"delta":   DeltaTarGz,
+	"rootfs":  RootfsVHD,
+	"initrd":  Initramfs,
+	"rebuild": Util.Self,
 
 	// default build target is the shim
 	"build": Build.Shim,
@@ -98,9 +120,13 @@ func (Util) List(_ context.Context) {}
 //todo: rego support to gcs, shim, and test exes
 //todo: pull/build docker images for cri-containerd\test-images
 //todo: run unit tests
-//todo: mg.Verbose-aware logger
 //todo: dependencies (golangci-lint, docker, protoc)
 //todo: find mimimal set of env variables needed to run go and co
+
+//todo: use containerregistry to create a dummy image for base and delta tar and then export new rootfs
+// https://github.com/google/go-containerregistry/blob/main/pkg/crane/export.go#L27
+// https://github.com/google/go-containerregistry/blob/main/pkg/v1/empty/image.go#L26
+// https://github.com/google/go-containerregistry/tree/main/pkg/v1/mutate
 
 //
 // general file and artifact generation (go gen and protoc)
@@ -113,9 +139,7 @@ func RootfsVHD(_ context.Context, baseTar string) error {
 	mg.Deps(mg.F(RootfsTar, baseTar))
 	build, err := target.Path(rootfsVHDPath, rootfsTarPath)
 	if !build {
-		if mg.Verbose() {
-			log.Printf(nopTargetFmt, rootfsVHDPath)
-		}
+		log.Printf(nopTargetFmt, rootfsVHDPath)
 		return nil
 	}
 	if err != nil {
@@ -139,9 +163,7 @@ func RootfsVHD(_ context.Context, baseTar string) error {
 			rootfsTarPath, rootfsVHDPath, err)
 	}
 
-	if mg.Verbose() {
-		log.Printf("created rootfs VHD file %q\n", rootfsVHDPath)
-	}
+	log.Printf("created rootfs VHD file %q\n", rootfsVHDPath)
 	return nil
 }
 
@@ -152,9 +174,7 @@ func Initramfs(_ context.Context, baseTar string) error {
 	mg.Deps(mg.F(RootfsTar, baseTar))
 	build, err := target.Path(initramfsPath, rootfsTarPath)
 	if !build {
-		if mg.Verbose() {
-			log.Printf(nopTargetFmt, initramfsPath)
-		}
+		log.Printf(nopTargetFmt, initramfsPath)
 		return nil
 	}
 	if err != nil {
@@ -165,9 +185,7 @@ func Initramfs(_ context.Context, baseTar string) error {
 		return fmt.Errorf("converting rootfs tar %q to initramfs %q: %w",
 			rootfsTarPath, initramfsPath, err)
 	}
-	if mg.Verbose() {
-		log.Printf("created initramfs file %q\n", initramfsPath)
-	}
+	log.Printf("created initramfs file %q\n", initramfsPath)
 	return nil
 }
 
@@ -178,9 +196,7 @@ func RootfsTar(ctx context.Context, baseTar string) error {
 	mg.Deps(DeltaTarGz)
 	build, err := target.Path(rootfsTarPath, baseTar, deltaTarGzPath)
 	if !build {
-		if mg.Verbose() {
-			log.Printf(nopTargetFmt, rootfsTarPath)
-		}
+		log.Printf(nopTargetFmt, rootfsTarPath)
 		return nil
 	}
 	if err != nil {
@@ -202,9 +218,7 @@ func (Util) RootfsTar(_ context.Context, baseTar string) error {
 		return fmt.Errorf("error creating rootfs tar file %q: %w", rootfsTarPath, err)
 	}
 
-	if mg.Verbose() {
-		log.Printf("created rootfs tar file %q\n", rootfsTarPath)
-	}
+	log.Printf("created rootfs tar file %q\n", rootfsTarPath)
 
 	return nil
 }
@@ -222,9 +236,7 @@ func DeltaTarGz(_ context.Context) error {
 		getFileStampKey(filepath.Join(cmdBin, "wait-paths")),
 	)
 	if !build {
-		if mg.Verbose() {
-			log.Printf(nopTargetFmt, deltaTarGzPath)
-		}
+		log.Printf(nopTargetFmt, deltaTarGzPath)
 		return nil
 	}
 
@@ -341,9 +353,7 @@ func DeltaTarGz(_ context.Context) error {
 		}
 	}
 
-	if mg.Verbose() {
-		log.Printf("created delta tar file %q\n", deltaTarGzPath)
-	}
+	log.Printf("created delta tar file %q\n", deltaTarGzPath)
 
 	return nil
 }
@@ -426,10 +436,17 @@ func Clean(_ context.Context) error {
 	return nil
 }
 
-// Rebuild (re)creates the mage executable in the root of the repo.
+// Self (re)creates the mage executable, build, in the root of the repo.
+//
+// If it is called from a built executable, then the old executable will be kept and
+// appended with a `~`.
+// To avoid this, use `go run `go run .\magefiles\mage.go util:self`.
 func (Util) Self(ctx context.Context) error {
 	// output is relative to the magefile directory
-	args := []string{"run", "./magefiles/mage.go", "-f", "-d", "./magefiles", "-compile", "../build.exe"}
+	args := []string{"run", filepath.Join(rootDir, "/magefiles/mage.go"),
+		"-f", "-d=" + filepath.Join(rootDir, "/magefiles"),
+		"-compile=" + filepath.Join(rootDir, "/build"+binaryExt),
+	}
 	if mg.Verbose() {
 		args = append(args, "-debug")
 	}
@@ -474,6 +491,10 @@ func mkdir(p string) {
 }
 
 // getRootDir returns the absolute path to the root of the repo.
+//
+// This should be called in lieu of rootDir if the variable is declared globally, in a `var`
+// statement or `init` function, since the order of variable initialization is by alphebetical
+// file order, so rootDir equal "" instead of the actual file path.
 func getRootDir() string {
 	// Can also find root with `go list -f '{{.Root}}' .`, but that assumes working directory
 	// is a valid go pkg.
@@ -484,4 +505,8 @@ func getRootDir() string {
 		panic("could not find root path for module")
 	}
 	return filepath.Dir(filepath.Dir(r))
+}
+
+func tarExtract(dst, src string, args, paths []string) error {
+	return sh.Run("tar"+binaryExt, mergeArgs([]string{"-xf", src, "-C", dst}, args, paths)...)
 }

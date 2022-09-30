@@ -32,7 +32,7 @@ func execInDir(dir string) execOpt {
 	}
 }
 
-func execWithEnv(env map[string]string) execOpt {
+func execWithEnv(env varMap) execOpt {
 	e := flattenEnv(env)
 	return func(c *exec.Cmd) error {
 		c.Env = append(c.Env, e...)
@@ -40,7 +40,7 @@ func execWithEnv(env map[string]string) execOpt {
 	}
 }
 
-func flattenEnv(env map[string]string) []string {
+func flattenEnv(env varMap) []string {
 	e := make([]string, 0, len(env))
 	for k, v := range env {
 		e = append(e, k+"="+v)
