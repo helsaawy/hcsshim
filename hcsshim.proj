@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project
-    ToolsVersion="15.8"
+    ToolsVersion="15.0"
     DefaultTargets="Shim"
     InitialTargets="MakeDirs"
     xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
@@ -16,7 +16,7 @@
         <!-- <TestDir>$(BaseDir)\test</TestDir> -->
         <!-- <BinDir>$(BaseDir)\bin</BinDir> -->
         <!-- <BinDir>bin</BinDir> -->
-        <BinDir>sssbin</BinDir>
+        <BinDir>bin</BinDir>
         <CmdBin>$(BinDir)\cmd</CmdBin>
         <TestBin>$(BinDir)\test</TestBin>
         <ToolBin>$(BinDir)\tool</ToolBin>
@@ -72,91 +72,6 @@
         TaskName="GoBuild"
         TaskFactory="RoslynCodeTaskFactory"
         AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
-        <ParameterGroup>
-            <BuildFlags ParameterType="System.String" />
-            <Destination ParameterType="System.String" />
-            <GOOS ParameterType="System.String" />
-            <GOWORK ParameterType="System.String" />
-            <EnvironmentVariables ParameterType="System.String" />
-            <Path ParameterType="System.String" />
-            <WorkingDirectory ParameterType="System.String" />
-
-            <StdOut ParameterType="System.String" Output="true" />
-            <StdErr ParameterType="System.String" Output="true" />
-        </ParameterGroup>
-        <Task>
-            <Using Namespace="System" />
-            <Using Namespace="System.IO" />
-            <Code Type="Fragment" Language="cs">
-                <![CDATA[
-String args = "build -gcflags=\"all=-d=checkptr\"";
-if (!string.IsNullOrEmpty(BuildFlags)) {
-    args += " " + BuildFlags;
-}
-if (!string.IsNullOrEmpty(Destination)) {
-    args += string.Format(" -o=\"{0}\"", Destination);
-}
-if (!string.IsNullOrEmpty(Path)) {
-    args += " " + Path;
-}
-
-Log.LogMessage(MessageImportance.High, "go " + args );
-
-System.Diagnostics.ProcessStartInfo procStartInfo = new System.Diagnostics.ProcessStartInfo("go.exe", args);
-
-procStartInfo.UseShellExecute = false;
-procStartInfo.CreateNoWindow = true;
-procStartInfo.RedirectStandardOutput = true;
-procStartInfo.RedirectStandardError = true;
-
-
-if (!string.IsNullOrEmpty(WorkingDirectory)) {
-    procStartInfo.WorkingDirectory = WorkingDirectory;
-}
-
-
-if (!string.IsNullOrEmpty(GOOS)) {
-    procStartInfo.EnvironmentVariables.Remove("GOOS");
-    procStartInfo.EnvironmentVariables.Add("GOOS", GOOS);
-}
-
-if (!string.IsNullOrEmpty(GOWORK)) {
-    procStartInfo.EnvironmentVariables.Remove("GOWORK");
-    procStartInfo.EnvironmentVariables.Add("GOWORK", GOWORK);
-}
-
-if (!string.IsNullOrEmpty(EnvironmentVariables)) {
-    foreach (var env in EnvironmentVariables.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries)) {
-        var kv = env.Split(new[] { '=' }, 2);
-        string k = kv[0];
-        string v = "";
-        if (kv.Length > 1) {
-            v = kv[1];
-        }
-        procStartInfo.EnvironmentVariables.Remove(k);
-        procStartInfo.EnvironmentVariables.Add(k, v);
-    }
-}
-
-System.Diagnostics.Process proc = new System.Diagnostics.Process();
-proc.StartInfo = procStartInfo;
-proc.Start();
-proc.WaitForExit();
-
-string StdOut = proc.StandardOutput.ReadToEnd();
-string StdErr = proc.StandardError.ReadToEnd();
-
-Log.LogMessage(MessageImportance.Normal, StdOut);
-Log.LogMessage(MessageImportance.Normal, StdErr);
-]]>
-            </Code>
-        </Task>
-    </UsingTask>
-
-    <UsingTask
-        TaskName="GoB"
-        TaskFactory="RoslynCodeTaskFactory"
-        AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
         <Task>
 
             <Code Type="Class" Language="cs">
@@ -168,7 +83,7 @@ using System.Collections.Generic;
 using Microsoft.Build.Utilities;
 using Microsoft.Build.Framework;
 
-public class GoB : ToolTask {
+public class GoBuild : ToolTask {
     protected override string ToolName {
         get { return "go.exe"; }
     }
@@ -181,12 +96,27 @@ public class GoB : ToolTask {
     }
 
     private string flags = "-gcflags=\"all=-d=checkptr\"";
+
+    public string BuildFlags { get; set; }
+    public string Destination { get; set; }
+    public string Path { get; set; }
+
     public string GOOS { get; set; }
     public string GOWORK { get; set; }
 
 
     override protected string GenerateCommandLineCommands() {
-        return "env GOOS";
+        string args = "build " + flags;
+        if (!string.IsNullOrEmpty(BuildFlags)) {
+            args += " " + BuildFlags;
+        }
+        if (!string.IsNullOrEmpty(Destination)) {
+            args += string.Format(" -o=\"{0}\"", Destination);
+        }
+        if (!string.IsNullOrEmpty(Path)) {
+            args += " " + Path;
+        }
+        return args;
     }
 
     protected override string GenerateFullPathToTool(){
@@ -217,7 +147,6 @@ public class GoB : ToolTask {
 
     <Target Name="test">
         <Exec Command="echo building shim " />
-        <GoB GOOS="darwin" />
         <!-- <GoBuild
             Path="shim"
             Destination="a.exe"
@@ -230,14 +159,13 @@ public class GoB : ToolTask {
         <ItemGroup>
             <Binary Condition="'%(GoBinary.Name)' == 'shim'" Include="@(GoBinary)" />
         </ItemGroup>
-        <Exec Command="echo building shim %(Binary.Identity)" />
-        <!-- <GoBuild
-            Path="shim"
+        <!-- <Exec Command="echo building shim %(Binary.Identity)" /> -->
+        <GoBuild
+            Path=".\%(Binary.Src)"
             Destination="%(Binary.Identity)"
-            BuildFlags="-x -v"
             GOOS="%(Binary.GOOS)"
             GOWORK="%(Binary.GOWORK)"
-            /> -->
+            />
     </Target>
 
     <Target Name="uvmboot">
