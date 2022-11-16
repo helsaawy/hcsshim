@@ -1,47 +1,45 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project
-    ToolsVersion="15.0"
-    DefaultTargets="Shim"
-    InitialTargets="MakeDirs"
+    ToolsVersion="15"
+    DefaultTargets=""
     xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+    <!-- InitialTargets="MakeDirs" -->
 
     <PropertyGroup>
         <ImportDirectoryBuildTargets>false</ImportDirectoryBuildTargets>
 
-        <CGO_ENABLED Condition="'$(CGO_ENABLED)' == ''">0</CGO_ENABLED>
-        <GOOS Condition="'$(GOOS)' == ''">windows</GOOS>
-        <GOWORK>off</GOWORK>
+        <!-- <BaseDir>.</BaseDir> -->
+        <BaseDir>$(MSBuildProjectDirectory)</BaseDir>
+        <BinDir>$([System.IO.Path]::Combine($(BaseDir), bin))</BinDir>
+        <CmdBin>$([System.IO.Path]::Combine($(BinDir), cmd))</CmdBin>
+        <TestBin>$([System.IO.Path]::Combine($(BinDir), test))</TestBin>
+        <ToolBin>$([System.IO.Path]::Combine($(BinDir), tool))</ToolBin>
 
-        <!-- <BaseDir>$(MSBuildProjectDirectory)</BaseDir> -->
-        <!-- <TestDir>$(BaseDir)\test</TestDir> -->
-        <!-- <BinDir>$(BaseDir)\bin</BinDir> -->
-        <!-- <BinDir>bin</BinDir> -->
-        <BinDir>bin</BinDir>
-        <CmdBin>$(BinDir)\cmd</CmdBin>
-        <TestBin>$(BinDir)\test</TestBin>
-        <ToolBin>$(BinDir)\tool</ToolBin>
-
-        <DepDir>deps</DepDir>
-        <OutDir>out</OutDir>
-        <ProtobufDir>protobuf</ProtobufDir>
-        <TestDir>test</TestDir>
+        <DepDir>$([System.IO.Path]::Combine($(BaseDir), deps))</DepDir>
+        <OutDir>$([System.IO.Path]::Combine($(BaseDir), out))</OutDir>
+        <ProtobufDir>$([System.IO.Path]::Combine($(BaseDir), protobuf))</ProtobufDir>
+        <TestDir>$([System.IO.Path]::Combine($(BaseDir), test))</TestDir>
 
         <PwshFlags>-NoProfile -NoLogo -NonInteractive</PwshFlags>
         <!-- # bug on Win11 latest where TLS1.3 is forced, but still unsupported -->
         <CurlFlags>-L --no-progress-meter --write-out "code: %25{http_code}\ncontent: %25{content_type}\nbytes: %25{size_download}\nurl: %25{url_effective}\n" --tls-max "1.2"</CurlFlags>
+        <GoLintFlags>--timeout=2m --max-issues-per-linter=0 --max-same-issues=0 --modules-download-mode=readonly --verbose --config="$([System.IO.Path]::Combine($(BaseDir), .golangci.yml))"</GoLintFlags>
+
+        <!-- <CGO_ENABLED Condition="'$(CGO_ENABLED)' == ''">0</CGO_ENABLED> -->
+        <CGO_ENABLED>0</CGO_ENABLED>
+        <GOOS>windows</GOOS>
+        <GOWORK>off</GOWORK>
 
         <GoBuildFlags>-ldflags="-s -w"</GoBuildFlags>
-        <GoBuildTestFlags />
-        <GoTestFlags>-v -timeout=30m -race</GoTestFlags>
+        <GoBuildTestFlags>-gcflags="all=-d=checkptr"</GoBuildTestFlags>
         <GoGenFlags>-x</GoGenFlags>
         <GoModFlags>-e</GoModFlags>
-
-        <GoLintFlags>--timeout=2m --max-issues-per-linter=0 --max-same-issues=0 --modules-download-mode=readonly --verbose --config="$(BaseDir)\.golangci.yml"</GoLintFlags>
+        <GoTestFlags>-v -timeout=30m -race</GoTestFlags>
     </PropertyGroup>
 
     <ItemDefinitionGroup>
         <GoBinary>
-            <Build>false</Build>
+            <Build>true</Build>
             <CGO_ENABLED>$(CGO_ENABLED)</CGO_ENABLED>
             <GOOS>$(GOOS)</GOOS>
             <GOWORK>$(GOWORK)</GOWORK>
@@ -59,124 +57,88 @@
         <GoBinary Include="$(CmdBin)\ncproxy.exe" Src="cmd\ncproxy" />
         <GoBinary Include="$(CmdBin)\runhcs.exe" Src="cmd\runhcs" />
         <GoBinary Include="$(CmdBin)\shimdiag.exe" Src="cmd\shimdiag" />
-        <GoBinary Include="$(CmdBin)\tar2ext4.exe" Name="tar2ext4-win" Src="cmd\tar2ext4" />
-        <GoBinary Include="$(CmdBin)\tar2ext4" Name="tar2ext4-linux" Src="cmd\tar2ext4" GOOS="linux" />
+        <GoBinary Include="$(CmdBin)\tar2ext4.exe" Src="cmd\tar2ext4" />
+        <GoBinary Include="$(CmdBin)\tar2ext4" Src="cmd\tar2ext4" GOOS="linux" />
         <GoBinary Include="$(CmdBin)\wclayer.exe" Src="cmd\wclayer" />
-        <GoBinary Include="$(CmdBin)\vaccess.exe" Name="vmaccess" Src="internal\tools\grantvmgroupaccess" />
-        <GoBinary Include="$(CmdBin)\uvmboot.exe" Name="uvmboot" Src="internal\tools\uvmboot" />
-        <GoBinary Include="$(CmdBin)\zapdir.exe" Name="zapdir" Src="internal\tools\zapdir" />
+        <GoBinary Include="$(CmdBin)\vaccess.exe" Src="internal\tools\grantvmgroupaccess" />
+        <GoBinary Include="$(CmdBin)\uvmboot.exe" Src="internal\tools\uvmboot" />
+        <GoBinary Include="$(CmdBin)\zapdir.exe" Src="internal\tools\zapdir" />
+
+        <GoBinary Update="@(GoBinary)">
+            <Src>$([System.IO.Path]::Combine($(BaseDir),%(Src)))</Src>
+            <Name Condition="'%(Name)' == ''">%(FileName)</Name>
+        </GoBinary>
     </ItemGroup>
     <!-- <Exec ToolPath="$(TestBin)" ToolExe="functional.test.exe" Command="run" /> -->
 
-    <UsingTask
-        TaskName="GoBuild"
-        TaskFactory="RoslynCodeTaskFactory"
-        AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
-        <Task>
+    <Target Name="temp">
+        <GoCommand
+            WorkingDirectory="C:\code\ContainerPlatform\packaging\deploy"
+            Command="env" />
+    </Target>
 
-            <Code Type="Class" Language="cs">
-                <![CDATA[
-using System;
-using System.IO;
-using System.Linq;
-using System.Collections.Generic;
-using Microsoft.Build.Utilities;
-using Microsoft.Build.Framework;
+    <Target Name="Lint" DependsOnTargets="InstallLint">
+        <ItemGroup>
+            <Lint Include="repo" GOOS="windows" Dir="$(BaseDir)" />
+            <Lint Include="tests" GOOS="windows" Dir="$(TestDir)" />
+            <Lint Include="repo-linux" GOOS="linux" Dir="$(BaseDir)"
+                Args="cmd\gcs\... cmd\gcstools\... internal\guest\... internal\tools\... ext4\... pkg\..." />
+            <Lint Include="tests-linux" GOOS="linux" Dir="$(TestDir)" />
+        </ItemGroup>
+        <Exec
+            Command="golangci-lint.exe run $(GoLintFlags) %(Lint.Args)"
+            EnvironmentVariables="GOOS=%(Lint.GOOS);GOWORK=off"
+            WorkingDirectory="%(Lint.Dir)" />
+    </Target>
 
-public class GoBuild : ToolTask {
-    protected override string ToolName {
-        get { return "go.exe"; }
-    }
-    protected override MessageImportance StandardOutputLoggingImportance {
-        get { return MessageImportance.High; }
-    }
+    <Target Name="InstallLint" />
 
-    protected override MessageImportance StandardErrorLoggingImportance {
-        get { return MessageImportance.High; }
-    }
-
-    private string flags = "-gcflags=\"all=-d=checkptr\"";
-
-    public string BuildFlags { get; set; }
-    public string Destination { get; set; }
-    public string Path { get; set; }
-
-    public string GOOS { get; set; }
-    public string GOWORK { get; set; }
-
-
-    override protected string GenerateCommandLineCommands() {
-        string args = "build " + flags;
-        if (!string.IsNullOrEmpty(BuildFlags)) {
-            args += " " + BuildFlags;
-        }
-        if (!string.IsNullOrEmpty(Destination)) {
-            args += string.Format(" -o=\"{0}\"", Destination);
-        }
-        if (!string.IsNullOrEmpty(Path)) {
-            args += " " + Path;
-        }
-        return args;
-    }
-
-    protected override string GenerateFullPathToTool(){
-        return ToolName;
-    }
-
-    public override bool Execute() {
-        List<string> envs;
-        if (EnvironmentVariables == null) {
-           envs = new List<string>();
-        } else {
-           envs = new List<string>(EnvironmentVariables.ToList());
-        }
-        if (!string.IsNullOrEmpty(GOOS)) {
-            envs.Add("GOOS=" + GOOS);
-        }
-        if (!string.IsNullOrEmpty(GOWORK)) {
-            envs.Add( "GOWORK=" + GOWORK);
-        }
-        base.EnvironmentVariables = envs.ToArray();
-        return base.Execute();
-    }
-}
-]]>
-            </Code>
-        </Task>
-    </UsingTask>
-
-    <Target Name="test">
-        <Exec Command="echo building shim " />
-        <!-- <GoBuild
-            Path="shim"
-            Destination="a.exe"
-            BuildFlags="-x -v"
-            EnvironmentVariables="GOOS=linux;;MyFlag='-sdf=a d=sd af  sd';;;b=;;a;CGO=3"
-        /> -->
+    <Target Name="Mod">
+        <GoCommand Command="mod tidy" Flags="$(GoModFlags) -v" WorkingDirectory="$(TestDir)" />
+        <GoCommand Command="mod tidy" Flags="$(GoModFlags) -v" WorkingDirectory="$(BaseDir)" />
+        <GoCommand Command="mod vendor" Flags="$(GoModFlags)" WorkingDirectory="$(BaseDir)" />
     </Target>
 
     <Target Name="shim">
         <ItemGroup>
-            <Binary Condition="'%(GoBinary.Name)' == 'shim'" Include="@(GoBinary)" />
+            <GoBinary Condition="'%(GoBinary.Name)' != 'shim'" Build="False" />
         </ItemGroup>
-        <!-- <Exec Command="echo building shim %(Binary.Identity)" /> -->
-        <GoBuild
-            Path=".\%(Binary.Src)"
-            Destination="%(Binary.Identity)"
-            GOOS="%(Binary.GOOS)"
-            GOWORK="%(Binary.GOWORK)"
-            />
     </Target>
 
     <Target Name="uvmboot">
-
-        <Exec Command="echo building boot" />
+        <ItemGroup>
+            <GoBinary Condition="'%(GoBinary.Name)' != 'uvmboot'" Build="False" />
+        </ItemGroup>
     </Target>
 
-    <Target Name="GoBinaries" Outputs="%(GoBinary.Identity)" AfterTargets="shim;uvmboot">
-        <Exec
-            Command="echo ------- building %(GoBinary.Identity) %(GoBinary.GOOS) %(GoBinary.Src)"
-            Condition="'%(GoBinary.Build)' == 'true'" />
+    <Target Name="build-linux">
+        <ItemGroup>
+            <GoBinary Condition="'%(GoBinary.GOOS)' != 'linux'" Build="False" />
+        </ItemGroup>
+    </Target>
+
+    <Target Name="list-builds">
+        <Message
+            Importance="High"
+            Text="name: %(GoBinary.Name)
+    destination: %(GoBinary.Identity)
+    source: %(GoBinary.Src)
+    GOOS: %(GoBinary.GOOS)
+    Build: %(GoBinary.Build)" />
+    </Target>
+
+    <Target Name="Build" Outputs="@(GoBinary)" AfterTargets="shim;uvmboot;build-linux">
+        <ItemGroup>
+            <Binary Include="@(GoBinary)" Condition="'%(GoBinary.Build)' == 'True'" />
+        </ItemGroup>
+        <GoCommand
+            Command="build"
+            Flags="$(GoBuildFlags) -o=&quot;%(Binary.Identity)&quot; &quot;%(Binary.Src)&quot;"
+            CGO_ENABLED="%(Binary.CGO_ENABLED)"
+            GOOS="%(Binary.GOOS)"
+            GOWORK="%(Binary.GOWORK)"
+            WorkingDirectory="$(BaseDir)"
+        />
     </Target>
 
     <Target Name="MakeDirs">
@@ -190,5 +152,71 @@ public class GoBuild : ToolTask {
     <Target Name="ProtoFiles">
         <Message Text="%(ProtoFile.FullPath)" />
     </Target>
+
+    <UsingTask
+        TaskName="GoCommand"
+        TaskFactory="RoslynCodeTaskFactory"
+        AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+        <Task>
+            <Code Type="Class" Language="cs">
+                <![CDATA[
+using System;
+using System.IO;
+using System.Linq;
+using System.Collections.Generic;
+using Microsoft.Build.Utilities;
+using Microsoft.Build.Framework;
+
+public class GoCommand : ToolTask {
+    [Required]
+    public string Command { get; set; }
+    public string Flags { get; set; }
+    public string WorkingDirectory { get; set; }
+
+    public string GOOS { get; set; }
+    public string GOWORK { get; set; }
+    public string CGO_ENABLED { get; set; }
+
+    protected override string ToolName => "go.exe";
+    protected override MessageImportance StandardOutputLoggingImportance => MessageImportance.High;
+    protected override MessageImportance StandardErrorLoggingImportance => MessageImportance.High;
+
+    protected override string GetWorkingDirectory() => WorkingDirectory;
+
+    protected override string GenerateFullPathToTool() => ToolName;
+
+    protected override string GenerateCommandLineCommands() {
+        string args = Command;
+        if (!string.IsNullOrEmpty(Flags)) {
+            args += " " + Flags;
+        }
+        return args;
+    }
+
+
+    public override bool Execute() {
+        List<string> envs;
+        if (EnvironmentVariables == null) {
+           envs = new List<string>();
+        } else {
+           envs = new List<string>(EnvironmentVariables.ToList());
+        }
+        if (!string.IsNullOrEmpty(GOOS)) {
+            envs.Add("GOOS=" + GOOS.ToLower());
+        }
+        if (!string.IsNullOrEmpty(GOWORK)) {
+            envs.Add( "GOWORK=" + GOWORK.ToLower());
+        }
+        if (!string.IsNullOrEmpty(CGO_ENABLED)) {
+            envs.Add( "CGO_ENABLED=" + CGO_ENABLED);
+        }
+        base.EnvironmentVariables = envs.ToArray();
+        return base.Execute();
+    }
+}
+]]>
+            </Code>
+        </Task>
+    </UsingTask>
 
 </Project>
