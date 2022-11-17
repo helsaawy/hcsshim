@@ -12,6 +12,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/sirupsen/logrus"
+	"go.opencensus.io/trace"
+
 	"github.com/Microsoft/hcsshim/internal/cow"
 	"github.com/Microsoft/hcsshim/internal/hcs/schema1"
 	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
@@ -19,10 +22,9 @@ import (
 	"github.com/Microsoft/hcsshim/internal/log"
 	"github.com/Microsoft/hcsshim/internal/logfields"
 	"github.com/Microsoft/hcsshim/internal/oc"
+	isync "github.com/Microsoft/hcsshim/internal/sync"
 	"github.com/Microsoft/hcsshim/internal/timeout"
 	"github.com/Microsoft/hcsshim/internal/vmcompute"
-	"github.com/sirupsen/logrus"
-	"go.opencensus.io/trace"
 )
 
 type System struct {
@@ -31,9 +33,9 @@ type System struct {
 	id             string
 	callbackNumber uintptr
 
-	closedWaitOnce sync.Once
-	waitBlock      chan struct{}
-	waitError      error
+	wait isync.Block
+	// exitError is set by waitBackground when the compute system exits unexpectedly
+	// should only be ready after wait is unblocked
 	exitError      error
 	os, typ, owner string
 	startTime      time.Time
@@ -41,8 +43,8 @@ type System struct {
 
 func newSystem(id string) *System {
 	return &System{
-		id:        id,
-		waitBlock: make(chan struct{}),
+		id:   id,
+		wait: isync.NewErrorBlock(),
 	}
 }
 
@@ -227,7 +229,7 @@ func (computeSystem *System) Shutdown(ctx context.Context) error {
 
 	operation := "hcs::System::Shutdown"
 
-	if computeSystem.handle == 0 {
+	if computeSystem.handle == 0 || computeSystem.wait.Closed() {
 		return nil
 	}
 
@@ -248,7 +250,7 @@ func (computeSystem *System) Terminate(ctx context.Context) error {
 
 	operation := "hcs::System::Terminate"
 
-	if computeSystem.handle == 0 {
+	if computeSystem.handle == 0 || computeSystem.wait.Closed() {
 		return nil
 	}
 
@@ -284,26 +286,22 @@ func (computeSystem *System) waitBackground() {
 	default:
 		err = makeSystemError(computeSystem, operation, err, nil)
 	}
-	computeSystem.closedWaitOnce.Do(func() {
-		computeSystem.waitError = err
-		close(computeSystem.waitBlock)
-	})
+	computeSystem.wait.Close(err)
 	oc.SetSpanStatus(span, err)
 }
 
 // Wait synchronously waits for the compute system to shutdown or terminate. If
 // the compute system has already exited returns the previous error (if any).
 func (computeSystem *System) Wait() error {
-	<-computeSystem.waitBlock
-	return computeSystem.waitError
+	return computeSystem.wait.Wait(context.Background())
 }
 
 // ExitError returns an error describing the reason the compute system terminated.
 func (computeSystem *System) ExitError() error {
 	select {
-	case <-computeSystem.waitBlock:
-		if computeSystem.waitError != nil {
-			return computeSystem.waitError
+	case <-computeSystem.wait.Done():
+		if err := computeSystem.wait.Err(); err != nil {
+			return err
 		}
 		return computeSystem.exitError
 	default:
@@ -739,11 +737,7 @@ func (computeSystem *System) Close() (err error) {
 	}
 
 	computeSystem.handle = 0
-	computeSystem.closedWaitOnce.Do(func() {
-		computeSystem.waitError = ErrAlreadyClosed
-		close(computeSystem.waitBlock)
-	})
-
+	computeSystem.wait.Close(ErrAlreadyClosed)
 	return nil
 }
 
