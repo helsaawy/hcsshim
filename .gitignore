@@ -32,7 +32,7 @@ bin/*
 rootfs/*
 rootfs-conv/*
 *.o
-/build/
+build/
 
 deps/*
 out/*
@@ -51,3 +51,10 @@ go.work.sum
 # keys and related artifacts
 *.pem
 *.cose
+
+#cmake
+!CMakeLists.txt
+CMakeFiles/*
+CMakeCache.txt
+cmake_install.cmake
+.ninja_deps
