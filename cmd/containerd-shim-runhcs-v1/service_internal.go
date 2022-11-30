@@ -10,21 +10,25 @@ import (
 	"path/filepath"
 	"strings"
 
+	task "github.com/containerd/containerd/api/runtime/task/v2"
+	containerd_v1_types "github.com/containerd/containerd/api/types/task"
+	"github.com/containerd/containerd/errdefs"
+	"github.com/containerd/containerd/mount"
+	"github.com/containerd/containerd/protobuf"
+	typeurl "github.com/containerd/typeurl/v2"
+
+	"github.com/opencontainers/runtime-spec/specs-go"
+	"github.com/pkg/errors"
+	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	runhcsopts "github.com/Microsoft/hcsshim/cmd/containerd-shim-runhcs-v1/options"
 	"github.com/Microsoft/hcsshim/internal/extendedtask"
 	"github.com/Microsoft/hcsshim/internal/oci"
 	"github.com/Microsoft/hcsshim/internal/shimdiag"
-	containerd_v1_types "github.com/containerd/containerd/api/types/task"
-	"github.com/containerd/containerd/errdefs"
-	"github.com/containerd/containerd/mount"
-	"github.com/containerd/containerd/runtime/v2/task"
-	"github.com/containerd/typeurl"
-	google_protobuf1 "github.com/gogo/protobuf/types"
-	"github.com/opencontainers/runtime-spec/specs-go"
-	"github.com/pkg/errors"
 )
 
-var empty = &google_protobuf1.Empty{}
+var empty = &emptypb.Empty{}
 
 // getPod returns the pod this shim is tracking or else returns `nil`. It is the
 // callers responsibility to verify that `s.isSandbox == true` before calling
@@ -244,7 +248,7 @@ func (s *service) deleteInternal(ctx context.Context, req *task.DeleteRequest) (
 	return &task.DeleteResponse{
 		Pid:        uint32(pid),
 		ExitStatus: exitStatus,
-		ExitedAt:   exitedAt,
+		ExitedAt:   timestamppb.New(exitedAt),
 	}, nil
 }
 
@@ -259,13 +263,13 @@ func (s *service) pidsInternal(ctx context.Context, req *task.PidsRequest) (*tas
 	}
 	processes := make([]*containerd_v1_types.ProcessInfo, len(pids))
 	for i, p := range pids {
-		a, err := typeurl.MarshalAny(&p)
+		a, err := typeurl.MarshalAny(p)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to marshal ProcessDetails for process: %s, task: %s", p.ExecID, req.ID)
 		}
 		proc := &containerd_v1_types.ProcessInfo{
 			Pid:  p.ProcessID,
-			Info: a,
+			Info: protobuf.FromAny(a),
 		}
 		processes[i] = proc
 	}
@@ -274,7 +278,7 @@ func (s *service) pidsInternal(ctx context.Context, req *task.PidsRequest) (*tas
 	}, nil
 }
 
-func (s *service) pauseInternal(ctx context.Context, req *task.PauseRequest) (*google_protobuf1.Empty, error) {
+func (s *service) pauseInternal(ctx context.Context, req *task.PauseRequest) (*emptypb.Empty, error) {
 	/*
 		s.events <- cdevent{
 			topic: runtime.TaskPausedEventTopic,
@@ -286,7 +290,7 @@ func (s *service) pauseInternal(ctx context.Context, req *task.PauseRequest) (*g
 	return nil, errdefs.ErrNotImplemented
 }
 
-func (s *service) resumeInternal(ctx context.Context, req *task.ResumeRequest) (*google_protobuf1.Empty, error) {
+func (s *service) resumeInternal(ctx context.Context, req *task.ResumeRequest) (*emptypb.Empty, error) {
 	/*
 		s.events <- cdevent{
 			topic: runtime.TaskResumedEventTopic,
@@ -298,11 +302,11 @@ func (s *service) resumeInternal(ctx context.Context, req *task.ResumeRequest) (
 	return nil, errdefs.ErrNotImplemented
 }
 
-func (s *service) checkpointInternal(ctx context.Context, req *task.CheckpointTaskRequest) (*google_protobuf1.Empty, error) {
+func (s *service) checkpointInternal(ctx context.Context, req *task.CheckpointTaskRequest) (*emptypb.Empty, error) {
 	return nil, errdefs.ErrNotImplemented
 }
 
-func (s *service) killInternal(ctx context.Context, req *task.KillRequest) (*google_protobuf1.Empty, error) {
+func (s *service) killInternal(ctx context.Context, req *task.KillRequest) (*emptypb.Empty, error) {
 	if s.isSandbox {
 		pod, err := s.getPod()
 		if err != nil {
@@ -327,7 +331,7 @@ func (s *service) killInternal(ctx context.Context, req *task.KillRequest) (*goo
 	return empty, nil
 }
 
-func (s *service) execInternal(ctx context.Context, req *task.ExecProcessRequest) (*google_protobuf1.Empty, error) {
+func (s *service) execInternal(ctx context.Context, req *task.ExecProcessRequest) (*emptypb.Empty, error) {
 	t, err := s.getTask(req.ID)
 	if err != nil {
 		return nil, err
@@ -432,7 +436,7 @@ func (s *service) diagTasksInternal(ctx context.Context, req *shimdiag.TasksRequ
 	return resp, nil
 }
 
-func (s *service) resizePtyInternal(ctx context.Context, req *task.ResizePtyRequest) (*google_protobuf1.Empty, error) {
+func (s *service) resizePtyInternal(ctx context.Context, req *task.ResizePtyRequest) (*emptypb.Empty, error) {
 	t, err := s.getTask(req.ID)
 	if err != nil {
 		return nil, err
@@ -448,7 +452,7 @@ func (s *service) resizePtyInternal(ctx context.Context, req *task.ResizePtyRequ
 	return empty, nil
 }
 
-func (s *service) closeIOInternal(ctx context.Context, req *task.CloseIORequest) (*google_protobuf1.Empty, error) {
+func (s *service) closeIOInternal(ctx context.Context, req *task.CloseIORequest) (*emptypb.Empty, error) {
 	t, err := s.getTask(req.ID)
 	if err != nil {
 		return nil, err
@@ -464,7 +468,7 @@ func (s *service) closeIOInternal(ctx context.Context, req *task.CloseIORequest)
 	return empty, nil
 }
 
-func (s *service) updateInternal(ctx context.Context, req *task.UpdateTaskRequest) (*google_protobuf1.Empty, error) {
+func (s *service) updateInternal(ctx context.Context, req *task.UpdateTaskRequest) (*emptypb.Empty, error) {
 	if req.Resources == nil {
 		return nil, errors.Wrapf(errdefs.ErrInvalidArgument, "resources cannot be empty, updating container %s resources failed", req.ID)
 	}
@@ -512,7 +516,7 @@ func (s *service) statsInternal(ctx context.Context, req *task.StatsRequest) (*t
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to marshal Statistics for task: %s", req.ID)
 	}
-	return &task.StatsResponse{Stats: any}, nil
+	return &task.StatsResponse{Stats: protobuf.FromAny(any)}, nil
 }
 
 func (s *service) connectInternal(ctx context.Context, req *task.ConnectRequest) (*task.ConnectResponse, error) {
@@ -524,7 +528,7 @@ func (s *service) connectInternal(ctx context.Context, req *task.ConnectRequest)
 	}, nil
 }
 
-func (s *service) shutdownInternal(ctx context.Context, req *task.ShutdownRequest) (*google_protobuf1.Empty, error) {
+func (s *service) shutdownInternal(ctx context.Context, req *task.ShutdownRequest) (*emptypb.Empty, error) {
 	// Because a pod shim hosts multiple tasks only the init task can issue the
 	// shutdown request.
 	if req.ID != s.tid {

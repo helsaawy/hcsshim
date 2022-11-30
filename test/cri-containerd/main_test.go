@@ -13,17 +13,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Microsoft/hcsshim/osversion"
 	"github.com/containerd/containerd"
 	eventtypes "github.com/containerd/containerd/api/events"
 	eventsapi "github.com/containerd/containerd/api/services/events/v1"
 	kubeutil "github.com/containerd/containerd/integration/remote/util"
 	eventruntime "github.com/containerd/containerd/runtime"
-	"github.com/containerd/typeurl"
-	"github.com/gogo/protobuf/types"
+	typeurl "github.com/containerd/typeurl/v2"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	runtime "k8s.io/cri-api/pkg/apis/runtime/v1alpha2"
 
+	"github.com/Microsoft/hcsshim/osversion"
 	testflag "github.com/Microsoft/hcsshim/test/pkg/flag"
 	"github.com/Microsoft/hcsshim/test/pkg/images"
 	"github.com/Microsoft/hcsshim/test/pkg/require"
@@ -186,8 +186,9 @@ func createGRPCConn(ctx context.Context) (*grpc.ClientConn, error) {
 	if err != nil {
 		return nil, err
 	}
-	//nolint:staticcheck //TODO: SA1019: grpc.WithInsecure is deprecated: use WithTransportCredentials and insecure.NewCredentials()
-	return grpc.DialContext(ctx, addr, grpc.WithInsecure(), grpc.WithContextDialer(dialer))
+	return grpc.DialContext(ctx, addr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithContextDialer(dialer))
 }
 
 func newTestRuntimeClient(tb testing.TB) runtime.RuntimeServiceClient {
@@ -239,7 +240,7 @@ func getTargetRunTopics() (topicNames []string, filters []string) {
 	return topicNames, filters
 }
 
-func convertEvent(e *types.Any) (string, interface{}, error) {
+func convertEvent(e typeurl.Any) (string, interface{}, error) {
 	id := ""
 	evt, err := typeurl.UnmarshalAny(e)
 	if err != nil {
