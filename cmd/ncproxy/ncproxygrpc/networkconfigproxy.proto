@@ -58,8 +58,9 @@ message CreateNetworkRequest {
     NetworkMode mode = 2;
     string switch_name = 3;
     IpamType ipam_type = 4;
-    repeated string subnet_ipadress_prefix = 5;
+    repeated string subnet_ipaddress_prefix = 5;
     string default_gateway = 6;
+    string ipv6_gateway = 7;
 }
 
 message CreateNetworkResponse{
@@ -77,6 +78,7 @@ message IovEndpointPolicySetting {
 }
 
 message CreateEndpointRequest {
+    reserved 8 to 15;
     string name = 1;
     string macaddress = 2;
     string ipaddress = 3;
@@ -84,6 +86,8 @@ message CreateEndpointRequest {
     string network_name = 5;
     PortNameEndpointPolicySetting portname_policy_setting = 6;
     IovEndpointPolicySetting iov_policy_settings = 7;
+    string ipv6address = 17;
+    string ipv6address_prefixlength = 18;
 }
 
 message CreateEndpointResponse{
@@ -93,6 +97,7 @@ message CreateEndpointResponse{
 message AddEndpointRequest {
     string name = 1;
     string namespace_id = 2;
+    bool attach_to_host = 3;
 }
 
 message AddEndpointResponse{}
@@ -124,9 +129,15 @@ message GetNetworkRequest{
     string name = 1;
 }
 
+message MacRange {
+    string startMacAddress = 1;
+    string endMacAddress = 2;
+}
+
 message GetNetworkResponse{
     string id = 1;
     string name = 2;
+    MacRange macRange = 3;
 }
 
 message GetEndpointsRequest{}

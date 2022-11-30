@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/Microsoft/go-winio"
@@ -164,6 +165,10 @@ func (s *grpcService) DeleteNIC(ctx context.Context, req *ncproxygrpc.DeleteNICR
 	return nil, status.Errorf(codes.FailedPrecondition, "No shim registered for namespace `%s`", req.ContainerID)
 }
 
+func IsIPv6(address string) bool {
+	return strings.Count(address, ":") >= 2
+}
+
 //
 // HNS Methods
 //
@@ -214,16 +219,26 @@ func (s *grpcService) CreateNetwork(ctx context.Context, req *ncproxygrpc.Create
 		Settings: data,
 	}
 
-	subnets := make([]hcn.Subnet, len(req.SubnetIpadressPrefix))
-	for i, addrPrefix := range req.SubnetIpadressPrefix {
+	subnets := make([]hcn.Subnet, len(req.SubnetIpaddressPrefix))
+	for i, addrPrefix := range req.SubnetIpaddressPrefix {
+		route := []hcn.Route{
+			{
+				NextHop:           req.DefaultGateway,
+				DestinationPrefix: "0.0.0.0/0",
+			},
+		}
+
+		if IsIPv6(addrPrefix) {
+			route = []hcn.Route{
+				{
+					NextHop:           req.Ipv6Gateway,
+					DestinationPrefix: "::/0",
+				},
+			}
+		}
 		subnet := hcn.Subnet{
 			IpAddressPrefix: addrPrefix,
-			Routes: []hcn.Route{
-				{
-					NextHop:           req.DefaultGateway,
-					DestinationPrefix: "0.0.0.0/0",
-				},
-			},
+			Routes:          route,
 		}
 		subnets[i] = subnet
 	}
@@ -319,10 +334,27 @@ func (s *grpcService) CreateEndpoint(ctx context.Context, req *ncproxygrpc.Creat
 		return nil, errors.Wrap(err, "failed to convert ip address prefix length to uint")
 	}
 
-	// Construct ip config.
+	// Construct ipv4 config.
 	ipConfig := hcn.IpConfig{
 		IpAddress:    req.Ipaddress,
 		PrefixLength: uint8(prefixLen),
+	}
+
+	ipConfigs := []hcn.IpConfig{ipConfig}
+
+	if req.Ipv6Address != "" && req.Ipv6AddressPrefixlength != "" {
+		prefixLenv6, err := strconv.ParseUint(req.Ipv6AddressPrefixlength, 10, 8)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to convert ipv6 address prefix length to uint")
+		}
+
+		// Construct ipv6 config.
+		ipConfigv6 := hcn.IpConfig{
+			IpAddress:    req.Ipv6Address,
+			PrefixLength: uint8(prefixLenv6),
+		}
+
+		ipConfigs = append(ipConfigs, ipConfigv6)
 	}
 
 	policies, err := constructEndpointPolicies(req)
@@ -334,7 +366,7 @@ func (s *grpcService) CreateEndpoint(ctx context.Context, req *ncproxygrpc.Creat
 		Name:               req.Name,
 		HostComputeNetwork: network.Id,
 		MacAddress:         req.Macaddress,
-		IpConfigurations:   []hcn.IpConfig{ipConfig},
+		IpConfigurations:   ipConfigs,
 		Policies:           policies,
 		SchemaVersion: hcn.SchemaVersion{
 			Major: 2,
@@ -371,6 +403,18 @@ func (s *grpcService) AddEndpoint(ctx context.Context, req *ncproxygrpc.AddEndpo
 			return nil, status.Errorf(codes.NotFound, "no endpoint with name `%s` found", req.Name)
 		}
 		return nil, errors.Wrapf(err, "failed to get endpoint with name %q", req.Name)
+	}
+
+	if req.AttachToHost {
+		namespaces, err := hcn.ListNamespaces()
+		if err == nil {
+			for _, namespace := range namespaces {
+				if namespace.Type == hcn.NamespaceTypeHostDefault {
+					req.NamespaceID = namespace.Id
+					break
+				}
+			}
+		}
 	}
 
 	if err := hcn.AddNamespaceEndpoint(req.NamespaceID, ep.Id); err != nil {
@@ -504,9 +548,15 @@ func (s *grpcService) GetNetwork(ctx context.Context, req *ncproxygrpc.GetNetwor
 		return nil, errors.Wrapf(err, "failed to get network with name %q", req.Name)
 	}
 
+	macRange := &ncproxygrpc.MacRange{
+		StartMacAddress: network.MacPool.Ranges[0].StartMacAddress,
+		EndMacAddress:   network.MacPool.Ranges[0].EndMacAddress,
+	}
+
 	return &ncproxygrpc.GetNetworkResponse{
-		ID:   network.Id,
-		Name: network.Name,
+		ID:       network.Id,
+		Name:     network.Name,
+		MacRange: macRange,
 	}, nil
 }
 
