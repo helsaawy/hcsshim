@@ -7,9 +7,11 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"testing"
@@ -154,6 +156,28 @@ func TestCmdExitCode(t *testing.T) {
 	err := cmd.Run()
 	if e, ok := err.(*ExitError); !ok || e.ExitCode() != 64 {
 		t.Fatal("expected exit code 64, got ", err)
+	}
+}
+
+func TestCmdQuotesInCommand(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "test_dir")
+	acl := "CREATOR OWNER:(OI)(CI)(IO)(F)"
+	cmd := Command(&localProcessHost{}, "cmd.exe")
+	cmd.Spec.CommandLine = fmt.Sprintf(`cmd /C mkdir %s && icacls %s /grant "%s" /T`, dir, dir, acl)
+	fmt.Println("args", cmd.Spec.Args)
+	fmt.Println("cl", cmd.Spec.CommandLine)
+	err := cmd.Run()
+	if err != nil {
+		t.Fatalf("acl assignment: %v", err)
+	}
+
+	cmd = Command(&localProcessHost{}, "cmd", "/C", "icacls", dir)
+	o, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("check acl assignment: %v", err)
+	}
+	if !strings.Contains(string(o), acl) {
+		t.Fatalf("acl not assigned:\n%s", o)
 	}
 }
 
