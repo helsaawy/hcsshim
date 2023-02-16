@@ -13,6 +13,7 @@ import (
 	"github.com/Microsoft/hcsshim/internal/hcs"
 	"github.com/Microsoft/hcsshim/internal/hcs/schema1"
 	"github.com/Microsoft/hcsshim/internal/hns"
+	"github.com/Microsoft/hcsshim/internal/uvm/resource/vsmb"
 	"github.com/Microsoft/hcsshim/internal/vm"
 )
 
@@ -68,7 +69,7 @@ type UtilityVM struct {
 	// This option does not prevent writable SCSI mounts.
 	noWritableFileShares bool
 
-	vsmb *vsmbManager
+	vsmb *vsmb.Manager
 
 	// VPMEM devices that are mapped into a Linux UVM. These are used for read-only layers, or for
 	// booting from VHD.
@@ -155,11 +156,6 @@ func (uvm *UtilityVM) GuestOS() vm.GuestOS {
 // should be physically backed
 func (uvm *UtilityVM) DevicesPhysicallyBacked() bool {
 	return uvm.devicesPhysicallyBacked
-}
-
-// VSMBNoDirectMap returns if VSMB devices should be mounted with `NoDirectMap` set to true
-func (uvm *UtilityVM) VSMBNoDirectMap() bool {
-	return uvm.vsmb.noDirectMap
 }
 
 func (uvm *UtilityVM) DisallowWritableFileShares() bool {

@@ -8,6 +8,7 @@ import (
 
 	"github.com/Microsoft/hcsshim/internal/cow"
 	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
+	"github.com/Microsoft/hcsshim/internal/vm"
 	"github.com/pkg/errors"
 )
 
@@ -17,61 +18,13 @@ const (
 	DefaultCloneNetworkNamespaceID = "89EB8A86-E253-41FD-9800-E6D88EB2E18A"
 )
 
-// Cloneable is a generic interface for cloning a specific resource. Not all resources can
-// be cloned and so all resources might not implement this interface. This interface is
-// mainly used during late cloning process to clone the resources associated with the UVM
-// and the container. For some resources (like scratch VHDs of the UVM & container)
-// cloning means actually creating a copy of that resource while for some resources it
-// simply means adding that resource to the cloned VM without copying (like VSMB shares).
-// The Clone function of that resource will deal with these details.
-type Cloneable interface {
-	// A resource that supports cloning should also support serialization and
-	// deserialization operations. This is because during resource cloning a resource
-	// is usually serialized in one process and then deserialized and cloned in some
-	// other process. Care should be taken while serializing a resource to not include
-	// any state that will not be valid during the deserialization step. By default
-	// gob encoding is used to serialize and deserialize resources but a resource can
-	// implement `gob.GobEncoder` & `gob.GobDecoder` interfaces to provide its own
-	// serialization and deserialization functions.
-
-	// A SerialVersionID is an identifier used to recognize a unique version of a
-	// resource. Every time the definition of the resource struct changes this ID is
-	// bumped up.  This ID is used to ensure that we serialize and deserialize the
-	// same version of a resource.
-	GetSerialVersionID() uint32
-
-	// Clone function creates a clone of the resource on the UVM `vm` (i.e adds the
-	// cloned resource to the `vm`)
-	// `cd` parameter can be used to pass any other data that is required during the
-	// cloning process of that resource (for example, when cloning SCSI Mounts we
-	// might need scratchFolder).
-	// Clone function should be called on a valid struct (Mostly on the struct which
-	// is deserialized, and so Clone function should only depend on the fields that
-	// are exported in the struct).
-	// The implementation of the clone function should avoid reading any data from the
-	// `vm` struct, it can add new fields to the vm struct but since the vm struct
-	// isn't fully ready at this point it shouldn't be used to read any data.
-	Clone(ctx context.Context, vm *UtilityVM, cd *cloneData) error
-}
-
-// A struct to keep all the information that might be required during cloning process of
-// a resource.
-type cloneData struct {
-	// doc spec for the clone
-	doc *hcsschema.ComputeSystem
-	// scratchFolder of the clone
-	scratchFolder string
-	// UVMID of the clone
-	uvmID string
-}
-
 // UVMTemplateConfig is just a wrapper struct that keeps together all the resources that
 // need to be saved to create a template.
 type UVMTemplateConfig struct {
 	// ID of the template vm
 	UVMID string
 	// Array of all resources that will be required while making a clone from this template
-	Resources []Cloneable
+	Resources []vm.Cloneable
 	// The OptionsWCOW used for template uvm creation
 	CreateOpts OptionsWCOW
 }
@@ -90,8 +43,8 @@ func (uvm *UtilityVM) GenerateTemplateConfig() (*UVMTemplateConfig, error) {
 		CreateOpts: uvm.createOpts.(OptionsWCOW),
 	}
 
-	for _, vsmbShare := range uvm.vsmb.Shares() {
-		templateConfig.Resources = append(templateConfig.Resources, vsmbShare)
+	for _, share := range uvm.vsmb.Shares() {
+		templateConfig.Resources = append(templateConfig.Resources, share)
 	}
 
 	for _, location := range uvm.scsiLocations {

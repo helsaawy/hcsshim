@@ -640,7 +640,7 @@ func (sm *SCSIMount) GobDecode(data []byte) error {
 // the uvm `vm`. If `sm` is read only then it is simply added to the `vm`. But if it is a
 // writable mount(e.g a scratch layer) then a copy of it is made and that copy is added
 // to the `vm`.
-func (sm *SCSIMount) Clone(ctx context.Context, vm *UtilityVM, cd *cloneData) error {
+func (sm *SCSIMount) Clone(ctx context.Context, vm *UtilityVM, cd *CloneData) error {
 	var (
 		dstVhdPath string = sm.HostPath
 		err        error
@@ -668,9 +668,9 @@ func (sm *SCSIMount) Clone(ctx context.Context, vm *UtilityVM, cd *cloneData) er
 
 		// For the scratch VHD of the VM (always attached at Controller:0, LUN:0)
 		// clone it in the scratch folder
-		dir = cd.scratchFolder
+		dir = cd.ScratchFolder
 		if sm.Controller != 0 || sm.LUN != 0 {
-			dir, err = os.MkdirTemp(cd.scratchFolder, fmt.Sprintf("clone-mount-%d-%d", sm.Controller, sm.LUN))
+			dir, err = os.MkdirTemp(cd.ScratchFolder, fmt.Sprintf("clone-mount-%d-%d", sm.Controller, sm.LUN))
 			if err != nil {
 				return fmt.Errorf("error while creating directory for scsi mounts of clone vm: %s", err)
 			}
@@ -689,23 +689,23 @@ func (sm *SCSIMount) Clone(ctx context.Context, vm *UtilityVM, cd *cloneData) er
 			return err
 		}
 
-		if err = grantAccess(ctx, cd.uvmID, dstVhdPath, VMAccessTypeIndividual); err != nil {
+		if err = grantAccess(ctx, cd.UVMID, dstVhdPath, VMAccessTypeIndividual); err != nil {
 			os.Remove(dstVhdPath)
 			return err
 		}
 	}
 
-	if cd.doc.VirtualMachine.Devices.Scsi == nil {
-		cd.doc.VirtualMachine.Devices.Scsi = map[string]hcsschema.Scsi{}
+	if cd.Doc.VirtualMachine.Devices.Scsi == nil {
+		cd.Doc.VirtualMachine.Devices.Scsi = map[string]hcsschema.Scsi{}
 	}
 
-	if _, ok := cd.doc.VirtualMachine.Devices.Scsi[conStr]; !ok {
-		cd.doc.VirtualMachine.Devices.Scsi[conStr] = hcsschema.Scsi{
+	if _, ok := cd.Doc.VirtualMachine.Devices.Scsi[conStr]; !ok {
+		cd.Doc.VirtualMachine.Devices.Scsi[conStr] = hcsschema.Scsi{
 			Attachments: map[string]hcsschema.Attachment{},
 		}
 	}
 
-	cd.doc.VirtualMachine.Devices.Scsi[conStr].Attachments[lunStr] = hcsschema.Attachment{
+	cd.Doc.VirtualMachine.Devices.Scsi[conStr].Attachments[lunStr] = hcsschema.Attachment{
 		Path:  dstVhdPath,
 		Type_: sm.attachmentType,
 	}

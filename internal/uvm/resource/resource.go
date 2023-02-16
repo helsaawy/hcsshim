@@ -8,6 +8,7 @@ import (
 )
 
 var (
+	ErrNotSupported        = errors.New("not supported")
 	ErrNoAvailableLocation = errors.New("no available location")
 	ErrNotAttached         = errors.New("not attached")
 	ErrAlreadyAttached     = errors.New("already attached")

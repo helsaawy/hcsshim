@@ -286,6 +286,18 @@ func (uvm *UtilityVM) Close() (err error) {
 	return nil
 }
 
+func (uvm *UtilityVM) Pause(ctx context.Context) error {
+	return uvm.hcsSystem.Pause(ctx)
+}
+
+func (uvm *UtilityVM) Resume(ctx context.Context) error {
+	return uvm.hcsSystem.Resume(ctx)
+}
+
+func (uvm *UtilityVM) Stop(ctx context.Context) error {
+	return uvm.hcsSystem.Terminate(ctx)
+}
+
 // CreateContainer creates a container in the utility VM.
 func (uvm *UtilityVM) CreateContainer(ctx context.Context, id string, settings interface{}) (cow.Container, error) {
 	if uvm.gc != nil {
@@ -392,7 +404,6 @@ func (uvm *UtilityVM) normalizeMemorySize(ctx context.Context, requested uint64)
 	}
 	return actual
 }
-
 
 // Closes the external GCS connection if it is being used and also closes the
 // listener for GCS connection.

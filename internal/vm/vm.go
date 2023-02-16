@@ -6,6 +6,7 @@ import (
 	"net"
 
 	"github.com/Microsoft/hcsshim/cmd/containerd-shim-runhcs-v1/stats"
+	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
 )
 
 var (
@@ -53,6 +54,9 @@ type UVM interface {
 	// Wait synchronously waits for the utility VM to shutdown or terminate. A call to stop will trigger this
 	// to unblock.
 	Wait() error
+
+	// Modify modifies the utility VM.
+	Modify(context.Context, *hcsschema.ModifySettingRequest) error
 
 	// Stats returns statistics about the utility VM. This includes things like assigned memory, available memory,
 	// processor runtime etc.

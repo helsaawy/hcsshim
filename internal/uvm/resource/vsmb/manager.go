@@ -28,13 +28,13 @@ import (
 )
 
 const (
-	vsmbSharePrefix                   = `\\?\VMSMB\VSMB-{dcc079ae-60ba-4d07-847c-3493609c0870}\`
-	vsmbCurrentSerialVersionID uint32 = 1
+	SharePrefix                   = `\\?\VMSMB\VSMB-{dcc079ae-60ba-4d07-847c-3493609c0870}\`
+	CurrentSerialVersionID uint32 = 1
 )
 
-// vsmbMapping map the host directory into the uVM to the [VSMBShare] itself.
+// vsmbMapping map the host directory into the uVM to the [Share] itself.
 // A convenience alias.
-type vsmbMapping = map[string]*VSMBShare
+type vsmbMapping = map[string]*Share
 
 // Manager tracks and manages virtual SMB (vSMB) shares in a utility VM.
 type Manager struct {
@@ -81,7 +81,7 @@ type Manager struct {
 
 var _ resource.Manager = &Manager{}
 
-func New(host vm.UVM, noDirectMap bool) *Manager {
+func NewManager(host vm.UVM, noDirectMap bool) *Manager {
 	return &Manager{
 		host:        host,
 		dirShares:   make(vsmbMapping),
@@ -92,19 +92,17 @@ func New(host vm.UVM, noDirectMap bool) *Manager {
 
 func (*Manager) ResourceType() vm.Resource { return vm.VSMB }
 
-// AddVSMB adds a virtual SMB share to a running utility VM.
-
-// AddVSMB adds a VSMB share to a Windows utility VM. Each VSMB share is ref-counted and
-// only added if it isn't already. This is used for read-only layers, mapped directories
-// to a container, and for mapped pipes.
-func (m *Manager) AddVSMB(ctx context.Context, hostPath string, options *hcsschema.VirtualSmbShareOptions) (*VSMBShare, error) {
-	entry := log.G(ctx).WithField(logfields.Path, hostPath)
+// AddShare adds a virtual SMB share to a running windows utility VM.
+// Each vSMB share is ref-counted and  only added if it isn't already.
+// This is used for read-only layers, mapped directories to a container, and for mapped pipes.
+func (m *Manager) AddShare(ctx context.Context, hostPath string, options *hcsschema.VirtualSmbShareOptions) (*Share, error) {
+	entry := log.G(ctx).WithFields(logrus.Fields{
+		logfields.Path:  hostPath,
+		logfields.UVMID: m.host.ID(),
+	})
 	entry.Trace("Adding VSMB mount")
-	if uvm.operatingSystem != "windows" {
-		return nil, errNotSupported
-	}
 
-	if !options.ReadOnly && uvm.DisallowWritableFileShares() {
+	if !options.ReadOnly && m.host.DisallowWritableFileShares() {
 		return nil, fmt.Errorf("adding writable shares is denied: %w", hcs.ErrOperationDenied)
 	}
 
@@ -133,26 +131,24 @@ func (m *Manager) AddVSMB(ctx context.Context, hostPath string, options *hcssche
 		}
 	}
 
-	vsmb := uvm.vsmb
-
-	vsmb.mu.Lock()
-	defer vsmb.mu.Unlock()
-	m := vsmb.getShareMap(!isDir)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	sm := m.getShareMap(!isDir)
 
 	requestType := guestrequest.RequestTypeUpdate
-	shareKey := getVSMBShareKey(hostPath, options.ReadOnly)
-	share, err := vsmb.getShare(shareKey, isDir)
-	if errors.Is(err, ErrNotAttached) {
+	shareKey := getShareKey(hostPath, options.ReadOnly)
+	share, err := m.getShare(shareKey, isDir)
+	if errors.Is(err, resource.ErrNotAttached) {
 		requestType = guestrequest.RequestTypeAdd
-		vsmb.counter++
-		shareName := "s" + strconv.FormatUint(vsmb.counter, 16)
+		m.counter++
+		shareName := "s" + strconv.FormatUint(m.counter, 16)
 
-		share = &VSMBShare{
-			c:               vsmb,
+		share = &Share{
+			m:               m,
 			name:            shareName,
-			guestPath:       vsmbSharePrefix + shareName,
+			guestPath:       SharePrefix + shareName,
 			HostPath:        hostPath,
-			serialVersionID: vsmbCurrentSerialVersionID,
+			serialVersionID: CurrentSerialVersionID,
 		}
 		if !isDir {
 			// preallocate some room for growth
@@ -192,7 +188,7 @@ func (m *Manager) AddVSMB(ctx context.Context, hostPath string, options *hcssche
 			},
 			ResourcePath: resourcepaths.VSMBShareResourcePath,
 		}
-		if err := uvm.modify(ctx, modification); err != nil {
+		if err := m.host.Modify(ctx, modification); err != nil {
 			return nil, err
 		}
 	}
@@ -200,51 +196,23 @@ func (m *Manager) AddVSMB(ctx context.Context, hostPath string, options *hcssche
 	share.allowedFiles = newAllowedFiles
 	share.refCount++
 	share.options = *options
-	m[shareKey] = share
+	sm[shareKey] = share
 	return share, nil
 }
 
-// RemoveVSMB removes a virtual smb share from a running utility VM.
-
-// RemoveVSMB removes a VSMB share from a utility VM. Each VSMB share is ref-counted
-// and only actually removed when the ref-count drops to zero.
-func (m *Manager) RemoveVSMB(ctx context.Context, hostPath string, readOnly bool) error {
-	entry := log.G(ctx).WithFields(logrus.Fields{
-		logfields.Path:  hostPath,
-		logfields.UVMID: uvm.id,
-	})
-	entry.Trace("Removing vSMB mount")
-
-	if uvm.operatingSystem != "windows" {
-		return errNotSupported
-	}
-
-	share, err := uvm.vsmb.FindShare(hostPath, readOnly)
-	if err != nil {
-		return fmt.Errorf("%s is not present as a VSMB share in %s, cannot remove", hostPath, uvm.id)
-	}
-
-	return uvm.vsmb.RemoveVSMB(ctx, share)
-}
-
-// GetVSMBUvmPath returns the guest path of a VSMB mount.
-func (m *Manager) GetVSMBUvmPath(_ context.Context, hostPath string, readOnly bool) (string, error) {
-	return uvm.vsmb.GetUVMPath(hostPath, readOnly)
-}
-
-// Close releases any vSMB shares still remaining and clears the controllers internal state.
+// Close releases any vSMB shares still remaining and clears the manager's internal state.
 func (m *Manager) Close(ctx context.Context) error {
 	entry := log.G(ctx)
-	entry.Trace("closing vSMB controller")
+	entry.Trace("Closing vSMB manager")
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.vm == nil {
-		return fmt.Errorf("vSMB controller was already closed: %w", hcs.ErrAlreadyClosed)
+	if m.host == nil {
+		return fmt.Errorf("vSMB manager was already closed: %w", hcs.ErrAlreadyClosed)
 	}
 
-	// todo: multierror to aggregate and return removevsmb() errors
+	// todo: multierror to aggregate and return removeShare() errors
 	for _, share := range m.shares() {
-		if err := m.removevsmb(ctx, share); err != nil {
+		if err := m.removeShare(ctx, share); err != nil {
 			entry.WithFields(logrus.Fields{
 				logrus.ErrorKey: err,
 				logfields.Path:  share.HostPath,
@@ -253,25 +221,25 @@ func (m *Manager) Close(ctx context.Context) error {
 	}
 	m.dirShares = nil
 	m.fileShares = nil
-	m.vm = nil
+	m.host = nil
 	return nil
 }
 
-// RemoveVSMB removes a VSMB share from the uVM.
+// RemoveShare removes a virtual SMB share from a running utility VM.
 // Each VSMB share is ref-counted and only actually removed when the ref-count drops to zero.
-func (m *Manager) RemoveVSMB(ctx context.Context, share *VSMBShare) error {
+func (m *Manager) RemoveShare(ctx context.Context, share *Share) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.removevsmb(ctx, share)
+	return m.removeShare(ctx, share)
 }
 
-func (m *Manager) removevsmb(ctx context.Context, share *VSMBShare) error {
-	ctx, entry := log.S(ctx, logrus.Fields{
-		logfields.Path: share.HostPath,
-		"refCount":     share.refCount,
+func (m *Manager) removeShare(ctx context.Context, share *Share) error {
+	entry := log.G(ctx).WithFields(logrus.Fields{
+		logfields.Path:  share.HostPath,
+		logfields.UVMID: m.host.ID(),
+		"refCount":      share.refCount,
 	})
 	entry.Trace("Removing vSMB mount")
-
 	share.refCount--
 	if share.refCount > 0 {
 		entry.Debug("vSMB share still in use")
@@ -283,9 +251,9 @@ func (m *Manager) removevsmb(ctx context.Context, share *VSMBShare) error {
 		Settings:     hcsschema.VirtualSmbShare{Name: share.name},
 		ResourcePath: resourcepaths.VSMBShareResourcePath,
 	}
-	if err := m.vm.modify(ctx, modification); err != nil {
+	if err := m.host.Modify(ctx, modification); err != nil {
 		return fmt.Errorf("vSMB remove request %+v for share %q in %q failed: %w",
-			modification, share.HostPath, m.vm.id, err)
+			modification, share.HostPath, m.host.ID(), err)
 	}
 
 	sm := m.getShareMap(share.isDirShare())
@@ -295,21 +263,15 @@ func (m *Manager) removevsmb(ctx context.Context, share *VSMBShare) error {
 	return share.close(ctx)
 }
 
-// Shares returns all the shares vSMB shares the controller currently holds.
-func (m *Manager) nextKey() uint64 {
-	m.counter++
-	return m.counter
-}
-
-// Shares returns all the shares vSMB shares the controller currently holds.
-func (m *Manager) Shares() []*VSMBShare {
+// Shares returns all the shares vSMB shares the manager currently holds.
+func (m *Manager) Shares() []*Share {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.shares()
 }
 
-func (m *Manager) shares() []*VSMBShare {
-	shares := make([]*VSMBShare, 0, len(m.dirShares)+len(m.fileShares))
+func (m *Manager) shares() []*Share {
+	shares := make([]*Share, 0, len(m.dirShares)+len(m.fileShares))
 	for _, s := range m.dirShares {
 		shares = append(shares, s)
 	}
@@ -319,7 +281,7 @@ func (m *Manager) shares() []*VSMBShare {
 	return shares
 }
 
-// GetUVMPath returns the guest path of a VSMB mount.
+// GetUVMPath returns the guest path of a vSMB mount.
 func (m *Manager) GetUVMPath(hostPath string, readOnly bool) (string, error) {
 	share, err := m.FindShare(hostPath, readOnly)
 	if err != nil {
@@ -332,7 +294,7 @@ func (m *Manager) GetUVMPath(hostPath string, readOnly bool) (string, error) {
 // FindShare looks for the vSMB share for the file or directory hostPath.
 //
 // If not found, it returns `ErrNotAttached`.
-func (m *Manager) FindShare(hostPath string, readOnly bool) (*VSMBShare, error) {
+func (m *Manager) FindShare(hostPath string, readOnly bool) (*Share, error) {
 	if hostPath == "" {
 		return nil, fmt.Errorf("empty hostPath")
 	}
@@ -341,7 +303,7 @@ func (m *Manager) FindShare(hostPath string, readOnly bool) (*VSMBShare, error) 
 	if err != nil {
 		return nil, err
 	}
-	shareKey := getVSMBShareKey(hostPath, readOnly)
+	shareKey := getShareKey(hostPath, readOnly)
 
 	return m.GetShare(shareKey, isDir)
 }
@@ -349,18 +311,18 @@ func (m *Manager) FindShare(hostPath string, readOnly bool) (*VSMBShare, error) 
 // GetShare returns either the file or directory share (depending on fileShare) with key, k.
 //
 // If not found, it returns `ErrNotAttached`.
-func (m *Manager) GetShare(k string, dirShare bool) (*VSMBShare, error) {
+func (m *Manager) GetShare(k string, dirShare bool) (*Share, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.getShare(k, dirShare)
 }
 
-func (m *Manager) getShare(k string, dirShare bool) (*VSMBShare, error) {
+func (m *Manager) getShare(k string, dirShare bool) (*Share, error) {
 	sm := m.getShareMap(dirShare)
 	if share, ok := sm[k]; ok {
 		return share, nil
 	}
-	return nil, ErrNotAttached
+	return nil, resource.ErrNotAttached
 }
 
 // getShareMap returns either the [vsmbMapping] of file or directory shares, depending
@@ -374,13 +336,11 @@ func (m *Manager) getShareMap(dirShare bool) vsmbMapping {
 	return m.fileShares
 }
 
-func (m *Manager) NoDirectMap() bool { return m.noDirectMap }
-
-// DefaultVSMBOptions returns the default VSMB options. If readOnly is specified,
+// DefaultOptions returns the default VSMB options. If readOnly is specified,
 // returns the default VSMB options for a readonly share.
-func (m *Manager) DefaultVSMBOptions(readOnly bool) *hcsschema.VirtualSmbShareOptions {
+func (m *Manager) DefaultOptions(readOnly bool) *hcsschema.VirtualSmbShareOptions {
 	opts := &hcsschema.VirtualSmbShareOptions{
-		NoDirectmap: m.host.DevicesPhysicallyBacked() || vsmb.NoDirectMap(),
+		NoDirectmap: m.host.DevicesPhysicallyBacked() || m.noDirectMap,
 	}
 	if readOnly {
 		opts.ShareRead = true
@@ -391,7 +351,7 @@ func (m *Manager) DefaultVSMBOptions(readOnly bool) *hcsschema.VirtualSmbShareOp
 	return opts
 }
 
-func (*Manager) SetSaveableVSMBOptions(opts *hcsschema.VirtualSmbShareOptions, readOnly bool) {
+func (*Manager) SetSaveableOptions(opts *hcsschema.VirtualSmbShareOptions, readOnly bool) {
 	if readOnly {
 		opts.ShareRead = true
 		opts.CacheIo = true
@@ -411,9 +371,6 @@ func (*Manager) SetSaveableVSMBOptions(opts *hcsschema.VirtualSmbShareOptions, r
 	opts.PseudoDirnotify = true
 	opts.NoDirectmap = true
 }
-
-// VSMBNoDirectMap returns if VSMB devices should be mounted with `NoDirectMap` set to true
-func (m *Manager) NoDirectMap() bool { return m.noDirectMap }
 
 // openHostPath opens the given path and returns the handle. The handle is opened with
 // full sharing and no access mask. The directory must already exist. This
@@ -513,7 +470,7 @@ func isPathDir(p string) (bool, error) {
 
 // appendIfNotExists appends s to a iff a does not contain a string equal to s.
 func appendIfNotExists(a []string, s string) []string {
-	// todo: should vsmb.allowedFiles be a set[string] (map[string]struct{})? or sorted?
+	// todo: should m.allowedFiles be a set[string] (map[string]struct{})? or sorted?
 	for _, ss := range a {
 		if s == ss {
 			return a

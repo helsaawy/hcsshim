@@ -10,6 +10,7 @@ import (
 	"github.com/Microsoft/hcsshim/internal/hcs/resourcepaths"
 	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
 	"github.com/Microsoft/hcsshim/internal/protocol/guestrequest"
+	"github.com/Microsoft/hcsshim/internal/uvm/resource/vsmb"
 	specs "github.com/opencontainers/runtime-spec/specs-go"
 )
 
@@ -65,7 +66,7 @@ func GetContainerPipeMapping(uvm *UtilityVM, mount specs.Mount) (src string, dst
 	if uvm == nil {
 		src = mount.Source
 	} else {
-		src = vsmbSharePrefix + `IPC$\` + strings.TrimPrefix(mount.Source, pipePrefix)
+		src = vsmb.SharePrefix + `IPC$\` + strings.TrimPrefix(mount.Source, pipePrefix)
 	}
 	dst = strings.TrimPrefix(mount.Destination, pipePrefix)
 	return src, dst

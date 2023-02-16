@@ -22,6 +22,7 @@ import (
 	"github.com/Microsoft/hcsshim/internal/protocol/guestrequest"
 	"github.com/Microsoft/hcsshim/internal/schemaversion"
 	"github.com/Microsoft/hcsshim/internal/security"
+	"github.com/Microsoft/hcsshim/internal/uvm/resource/vsmb"
 	"github.com/Microsoft/hcsshim/internal/uvmfolder"
 	"github.com/Microsoft/hcsshim/internal/wclayer"
 	"github.com/Microsoft/hcsshim/internal/wcow"
@@ -277,7 +278,7 @@ func CreateWCOW(ctx context.Context, opts *OptionsWCOW) (_ *UtilityVM, err error
 		noWritableFileShares:    opts.NoWritableFileShares,
 		createOpts:              *opts,
 	}
-	uvm.vsmb = NewController(uvm, opts.NoDirectMap)
+	uvm.vsmb = vsmb.NewManager(uvm, opts.NoDirectMap)
 
 	defer func() {
 		if err != nil {
@@ -356,10 +357,10 @@ func CreateWCOW(ctx context.Context, opts *OptionsWCOW) (_ *UtilityVM, err error
 		doc.VirtualMachine.RestoreState.TemplateSystemId = opts.TemplateConfig.UVMID
 
 		for _, cloneableResource := range opts.TemplateConfig.Resources {
-			err = cloneableResource.Clone(ctx, uvm, &cloneData{
-				doc:           doc,
-				scratchFolder: scratchFolder,
-				uvmID:         opts.ID,
+			err = cloneableResource.Clone(ctx, uvm, &CloneData{
+				Doc:           doc,
+				ScratchFolder: scratchFolder,
+				UVMID:         opts.ID,
 			})
 			if err != nil {
 				return nil, fmt.Errorf("failed while cloning: %s", err)
