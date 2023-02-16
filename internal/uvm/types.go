@@ -13,6 +13,7 @@ import (
 	"github.com/Microsoft/hcsshim/internal/hcs"
 	"github.com/Microsoft/hcsshim/internal/hcs/schema1"
 	"github.com/Microsoft/hcsshim/internal/hns"
+	"github.com/Microsoft/hcsshim/internal/vm"
 )
 
 //                    | WCOW | LCOW
@@ -142,4 +143,25 @@ type UtilityVM struct {
 
 	// confidentialUVMOptions hold confidential UVM specific options
 	confidentialUVMOptions *ConfidentialOptions
+}
+
+var _ vm.UVM = &UtilityVM{}
+
+func (uvm *UtilityVM) GuestOS() vm.GuestOS {
+	return vm.GuestOS(uvm.operatingSystem)
+}
+
+// DevicesPhysicallyBacked describes if additional devices added to the UVM
+// should be physically backed
+func (uvm *UtilityVM) DevicesPhysicallyBacked() bool {
+	return uvm.devicesPhysicallyBacked
+}
+
+// VSMBNoDirectMap returns if VSMB devices should be mounted with `NoDirectMap` set to true
+func (uvm *UtilityVM) VSMBNoDirectMap() bool {
+	return uvm.vsmb.noDirectMap
+}
+
+func (uvm *UtilityVM) DisallowWritableFileShares() bool {
+	return uvm.noWritableFileShares
 }

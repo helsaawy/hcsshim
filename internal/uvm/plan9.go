@@ -44,7 +44,7 @@ func (uvm *UtilityVM) AddPlan9(ctx context.Context, hostPath string, uvmPath str
 	if uvmPath == "" {
 		return nil, fmt.Errorf("uvmPath must be passed to AddPlan9")
 	}
-	if !readOnly && uvm.NoWritableFileShares() {
+	if !readOnly && uvm.DisallowWritableFileShares() {
 		return nil, fmt.Errorf("adding writable shares is denied: %w", hcs.ErrOperationDenied)
 	}
 

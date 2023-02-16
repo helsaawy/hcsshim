@@ -393,20 +393,6 @@ func (uvm *UtilityVM) normalizeMemorySize(ctx context.Context, requested uint64)
 	return actual
 }
 
-// DevicesPhysicallyBacked describes if additional devices added to the UVM
-// should be physically backed
-func (uvm *UtilityVM) DevicesPhysicallyBacked() bool {
-	return uvm.devicesPhysicallyBacked
-}
-
-// VSMBNoDirectMap returns if VSMB devices should be mounted with `NoDirectMap` set to true
-func (uvm *UtilityVM) VSMBNoDirectMap() bool {
-	return uvm.vsmb.noDirectMap
-}
-
-func (uvm *UtilityVM) NoWritableFileShares() bool {
-	return uvm.noWritableFileShares
-}
 
 // Closes the external GCS connection if it is being used and also closes the
 // listener for GCS connection.

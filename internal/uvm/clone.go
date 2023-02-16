@@ -110,17 +110,21 @@ func (uvm *UtilityVM) GenerateTemplateConfig() (*UVMTemplateConfig, error) {
 // uvm must be in the paused state before it can be saved as a template.save call will throw
 // an incorrect uvm state exception if uvm is not in the paused state at the time of saving.
 func (uvm *UtilityVM) SaveAsTemplate(ctx context.Context) error {
-	if err := uvm.hcsSystem.Pause(ctx); err != nil {
+	if err := uvm.Pause(ctx); err != nil {
 		return errors.Wrap(err, "error pausing the VM")
 	}
 
-	saveOptions := hcsschema.SaveOptions{
-		SaveType: hcsComputeSystemSaveType,
-	}
-	if err := uvm.hcsSystem.Save(ctx, saveOptions); err != nil {
+	if err := uvm.Save(ctx); err != nil {
 		return errors.Wrap(err, "error saving the VM")
 	}
 	return nil
+}
+
+func (uvm *UtilityVM) Save(ctx context.Context) error {
+	saveOptions := hcsschema.SaveOptions{
+		SaveType: hcsComputeSystemSaveType,
+	}
+	return uvm.hcsSystem.Save(ctx, saveOptions)
 }
 
 // CloneContainer attaches back to a container that is already running inside the UVM

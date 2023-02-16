@@ -25,6 +25,9 @@ const (
 // optional, nested interfaces that can be used to determine what the virtual machine
 // supports and to configure these resources.
 type UVM interface {
+	// GuestOS returns the type of guest Operating System being run.
+	GuestOS() GuestOS
+
 	// ID will return a string identifier for the utility VM.
 	ID() string
 
@@ -61,17 +64,26 @@ type UVM interface {
 	// ExitError will return any error if the utility VM exited unexpectedly, or if the utility VM experienced an
 	// error after Wait returned, it will return the wait error.
 	ExitError() error
+
+	// DevicesPhysicallyBacked describes if additional devices added to the UVM should be physically backed.
+	DevicesPhysicallyBacked() bool
+
+	// DisallowWritableFileShares describes if writable file shares are allowed.
+	DisallowWritableFileShares() bool
 }
 
 // Resource refers to the type of a resource on a utility VM.
 type Resource uint8
 
 const (
-	VPMem = iota
+	// VPMem is virtual persistent memory (vPMEM) devices.
+	VPMem = Resource(iota)
 	SCSI
 	Network
+	// VSMB is a virtual SMB file share.
 	VSMB
 	PCI
+	// Plan9 is a Plan9 SMB file share.
 	Plan9
 	Memory
 	Processor
@@ -95,7 +107,7 @@ const (
 	Linux   GuestOS = "linux"
 )
 
-// SCSIDiskType refers to the disk type of the scsi device. This is either a vhd, vhdx, or a physical disk.
+// SCSIDiskType refers to the disk type of the SCSI device. This is either a vhd, vhdx, or a physical disk.
 type SCSIDiskType uint8
 
 const (
