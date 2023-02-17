@@ -22,7 +22,6 @@ import (
 	"github.com/Microsoft/hcsshim/internal/logfields"
 	"github.com/Microsoft/hcsshim/internal/protocol/guestrequest"
 	"github.com/Microsoft/hcsshim/internal/uvm/resource"
-	"github.com/Microsoft/hcsshim/internal/vm"
 	"github.com/Microsoft/hcsshim/internal/winapi"
 	"github.com/Microsoft/hcsshim/osversion"
 )
@@ -46,7 +45,7 @@ type Manager struct {
 	mu sync.RWMutex
 
 	// parent uVM; used to send modify requests over GCS
-	host vm.UVM
+	host resource.Host
 
 	// todo: is updating a file-share the correct choice?
 	// If C:\host\foo.txt is shared into uVM as C:\guest\spam\foo.txt, HCS will mount
@@ -79,9 +78,9 @@ type Manager struct {
 	counter uint64
 }
 
-var _ resource.Manager = &Manager{}
+var _ resource.Manager[*Share] = &Manager{}
 
-func NewManager(host vm.UVM, noDirectMap bool) *Manager {
+func NewManager(host resource.Host, noDirectMap bool) *Manager {
 	return &Manager{
 		host:        host,
 		dirShares:   make(vsmbMapping),
@@ -90,7 +89,15 @@ func NewManager(host vm.UVM, noDirectMap bool) *Manager {
 	}
 }
 
-func (*Manager) ResourceType() vm.Resource { return vm.VSMB }
+func (*Manager) ResourceType() resource.Type { return resource.VSMB }
+
+func (m *Manager) Host() (resource.Host, error) {
+	if m == nil || m.host == nil {
+		return nil, resource.ErrInvalidManagerState
+	}
+
+	return m.host, nil
+}
 
 // AddShare adds a virtual SMB share to a running windows utility VM.
 // Each vSMB share is ref-counted and  only added if it isn't already.
@@ -227,7 +234,7 @@ func (m *Manager) Close(ctx context.Context) error {
 
 // RemoveShare removes a virtual SMB share from a running utility VM.
 // Each VSMB share is ref-counted and only actually removed when the ref-count drops to zero.
-func (m *Manager) RemoveShare(ctx context.Context, share *Share) error {
+func (m *Manager) Remove(ctx context.Context, share *Share) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.removeShare(ctx, share)
@@ -261,6 +268,10 @@ func (m *Manager) removeShare(ctx context.Context, share *Share) error {
 	delete(sm, key)
 
 	return share.close(ctx)
+}
+
+func (m *Manager) List(context.Context) ([]*Share, error) {
+	return m.Shares(), nil
 }
 
 // Shares returns all the shares vSMB shares the manager currently holds.

@@ -1,4 +1,4 @@
-package vm
+package resource
 
 import (
 	"context"
@@ -23,14 +23,16 @@ type Cloneable interface {
 	// implement `gob.GobEncoder` & `gob.GobDecoder` interfaces to provide its own
 	// serialization and deserialization functions.
 
+	Resource
+
 	// A SerialVersionID is an identifier used to recognize a unique version of a
 	// resource. Every time the definition of the resource struct changes this ID is
 	// bumped up.  This ID is used to ensure that we serialize and deserialize the
 	// same version of a resource.
 	GetSerialVersionID() uint32
 
-	// Clone function creates a clone of the resource on the UVM `vm` (i.e adds the
-	// cloned resource to the `vm`)
+	// Clone function creates a clone of the resource on the Host (i.e adds the
+	// cloned resource to the uVM)
 	// `cd` parameter can be used to pass any other data that is required during the
 	// cloning process of that resource (for example, when cloning SCSI Mounts we
 	// might need scratchFolder).
@@ -40,7 +42,7 @@ type Cloneable interface {
 	// The implementation of the clone function should avoid reading any data from the
 	// `vm` struct, it can add new fields to the vm struct but since the vm struct
 	// isn't fully ready at this point it shouldn't be used to read any data.
-	Clone(ctx context.Context, uvm UVM, cd *CloneData) error
+	Clone(ctx context.Context, host Host, cd *CloneData) error
 }
 
 // A struct to keep all the information that might be required during cloning process of
@@ -50,6 +52,6 @@ type CloneData struct {
 	Doc *hcsschema.ComputeSystem
 	// ScratchFolder of the clone
 	ScratchFolder string
-	// UVMID of the clone
+	// ID is the uVM ID of the clone
 	UVMID string
 }

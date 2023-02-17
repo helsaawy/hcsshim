@@ -10,7 +10,7 @@ import (
 
 	"github.com/Microsoft/hcsshim/internal/hcs"
 	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
-	"github.com/Microsoft/hcsshim/internal/vm"
+	"github.com/Microsoft/hcsshim/internal/uvm/resource"
 )
 
 // Share contains the host path for a vSMB mount.
@@ -33,7 +33,10 @@ type Share struct {
 	serialVersionID uint32
 }
 
-var _ vm.Cloneable = &Share{}
+var _ resource.Resource = &Share{}
+var _ resource.Cloneable = &Share{}
+
+func (*Share) Type() resource.Type { return resource.VSMB }
 
 // Release frees the resources of the corresponding vSMB mount.
 func (s *Share) Release(ctx context.Context) error {
@@ -128,37 +131,47 @@ func (s *Share) GobDecode(data []byte) error {
 // Clone creates a clone of the Share `vsmb` and adds that clone to the uvm `vm`.  To
 // clone a vSMB share we just need to add it into the config doc of that VM and increase the
 // vSMB counter.
-func (s *Share) Clone(_ context.Context, uvm vm.UVM, cd *vm.CloneData) error {
+func (s *Share) Clone(_ context.Context, host resource.Host, cd *resource.CloneData) error {
 	// prevent any updates to the original vsmb
 	s.m.mu.RLock()
 	defer s.m.mu.RUnlock()
 
-	// lock the clone uVM's vSMB controller for writing
-	// if `vsmb.m.host == vm`, bad things will happen
-	vm.vsmb.mu.Lock()
-	defer vm.vsmb.mu.Unlock()
-
-	cd.Doc.VirtualMachine.Devices.VirtualSmb.Shares = append(cd.Doc.VirtualMachine.Devices.VirtualSmb.Shares, hcsschema.VirtualSmbShare{
-		Name:         s.name,
-		Path:         s.HostPath,
-		Options:      &s.options,
-		AllowedFiles: s.allowedFiles,
-	})
-	vm.vsmb.counter++
-
-	clonedVSMB := &Share{
-		m:               vm.vsmb,
-		HostPath:        s.HostPath,
-		refCount:        1,
-		name:            s.name,
-		options:         s.options,
-		allowedFiles:    s.allowedFiles,
-		guestPath:       s.guestPath,
-		serialVersionID: CurrentSerialVersionID,
+	mm, err := host.Manager(s.Type())
+	if err != nil {
+		return err
 	}
-	shareKey := s.shareKey()
-	m := vm.vsmb.getShareMap(s.isDirShare())
-	m[shareKey] = clonedVSMB
+
+	// m, ok := mm.(*Manager)
+	// if !ok {
+	// 	return errors.New("unexpected vSMB manager %T", mm)
+	// }
+
+	// // lock the clone uVM's vSMB controller for writing
+	// // if `vsmb.m.host == vm`, bad things will happen
+	// vm.vsmb.mu.Lock()
+	// defer vm.vsmb.mu.Unlock()
+
+	// cd.Doc.VirtualMachine.Devices.VirtualSmb.Shares = append(cd.Doc.VirtualMachine.Devices.VirtualSmb.Shares, hcsschema.VirtualSmbShare{
+	// 	Name:         s.name,
+	// 	Path:         s.HostPath,
+	// 	Options:      &s.options,
+	// 	AllowedFiles: s.allowedFiles,
+	// })
+	// vm.vsmb.counter++
+
+	// clonedVSMB := &Share{
+	// 	m:               vm.vsmb,
+	// 	HostPath:        s.HostPath,
+	// 	refCount:        1,
+	// 	name:            s.name,
+	// 	options:         s.options,
+	// 	allowedFiles:    s.allowedFiles,
+	// 	guestPath:       s.guestPath,
+	// 	serialVersionID: CurrentSerialVersionID,
+	// }
+	// shareKey := s.shareKey()
+	// m := vm.vsmb.getShareMap(s.isDirShare())
+	// m[shareKey] = clonedVSMB
 	return nil
 }
 
