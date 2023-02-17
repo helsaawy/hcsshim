@@ -39,7 +39,7 @@ func (uvm *UtilityVM) setCPUGroup(ctx context.Context, id string) error {
 			Id: id,
 		},
 	}
-	if err := uvm.modify(ctx, req); err != nil {
+	if err := uvm.Modify(ctx, req); err != nil {
 		return err
 	}
 	return nil

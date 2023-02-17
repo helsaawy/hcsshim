@@ -132,7 +132,7 @@ func (uvm *UtilityVM) AssignDevice(ctx context.Context, deviceID string, index u
 		}
 	}
 
-	if err := uvm.modify(ctx, request); err != nil {
+	if err := uvm.Modify(ctx, request); err != nil {
 		return nil, err
 	}
 	result := &VPCIDevice{
@@ -166,7 +166,7 @@ func (uvm *UtilityVM) RemoveDevice(ctx context.Context, deviceInstanceID string,
 	vpci.refCount--
 	if vpci.refCount == 0 {
 		delete(uvm.vpciDevices, key)
-		return uvm.modify(ctx, &hcsschema.ModifySettingRequest{
+		return uvm.Modify(ctx, &hcsschema.ModifySettingRequest{
 			ResourcePath: fmt.Sprintf(resourcepaths.VirtualPCIResourceFormat, vpci.VMBusGUID),
 			RequestType:  guestrequest.RequestTypeRemove,
 		})

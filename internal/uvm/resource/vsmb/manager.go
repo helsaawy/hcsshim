@@ -45,7 +45,7 @@ type Manager struct {
 	mu sync.RWMutex
 
 	// parent uVM; used to send modify requests over GCS
-	host resource.Host
+	host resource.ResourceHost[*Share]
 
 	// todo: is updating a file-share the correct choice?
 	// If C:\host\foo.txt is shared into uVM as C:\guest\spam\foo.txt, HCS will mount
@@ -80,7 +80,7 @@ type Manager struct {
 
 var _ resource.Manager[*Share] = &Manager{}
 
-func NewManager(host resource.Host, noDirectMap bool) *Manager {
+func NewManager(host resource.ResourceHost[*Share], noDirectMap bool) *Manager {
 	return &Manager{
 		host:        host,
 		dirShares:   make(vsmbMapping),
@@ -91,9 +91,11 @@ func NewManager(host resource.Host, noDirectMap bool) *Manager {
 
 func (*Manager) ResourceType() resource.Type { return resource.VSMB }
 
-func (m *Manager) Host() (resource.Host, error) {
-	if m == nil || m.host == nil {
-		return nil, resource.ErrInvalidManagerState
+func (m *Manager) Host() (resource.ResourceHost[*Share], error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if err := m.validate(); err != nil {
+		return nil, err
 	}
 
 	return m.host, nil
@@ -103,10 +105,10 @@ func (m *Manager) Host() (resource.Host, error) {
 // Each vSMB share is ref-counted and  only added if it isn't already.
 // This is used for read-only layers, mapped directories to a container, and for mapped pipes.
 func (m *Manager) AddShare(ctx context.Context, hostPath string, options *hcsschema.VirtualSmbShareOptions) (*Share, error) {
-	entry := log.G(ctx).WithFields(logrus.Fields{
-		logfields.Path:  hostPath,
-		logfields.UVMID: m.host.ID(),
-	})
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	entry := m.entry(ctx).WithField(logfields.Path, hostPath)
 	entry.Trace("Adding VSMB mount")
 
 	if !options.ReadOnly && m.host.DisallowWritableFileShares() {
@@ -138,8 +140,9 @@ func (m *Manager) AddShare(ctx context.Context, hostPath string, options *hcssch
 		}
 	}
 
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	if err := m.validate(); err != nil {
+		return nil, err
+	}
 	sm := m.getShareMap(!isDir)
 
 	requestType := guestrequest.RequestTypeUpdate
@@ -209,11 +212,13 @@ func (m *Manager) AddShare(ctx context.Context, hostPath string, options *hcssch
 
 // Close releases any vSMB shares still remaining and clears the manager's internal state.
 func (m *Manager) Close(ctx context.Context) error {
-	entry := log.G(ctx)
-	entry.Trace("Closing vSMB manager")
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.host == nil {
+
+	entry := m.entry(ctx)
+	entry.Trace("Closing vSMB manager")
+
+	if err := m.validate(); err != nil {
 		return fmt.Errorf("vSMB manager was already closed: %w", hcs.ErrAlreadyClosed)
 	}
 
@@ -237,16 +242,21 @@ func (m *Manager) Close(ctx context.Context) error {
 func (m *Manager) Remove(ctx context.Context, share *Share) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if err := m.validate(); err != nil {
+		return err
+	}
+
 	return m.removeShare(ctx, share)
 }
 
+// must hold m.mu before calling.
 func (m *Manager) removeShare(ctx context.Context, share *Share) error {
-	entry := log.G(ctx).WithFields(logrus.Fields{
-		logfields.Path:  share.HostPath,
-		logfields.UVMID: m.host.ID(),
-		"refCount":      share.refCount,
+	entry := m.entry(ctx).WithFields(logrus.Fields{
+		logfields.Path: share.HostPath,
+		"refCount":     share.refCount,
 	})
 	entry.Trace("Removing vSMB mount")
+
 	share.refCount--
 	if share.refCount > 0 {
 		entry.Debug("vSMB share still in use")
@@ -270,17 +280,20 @@ func (m *Manager) removeShare(ctx context.Context, share *Share) error {
 	return share.close(ctx)
 }
 
-func (m *Manager) List(context.Context) ([]*Share, error) {
-	return m.Shares(), nil
-}
-
-// Shares returns all the shares vSMB shares the manager currently holds.
-func (m *Manager) Shares() []*Share {
+// List returns all the shares vSMB shares the manager currently holds.
+func (m *Manager) List(ctx context.Context) ([]*Share, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return m.shares()
+	if err := m.validate(); err != nil {
+		return nil, err
+	}
+
+	m.entry(ctx).Trace("Listing vSMB shares")
+
+	return m.shares(), nil
 }
 
+// must hold m.mu before calling.
 func (m *Manager) shares() []*Share {
 	shares := make([]*Share, 0, len(m.dirShares)+len(m.fileShares))
 	for _, s := range m.dirShares {
@@ -325,9 +338,14 @@ func (m *Manager) FindShare(hostPath string, readOnly bool) (*Share, error) {
 func (m *Manager) GetShare(k string, dirShare bool) (*Share, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+	if err := m.validate(); err != nil {
+		return nil, err
+	}
+
 	return m.getShare(k, dirShare)
 }
 
+// must hold m.mu before calling.
 func (m *Manager) getShare(k string, dirShare bool) (*Share, error) {
 	sm := m.getShareMap(dirShare)
 	if share, ok := sm[k]; ok {
@@ -339,13 +357,35 @@ func (m *Manager) getShare(k string, dirShare bool) (*Share, error) {
 // getShareMap returns either the [vsmbMapping] of file or directory shares, depending
 // on fileShare.
 //
-// c.mu should be locked.
+// must hold m.mu before calling.
 func (m *Manager) getShareMap(dirShare bool) vsmbMapping {
 	if dirShare {
 		return m.dirShares
 	}
 	return m.fileShares
 }
+
+// must hold m.mu before calling.
+func (m *Manager) validate() error {
+	if m.invalid() {
+		return fmt.Errorf("vSMB manager not initialized or already closed: %w", resource.ErrInvalidManagerState)
+	}
+	return nil
+}
+
+// must hold m.mu before calling.
+func (m *Manager) entry(ctx context.Context) *logrus.Entry {
+	e := log.G(ctx)
+	if m.invalid() {
+		return e
+	}
+	return e.WithFields(logrus.Fields{
+		logfields.UVMID: m.host.ID(),
+	})
+}
+
+// must hold m.mu before calling.
+func (m *Manager) invalid() bool { return m == nil || m.host == nil }
 
 // DefaultOptions returns the default VSMB options. If readOnly is specified,
 // returns the default VSMB options for a readonly share.
@@ -383,40 +423,6 @@ func (*Manager) SetSaveableOptions(opts *hcsschema.VirtualSmbShareOptions, readO
 	opts.NoDirectmap = true
 }
 
-// openHostPath opens the given path and returns the handle. The handle is opened with
-// full sharing and no access mask. The directory must already exist. This
-// function is intended to return a handle suitable for use with GetFileInformationByHandleEx.
-//
-// We are not able to use builtin Go functionality for opening a directory path:
-//   - os.Open on a directory returns a os.File where Fd() is a search handle from FindFirstFile.
-//   - syscall.Open does not provide a way to specify FILE_FLAG_BACKUP_SEMANTICS, which is needed to
-//     open a directory.
-//
-// We could use os.Open if the path is a file, but it's easier to just use the same code for both.
-// Therefore, we call windows.CreateFile directly.
-func openHostPath(path string) (windows.Handle, error) {
-	u16, err := windows.UTF16PtrFromString(path)
-	if err != nil {
-		return 0, err
-	}
-	h, err := windows.CreateFile(
-		u16,
-		0,
-		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE,
-		nil,
-		windows.OPEN_EXISTING,
-		windows.FILE_FLAG_BACKUP_SEMANTICS,
-		0)
-	if err != nil {
-		return 0, &os.PathError{
-			Op:   "CreateFile",
-			Path: path,
-			Err:  err,
-		}
-	}
-	return h, nil
-}
-
 // In 19H1, a change was made to VSMB to require querying file ID for the files being shared in
 // order to support direct map. This change was made to ensure correctness in cases where direct
 // map is used with saving/restoring VMs.
@@ -451,6 +457,40 @@ func forceNoDirectMap(path string) (bool, error) {
 		return true, nil
 	}
 	return false, nil
+}
+
+// openHostPath opens the given path and returns the handle. The handle is opened with
+// full sharing and no access mask. The directory must already exist. This
+// function is intended to return a handle suitable for use with GetFileInformationByHandleEx.
+//
+// We are not able to use builtin Go functionality for opening a directory path:
+//   - os.Open on a directory returns a os.File where Fd() is a search handle from FindFirstFile.
+//   - syscall.Open does not provide a way to specify FILE_FLAG_BACKUP_SEMANTICS, which is needed to
+//     open a directory.
+//
+// We could use os.Open if the path is a file, but it's easier to just use the same code for both.
+// Therefore, we call windows.CreateFile directly.
+func openHostPath(path string) (windows.Handle, error) {
+	u16, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return 0, err
+	}
+	h, err := windows.CreateFile(
+		u16,
+		0,
+		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE,
+		nil,
+		windows.OPEN_EXISTING,
+		windows.FILE_FLAG_BACKUP_SEMANTICS,
+		0)
+	if err != nil {
+		return 0, &os.PathError{
+			Op:   "CreateFile",
+			Path: path,
+			Err:  err,
+		}
+	}
+	return h, nil
 }
 
 // processHostPath cleans the path p, and if p is not a directory, returns the file's

@@ -16,5 +16,5 @@ func (uvm *UtilityVM) UpdateCPULimits(ctx context.Context, limits *hcsschema.Pro
 		Settings:     limits,
 	}
 
-	return uvm.modify(ctx, req)
+	return uvm.Modify(ctx, req)
 }

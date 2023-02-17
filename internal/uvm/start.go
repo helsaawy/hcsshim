@@ -140,7 +140,7 @@ func (uvm *UtilityVM) configureHvSocketForGCS(ctx context.Context) (err error) {
 		},
 	}
 
-	if err = uvm.modify(ctx, conSetupReq); err != nil {
+	if err = uvm.Modify(ctx, conSetupReq); err != nil {
 		return fmt.Errorf("failed to configure HVSOCK for external GCS: %s", err)
 	}
 

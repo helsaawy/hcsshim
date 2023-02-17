@@ -6,10 +6,11 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/pkg/errors"
+
 	"github.com/Microsoft/hcsshim/internal/cow"
 	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
-	"github.com/Microsoft/hcsshim/internal/vm"
-	"github.com/pkg/errors"
+	"github.com/Microsoft/hcsshim/internal/uvm/resource"
 )
 
 const (
@@ -24,7 +25,7 @@ type UVMTemplateConfig struct {
 	// ID of the template vm
 	UVMID string
 	// Array of all resources that will be required while making a clone from this template
-	Resources []vm.Cloneable
+	Resources []resource.Cloneable
 	// The OptionsWCOW used for template uvm creation
 	CreateOpts OptionsWCOW
 }
@@ -43,7 +44,11 @@ func (uvm *UtilityVM) GenerateTemplateConfig() (*UVMTemplateConfig, error) {
 		CreateOpts: uvm.createOpts.(OptionsWCOW),
 	}
 
-	for _, share := range uvm.vsmb.Shares() {
+	shares, err := uvm.vsmb.List(context.Background())
+	if err != nil {
+		return nil, fmt.Errorf("listing vSMB shared: %w", err)
+	}
+	for _, share := range shares {
 		templateConfig.Resources = append(templateConfig.Resources, share)
 	}
 

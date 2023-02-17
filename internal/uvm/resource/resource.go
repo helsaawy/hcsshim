@@ -45,8 +45,6 @@ type Host interface {
 	// ID will return a string identifier for the utility VM.
 	ID() string
 
-	Manager(Type) (Manager[Resource], error)
-
 	// Modify modifies the utility VM.
 	Modify(context.Context, *hcsschema.ModifySettingRequest) error
 
@@ -57,12 +55,23 @@ type Host interface {
 	DisallowWritableFileShares() bool
 }
 
+// because of weird generics rules, we cannot have an non-generic interface with a generic function
+// (ie, type constraints must be at the interface level).
+// additionally, we cannot use a non-concrete generic interface, which end up polluting everything
+// with type-constraints
+// settle on manager-specific interfaces
+
+type ResourceHost[R Resource] interface {
+	Host
+	Manager() (Manager[R], error)
+}
+
 // Manager tracks and manages resources on a [ResourceHost].
 type Manager[R Resource] interface {
 	// ResourceType returns the type of resource that is being managed.
 	ResourceType() Type
 
-	Host() (Host, error)
+	Host() (ResourceHost[R], error)
 
 	// Remove removes a particular resource, if it exists.
 	Remove(context.Context, R) error

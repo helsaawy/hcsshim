@@ -96,7 +96,7 @@ func (uvm *UtilityVM) SetConfidentialUVMOptions(ctx context.Context, opts ...Con
 		},
 	}
 
-	if err := uvm.modify(ctx, modification); err != nil {
+	if err := uvm.Modify(ctx, modification); err != nil {
 		return fmt.Errorf("uvm::Policy: failed to modify utility VM configuration: %s", err)
 	}
 
@@ -118,5 +118,5 @@ func (uvm *UtilityVM) InjectPolicyFragment(ctx context.Context, fragment *ctrdta
 			},
 		},
 	}
-	return uvm.modify(ctx, mod)
+	return uvm.Modify(ctx, mod)
 }

@@ -13,5 +13,5 @@ func (uvm *UtilityVM) GuestRequest(ctx context.Context, guestReq interface{}) er
 	msr := &hcsschema.ModifySettingRequest{
 		GuestRequest: guestReq,
 	}
-	return uvm.modify(ctx, msr)
+	return uvm.Modify(ctx, msr)
 }

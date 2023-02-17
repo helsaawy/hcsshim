@@ -33,7 +33,7 @@ func (uvm *UtilityVM) UpdateHvSocketService(ctx context.Context, sid string, doc
 		ResourcePath: fmt.Sprintf(resourcepaths.HvSocketConfigResourceFormat, sid),
 		Settings:     doc,
 	}
-	return uvm.modify(ctx, request)
+	return uvm.Modify(ctx, request)
 }
 
 // RemoveHvSocketService will remove an hvsocket service entry if it exists.
@@ -42,5 +42,5 @@ func (uvm *UtilityVM) RemoveHvSocketService(ctx context.Context, sid string) err
 		RequestType:  guestrequest.RequestTypeRemove,
 		ResourcePath: fmt.Sprintf(resourcepaths.HvSocketConfigResourceFormat, sid),
 	}
-	return uvm.modify(ctx, request)
+	return uvm.Modify(ctx, request)
 }

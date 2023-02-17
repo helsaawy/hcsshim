@@ -37,7 +37,7 @@ func (uvm *UtilityVM) AddPipe(ctx context.Context, hostPath string) (*PipeMount,
 		RequestType:  guestrequest.RequestTypeAdd,
 		ResourcePath: fmt.Sprintf(resourcepaths.MappedPipeResourceFormat, hostPath),
 	}
-	if err := uvm.modify(ctx, modification); err != nil {
+	if err := uvm.Modify(ctx, modification); err != nil {
 		return nil, err
 	}
 	return &PipeMount{uvm, hostPath}, nil
@@ -49,7 +49,7 @@ func (uvm *UtilityVM) RemovePipe(ctx context.Context, hostPath string) error {
 		RequestType:  guestrequest.RequestTypeRemove,
 		ResourcePath: fmt.Sprintf(resourcepaths.MappedPipeResourceFormat, hostPath),
 	}
-	if err := uvm.modify(ctx, modification); err != nil {
+	if err := uvm.Modify(ctx, modification); err != nil {
 		return err
 	}
 	return nil

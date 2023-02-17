@@ -21,6 +21,7 @@ import (
 	"github.com/Microsoft/hcsshim/internal/protocol/guestrequest"
 	"github.com/Microsoft/hcsshim/internal/protocol/guestresource"
 	"github.com/Microsoft/hcsshim/internal/security"
+	"github.com/Microsoft/hcsshim/internal/uvm/resource"
 	"github.com/Microsoft/hcsshim/internal/wclayer"
 )
 
@@ -275,7 +276,7 @@ func (uvm *UtilityVM) RemoveSCSI(ctx context.Context, hostPath string) error {
 		}
 	}
 
-	if err := uvm.modify(ctx, scsiModification); err != nil {
+	if err := uvm.Modify(ctx, scsiModification); err != nil {
 		return fmt.Errorf("failed to remove SCSI disk %s from container %s: %s", hostPath, uvm.id, err)
 	}
 	log.G(ctx).WithFields(sm.logFormat()).Debug("removed SCSI location")
@@ -471,7 +472,7 @@ func (uvm *UtilityVM) addSCSIActual(ctx context.Context, addReq *addSCSIRequest)
 		SCSIModification.GuestRequest = guestReq
 	}
 
-	if err := uvm.modify(ctx, SCSIModification); err != nil {
+	if err := uvm.Modify(ctx, SCSIModification); err != nil {
 		return nil, fmt.Errorf("failed to modify UVM with new SCSI mount: %s", err)
 	}
 	return sm, nil
@@ -564,7 +565,7 @@ func grantAccess(ctx context.Context, uvmID string, hostPath string, vmAccess VM
 	return nil
 }
 
-var _ = (Cloneable)(&SCSIMount{})
+var _ = (resource.Cloneable)(&SCSIMount{})
 
 // GobEncode serializes the SCSIMount struct
 func (sm *SCSIMount) GobEncode() ([]byte, error) {
@@ -640,7 +641,7 @@ func (sm *SCSIMount) GobDecode(data []byte) error {
 // the uvm `vm`. If `sm` is read only then it is simply added to the `vm`. But if it is a
 // writable mount(e.g a scratch layer) then a copy of it is made and that copy is added
 // to the `vm`.
-func (sm *SCSIMount) Clone(ctx context.Context, vm *UtilityVM, cd *CloneData) error {
+func (sm *SCSIMount) Clone(ctx context.Context, vm *UtilityVM, cd *resource.CloneData) error {
 	var (
 		dstVhdPath string = sm.HostPath
 		err        error

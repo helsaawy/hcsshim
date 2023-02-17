@@ -44,7 +44,7 @@ func (uvm *UtilityVM) RemoveVSMB(ctx context.Context, hostPath string, readOnly 
 		return fmt.Errorf("%s is not present as a VSMB share in %s, cannot remove", hostPath, uvm.id)
 	}
 
-	return uvm.vsmb.RemoveShare(ctx, share)
+	return uvm.vsmb.Remove(ctx, share)
 }
 
 // GetVSMBUvmPath returns the guest path of a VSMB mount.

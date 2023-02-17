@@ -23,7 +23,7 @@ func (uvm *UtilityVM) UpdateMemory(ctx context.Context, sizeInBytes uint64) erro
 		ResourcePath: resourcepaths.MemoryResourcePath,
 		Settings:     actual,
 	}
-	return uvm.modify(ctx, req)
+	return uvm.Modify(ctx, req)
 }
 
 // GetAssignedMemoryInBytes returns the amount of assigned memory for the UVM in bytes

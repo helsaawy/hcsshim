@@ -28,7 +28,7 @@ func (uvm *UtilityVM) CombineLayersWCOW(ctx context.Context, layerPaths []hcssch
 			},
 		},
 	}
-	return uvm.modify(ctx, msr)
+	return uvm.Modify(ctx, msr)
 }
 
 // CombineLayersLCOW combines `layerPaths` and optionally `scratchPath` into an
@@ -58,7 +58,7 @@ func (uvm *UtilityVM) CombineLayersLCOW(ctx context.Context, containerID string,
 			},
 		},
 	}
-	return uvm.modify(ctx, msr)
+	return uvm.Modify(ctx, msr)
 }
 
 // RemoveCombinedLayers removes the previously combined layers at `rootfsPath`.
@@ -74,7 +74,7 @@ func (uvm *UtilityVM) RemoveCombinedLayersWCOW(ctx context.Context, rootfsPath s
 			},
 		},
 	}
-	return uvm.modify(ctx, msr)
+	return uvm.Modify(ctx, msr)
 }
 
 func (uvm *UtilityVM) RemoveCombinedLayersLCOW(ctx context.Context, rootfsPath string) error {
@@ -87,5 +87,5 @@ func (uvm *UtilityVM) RemoveCombinedLayersLCOW(ctx context.Context, rootfsPath s
 			},
 		},
 	}
-	return uvm.modify(ctx, msr)
+	return uvm.Modify(ctx, msr)
 }

@@ -13,8 +13,8 @@ import (
 	"github.com/Microsoft/hcsshim/internal/hcs"
 	"github.com/Microsoft/hcsshim/internal/hcs/schema1"
 	"github.com/Microsoft/hcsshim/internal/hns"
+	"github.com/Microsoft/hcsshim/internal/uvm/resource"
 	"github.com/Microsoft/hcsshim/internal/uvm/resource/vsmb"
-	"github.com/Microsoft/hcsshim/internal/vm"
 )
 
 //                    | WCOW | LCOW
@@ -146,10 +146,13 @@ type UtilityVM struct {
 	confidentialUVMOptions *ConfidentialOptions
 }
 
-var _ vm.UVM = &UtilityVM{}
+var _ resource.ResourceHost[*vsmb.Share] = &UtilityVM{}
 
-func (uvm *UtilityVM) GuestOS() vm.GuestOS {
-	return vm.GuestOS(uvm.operatingSystem)
+func (uvm *UtilityVM) Manager() (resource.Manager[*vsmb.Share], error) {
+	if uvm.operatingSystem == "linux" {
+		return nil, resource.ErrNotSupported
+	}
+	return uvm.vsmb, nil
 }
 
 // DevicesPhysicallyBacked describes if additional devices added to the UVM

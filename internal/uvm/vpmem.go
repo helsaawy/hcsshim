@@ -177,7 +177,7 @@ func (uvm *UtilityVM) addVPMemDefault(ctx context.Context, hostPath string) (_ s
 		Settings:     guestSettings,
 	}
 
-	if err := uvm.modify(ctx, modification); err != nil {
+	if err := uvm.Modify(ctx, modification); err != nil {
 		return "", errors.Errorf("uvm::addVPMemDefault: failed to modify utility VM configuration: %s", err)
 	}
 
@@ -220,7 +220,7 @@ func (uvm *UtilityVM) removeVPMemDefault(ctx context.Context, hostPath string) e
 			},
 		},
 	}
-	if err := uvm.modify(ctx, modification); err != nil {
+	if err := uvm.Modify(ctx, modification); err != nil {
 		return errors.Errorf("failed to remove VPMEM %s from utility VM %s: %s", hostPath, uvm.id, err)
 	}
 	log.G(ctx).WithFields(logrus.Fields{

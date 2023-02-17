@@ -22,6 +22,7 @@ import (
 	"github.com/Microsoft/hcsshim/internal/protocol/guestrequest"
 	"github.com/Microsoft/hcsshim/internal/schemaversion"
 	"github.com/Microsoft/hcsshim/internal/security"
+	"github.com/Microsoft/hcsshim/internal/uvm/resource"
 	"github.com/Microsoft/hcsshim/internal/uvm/resource/vsmb"
 	"github.com/Microsoft/hcsshim/internal/uvmfolder"
 	"github.com/Microsoft/hcsshim/internal/wclayer"
@@ -357,7 +358,7 @@ func CreateWCOW(ctx context.Context, opts *OptionsWCOW) (_ *UtilityVM, err error
 		doc.VirtualMachine.RestoreState.TemplateSystemId = opts.TemplateConfig.UVMID
 
 		for _, cloneableResource := range opts.TemplateConfig.Resources {
-			err = cloneableResource.Clone(ctx, uvm, &CloneData{
+			err = cloneableResource.Clone(ctx, uvm, &resource.CloneData{
 				Doc:           doc,
 				ScratchFolder: scratchFolder,
 				UVMID:         opts.ID,

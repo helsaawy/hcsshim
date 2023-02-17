@@ -351,7 +351,7 @@ func (uvm *UtilityVM) AddNetNS(ctx context.Context, hcnNamespace *hcn.HostComput
 					Settings:     hcnNamespace,
 				},
 			}
-			if err := uvm.modify(ctx, &guestNamespace); err != nil {
+			if err := uvm.Modify(ctx, &guestNamespace); err != nil {
 				return err
 			}
 		}
@@ -472,7 +472,7 @@ func (uvm *UtilityVM) RemoveNetNS(ctx context.Context, id string) error {
 						Settings:     hcnNamespace,
 					},
 				}
-				if err := uvm.modify(ctx, &guestNamespace); err != nil {
+				if err := uvm.Modify(ctx, &guestNamespace); err != nil {
 					return err
 				}
 			}
@@ -566,7 +566,7 @@ func (uvm *UtilityVM) addNIC(ctx context.Context, id string, endpoint *hns.HNSEn
 					endpoint),
 			},
 		}
-		if err := uvm.modify(ctx, &preAddRequest); err != nil {
+		if err := uvm.Modify(ctx, &preAddRequest); err != nil {
 			return err
 		}
 	}
@@ -625,7 +625,7 @@ func (uvm *UtilityVM) addNIC(ctx context.Context, id string, endpoint *hns.HNSEn
 		}
 	}
 
-	if err := uvm.modify(ctx, &request); err != nil {
+	if err := uvm.Modify(ctx, &request); err != nil {
 		return err
 	}
 
@@ -664,7 +664,7 @@ func (uvm *UtilityVM) removeNIC(ctx context.Context, id string, endpoint *hns.HN
 		}
 	}
 
-	if err := uvm.modify(ctx, &request); err != nil {
+	if err := uvm.Modify(ctx, &request); err != nil {
 		return err
 	}
 	return nil
@@ -689,7 +689,7 @@ func (uvm *UtilityVM) UpdateNIC(ctx context.Context, id string, settings *hcssch
 		ResourcePath: fmt.Sprintf(resourcepaths.NetworkResourceFormat, id),
 		Settings:     settings,
 	}
-	return uvm.modify(ctx, req)
+	return uvm.Modify(ctx, req)
 }
 
 // AddNICInGuest makes a request to setup a network adapter's interface inside the lcow guest.
@@ -705,7 +705,7 @@ func (uvm *UtilityVM) AddNICInGuest(ctx context.Context, cfg *guestresource.LCOW
 		Settings:     cfg,
 	}
 
-	return uvm.modify(ctx, &request)
+	return uvm.Modify(ctx, &request)
 }
 
 // RemoveNICInGuest makes a request to remove a network interface inside the lcow guest.
@@ -721,5 +721,5 @@ func (uvm *UtilityVM) RemoveNICInGuest(ctx context.Context, cfg *guestresource.L
 		Settings:     cfg,
 	}
 
-	return uvm.modify(ctx, &request)
+	return uvm.Modify(ctx, &request)
 }

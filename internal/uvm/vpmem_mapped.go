@@ -264,13 +264,13 @@ func (uvm *UtilityVM) addVPMemMappedDevice(ctx context.Context, hostPath string)
 	uvmPath := fmt.Sprintf(lcowPackedVPMemLayerFmt, deviceNumber, memReg.Offset(), devSize)
 	md := newVPMemMappedDevice(hostPath, uvmPath, devSize, memReg)
 	modification, err := newMappedVPMemModifyRequest(ctx, guestrequest.RequestTypeAdd, deviceNumber, md, uvm)
-	if err := uvm.modify(ctx, modification); err != nil {
+	if err := uvm.Modify(ctx, modification); err != nil {
 		return "", errors.Errorf("uvm::addVPMemMappedDevice: failed to modify utility VM configuration: %s", err)
 	}
 	defer func() {
 		if err != nil {
 			rmRequest, _ := newMappedVPMemModifyRequest(ctx, guestrequest.RequestTypeRemove, deviceNumber, md, uvm)
-			if err := uvm.modify(ctx, rmRequest); err != nil {
+			if err := uvm.Modify(ctx, rmRequest); err != nil {
 				log.G(ctx).WithError(err).Debugf("failed to rollback modification")
 			}
 		}
@@ -312,7 +312,7 @@ func (uvm *UtilityVM) removeVPMemMappedDevice(ctx context.Context, hostPath stri
 		return err
 	}
 
-	if err := uvm.modify(ctx, modification); err != nil {
+	if err := uvm.Modify(ctx, modification); err != nil {
 		return errors.Errorf("failed to remove packed VPMem %s from UVM %s: %s", md.hostPath, uvm.id, err)
 	}
 

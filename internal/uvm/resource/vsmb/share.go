@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/gob"
+	"errors"
 	"fmt"
 
 	"github.com/Microsoft/hcsshim/internal/hcs"
@@ -33,14 +34,13 @@ type Share struct {
 	serialVersionID uint32
 }
 
-var _ resource.Resource = &Share{}
 var _ resource.Cloneable = &Share{}
 
 func (*Share) Type() resource.Type { return resource.VSMB }
 
 // Release frees the resources of the corresponding vSMB mount.
 func (s *Share) Release(ctx context.Context) error {
-	if err := s.m.RemoveShare(ctx, s); err != nil {
+	if err := s.m.Remove(ctx, s); err != nil {
 		return fmt.Errorf("failed to release vSMB share: %w", err)
 	}
 	return nil
@@ -136,42 +136,47 @@ func (s *Share) Clone(_ context.Context, host resource.Host, cd *resource.CloneD
 	s.m.mu.RLock()
 	defer s.m.mu.RUnlock()
 
-	mm, err := host.Manager(s.Type())
+	rh, ok := host.(resource.ResourceHost[*Share])
+	if !ok {
+		return errors.New("host %T is not a valid vSMB resource host")
+	}
+
+	mm, err := rh.Manager()
 	if err != nil {
 		return err
 	}
 
-	// m, ok := mm.(*Manager)
-	// if !ok {
-	// 	return errors.New("unexpected vSMB manager %T", mm)
-	// }
+	m, ok := mm.(*Manager)
+	if !ok {
+		return fmt.Errorf("unexpected vSMB manager %T", mm)
+	}
 
-	// // lock the clone uVM's vSMB controller for writing
-	// // if `vsmb.m.host == vm`, bad things will happen
-	// vm.vsmb.mu.Lock()
-	// defer vm.vsmb.mu.Unlock()
+	// lock the clone uVM's vSMB controller for writing
+	// if `vsmb.m.host == vm`, bad things will happen
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
-	// cd.Doc.VirtualMachine.Devices.VirtualSmb.Shares = append(cd.Doc.VirtualMachine.Devices.VirtualSmb.Shares, hcsschema.VirtualSmbShare{
-	// 	Name:         s.name,
-	// 	Path:         s.HostPath,
-	// 	Options:      &s.options,
-	// 	AllowedFiles: s.allowedFiles,
-	// })
-	// vm.vsmb.counter++
+	cd.Doc.VirtualMachine.Devices.VirtualSmb.Shares = append(cd.Doc.VirtualMachine.Devices.VirtualSmb.Shares, hcsschema.VirtualSmbShare{
+		Name:         s.name,
+		Path:         s.HostPath,
+		Options:      &s.options,
+		AllowedFiles: s.allowedFiles,
+	})
+	m.counter++
 
-	// clonedVSMB := &Share{
-	// 	m:               vm.vsmb,
-	// 	HostPath:        s.HostPath,
-	// 	refCount:        1,
-	// 	name:            s.name,
-	// 	options:         s.options,
-	// 	allowedFiles:    s.allowedFiles,
-	// 	guestPath:       s.guestPath,
-	// 	serialVersionID: CurrentSerialVersionID,
-	// }
-	// shareKey := s.shareKey()
-	// m := vm.vsmb.getShareMap(s.isDirShare())
-	// m[shareKey] = clonedVSMB
+	clonedVSMB := &Share{
+		m:               m,
+		HostPath:        s.HostPath,
+		refCount:        1,
+		name:            s.name,
+		options:         s.options,
+		allowedFiles:    s.allowedFiles,
+		guestPath:       s.guestPath,
+		serialVersionID: CurrentSerialVersionID,
+	}
+	shareKey := s.shareKey()
+	sm := m.getShareMap(s.isDirShare())
+	sm[shareKey] = clonedVSMB
 	return nil
 }
 
