@@ -10,6 +10,9 @@ import (
 
 	"github.com/Microsoft/hcsshim/internal/regstate"
 	"github.com/Microsoft/hcsshim/internal/uvm"
+	"github.com/Microsoft/hcsshim/internal/uvm/resource"
+	"github.com/Microsoft/hcsshim/internal/uvm/resource/scsi"
+	"github.com/Microsoft/hcsshim/internal/uvm/resource/vsmb"
 	specs "github.com/opencontainers/runtime-spec/specs-go"
 )
 
@@ -27,7 +30,7 @@ const (
 type TemplateConfig struct {
 	SerialVersionID       uint32
 	TemplateUVMID         string
-	TemplateUVMResources  []uvm.Cloneable
+	TemplateUVMResources  []resource.Cloneable
 	TemplateUVMCreateOpts uvm.OptionsWCOW
 	TemplateContainerID   string
 	// Below we store the container spec for the template container so that when
@@ -43,8 +46,8 @@ type TemplateConfig struct {
 // Go init function: https://golang.org/doc/effective_go.html#init
 func init() {
 	// Register the pointer to structs because that is what is being stored.
-	gob.Register(&uvm.VSMBShare{})
-	gob.Register(&uvm.SCSIMount{})
+	gob.Register(&vsmb.Share{})
+	gob.Register(&scsi.Mount{})
 }
 
 func encodeTemplateConfig(templateConfig *TemplateConfig) ([]byte, error) {

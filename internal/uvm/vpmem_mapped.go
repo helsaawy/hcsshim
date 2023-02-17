@@ -16,6 +16,7 @@ import (
 	"github.com/Microsoft/hcsshim/internal/memory"
 	"github.com/Microsoft/hcsshim/internal/protocol/guestrequest"
 	"github.com/Microsoft/hcsshim/internal/protocol/guestresource"
+	"github.com/Microsoft/hcsshim/internal/uvm/resource"
 )
 
 const (
@@ -84,7 +85,7 @@ func newMappedVPMemModifyRequest(
 		},
 	}
 
-	if verity, err := readVeritySuperBlock(ctx, md.hostPath); err != nil {
+	if verity, err := resource.ReadVeritySuperBlock(ctx, md.hostPath); err != nil {
 		log.G(ctx).WithError(err).WithField("hostPath", md.hostPath).Debug("unable to read dm-verity information from VHD")
 	} else {
 		log.G(ctx).WithFields(logrus.Fields{
@@ -159,7 +160,7 @@ func (pmem *vPMemInfoMulti) mapVHDLayer(ctx context.Context, device *mappedDevic
 func (pmem *vPMemInfoMulti) unmapVHDLayer(ctx context.Context, hostPath string) (err error) {
 	dev, ok := pmem.mappings[hostPath]
 	if !ok {
-		return ErrNotAttached
+		return resource.ErrNotAttached
 	}
 
 	if dev.refCount > 1 {
@@ -195,7 +196,7 @@ func (uvm *UtilityVM) findVPMemMappedDevice(ctx context.Context, hostPath string
 			}
 		}
 	}
-	return 0, nil, ErrNotAttached
+	return 0, nil, resource.ErrNotAttached
 }
 
 // allocateNextVPMemMappedDeviceLocation allocates a memory region with a minimum offset on the VPMem surface,
@@ -226,7 +227,7 @@ func (uvm *UtilityVM) allocateNextVPMemMappedDeviceLocation(ctx context.Context,
 		}).Debug("found offset for mapped VHD on an existing VPMem device")
 		return i, reg, nil
 	}
-	return 0, nil, ErrNoAvailableLocation
+	return 0, nil, resource.ErrNoAvailableLocation
 }
 
 // addVPMemMappedDevice adds container layer as a mapped device, first mapped device is added as a regular

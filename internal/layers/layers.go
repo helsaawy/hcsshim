@@ -20,6 +20,8 @@ import (
 	"github.com/Microsoft/hcsshim/internal/log"
 	"github.com/Microsoft/hcsshim/internal/ospath"
 	"github.com/Microsoft/hcsshim/internal/uvm"
+	"github.com/Microsoft/hcsshim/internal/uvm/resource"
+	"github.com/Microsoft/hcsshim/internal/uvm/resource/scsi"
 	"github.com/Microsoft/hcsshim/internal/wclayer"
 )
 
@@ -122,7 +124,7 @@ func MountLCOWLayers(ctx context.Context, containerID string, layerFolders []str
 		false,
 		vm.ScratchEncryptionEnabled(),
 		options,
-		uvm.VMAccessTypeIndividual,
+		scsi.VMAccessTypeIndividual,
 	)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to add SCSI scratch VHD: %s", err)
@@ -133,7 +135,7 @@ func MountLCOWLayers(ctx context.Context, containerID string, layerFolders []str
 	// work directories colliding in the UVM.
 	if scsiMount.RefCount() > 1 {
 		scratchFmt := fmt.Sprintf("container_%s", filepath.Base(containerScratchPathInUVM))
-		containerScratchPathInUVM = ospath.Join("linux", scsiMount.UVMPath, scratchFmt)
+		containerScratchPathInUVM = ospath.Join("linux", scsiMount.GuestPath(), scratchFmt)
 	}
 
 	defer func() {
@@ -292,12 +294,12 @@ func MountWCOWLayers(ctx context.Context, containerID string, layerFolders []str
 		false,
 		vm.ScratchEncryptionEnabled(),
 		options,
-		uvm.VMAccessTypeIndividual,
+		scsi.VMAccessTypeIndividual,
 	)
 	if err != nil {
 		return "", fmt.Errorf("failed to add SCSI scratch VHD: %s", err)
 	}
-	containerScratchPathInUVM = scsiMount.UVMPath
+	containerScratchPathInUVM = scsiMount.GuestPath()
 
 	defer func() {
 		if err != nil {
@@ -334,14 +336,14 @@ func addLCOWLayer(ctx context.Context, vm *uvm.UtilityVM, layerPath string) (uvm
 				"layerType": "vpmem",
 			}).Debug("Added LCOW layer")
 			return uvmPath, nil
-		} else if err != uvm.ErrNoAvailableLocation && err != uvm.ErrMaxVPMemLayerSize {
+		} else if !(errors.Is(err, resource.ErrNoAvailableLocation) || errors.Is(err, uvm.ErrMaxVPMemLayerSize)) {
 			return "", fmt.Errorf("failed to add VPMEM layer: %s", err)
 		}
 	}
 
 	options := []string{"ro"}
 	uvmPath = fmt.Sprintf(guestpath.LCOWGlobalMountPrefixFmt, vm.UVMMountCounter())
-	sm, err := vm.AddSCSI(ctx, layerPath, uvmPath, true, false, options, uvm.VMAccessTypeNoop)
+	sm, err := vm.AddSCSI(ctx, layerPath, uvmPath, true, false, options, scsi.VMAccessTypeNoop)
 	if err != nil {
 		return "", fmt.Errorf("failed to add SCSI layer: %s", err)
 	}
@@ -349,7 +351,7 @@ func addLCOWLayer(ctx context.Context, vm *uvm.UtilityVM, layerPath string) (uvm
 		"layerPath": layerPath,
 		"layerType": "scsi",
 	}).Debug("Added LCOW layer")
-	return sm.UVMPath, nil
+	return sm.GuestPath(), nil
 }
 
 func removeLCOWLayer(ctx context.Context, vm *uvm.UtilityVM, layerPath string) error {
@@ -361,7 +363,7 @@ func removeLCOWLayer(ctx context.Context, vm *uvm.UtilityVM, layerPath string) e
 			"layerType": "vpmem",
 		}).Debug("Removed LCOW layer")
 		return nil
-	} else if err == uvm.ErrNotAttached {
+	} else if errors.Is(err, resource.ErrNotAttached) {
 		err = vm.RemoveSCSI(ctx, layerPath)
 		if err == nil {
 			log.G(ctx).WithFields(logrus.Fields{

@@ -5,20 +5,17 @@ package remotevm
 import (
 	"context"
 
-	ptypes "github.com/gogo/protobuf/types"
-	"github.com/pkg/errors"
-
-	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
 	"github.com/Microsoft/hcsshim/internal/jobobject"
 	"github.com/Microsoft/hcsshim/internal/vm"
 	"github.com/Microsoft/hcsshim/internal/vmservice"
+	ptypes "github.com/gogo/protobuf/types"
+	"github.com/pkg/errors"
 )
 
 var _ vm.UVM = &utilityVM{}
 
 type utilityVM struct {
 	id           string
-	guestOS      vm.GuestOS
 	waitError    error
 	job          *jobobject.JobObject
 	config       *vmservice.VMConfig
@@ -107,20 +104,4 @@ func (uvm *utilityVM) Supported(resource vm.Resource, operation vm.ResourceOpera
 
 func (uvm *utilityVM) ExitError() error {
 	return uvm.waitError
-}
-
-func (uvm *utilityVM) GuestOS() vm.GuestOS {
-	return uvm.guestOS
-}
-
-func (uvm *utilityVM) DevicesPhysicallyBacked() bool {
-	return uvm.config.MemoryConfig.AllowOvercommit
-}
-
-func (*utilityVM) DisallowWritableFileShares() bool {
-	return false
-}
-
-func (uvm *utilityVM) Modify(context.Context, *hcsschema.ModifySettingRequest) error {
-	return vm.ErrNotSupported
 }

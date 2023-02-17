@@ -23,6 +23,7 @@ import (
 	"github.com/Microsoft/hcsshim/internal/schemaversion"
 	"github.com/Microsoft/hcsshim/internal/security"
 	"github.com/Microsoft/hcsshim/internal/uvm/resource"
+	"github.com/Microsoft/hcsshim/internal/uvm/resource/scsi"
 	"github.com/Microsoft/hcsshim/internal/uvm/resource/vsmb"
 	"github.com/Microsoft/hcsshim/internal/uvmfolder"
 	"github.com/Microsoft/hcsshim/internal/wclayer"
@@ -271,7 +272,6 @@ func CreateWCOW(ctx context.Context, opts *OptionsWCOW) (_ *UtilityVM, err error
 		id:                      opts.ID,
 		owner:                   opts.Owner,
 		operatingSystem:         "windows",
-		scsiControllerCount:     opts.SCSIControllerCount,
 		vpciDevices:             make(map[VPCIDeviceKey]*VPCIDevice),
 		noInheritHostTimezone:   opts.NoInheritHostTimezone,
 		physicallyBacked:        !opts.AllowOvercommit,
@@ -279,7 +279,8 @@ func CreateWCOW(ctx context.Context, opts *OptionsWCOW) (_ *UtilityVM, err error
 		noWritableFileShares:    opts.NoWritableFileShares,
 		createOpts:              *opts,
 	}
-	uvm.vsmb = vsmb.NewManager(uvm, opts.NoDirectMap)
+	uvm.vsmb = vsmb.NewManager(uvm, opts.NoDirectMap, opts.NoWritableFileShares)
+	uvm.scsi = scsi.NewManager(uvm, opts.SCSIControllerCount)
 
 	defer func() {
 		if err != nil {
@@ -331,34 +332,36 @@ func CreateWCOW(ctx context.Context, opts *OptionsWCOW) (_ *UtilityVM, err error
 		}
 
 		doc.VirtualMachine.Devices.Scsi = map[string]hcsschema.Scsi{}
-		for i := 0; i < int(uvm.scsiControllerCount); i++ {
+		for i := 0; i < int(uvm.scsi.ControllerCount()); i++ {
 			doc.VirtualMachine.Devices.Scsi[guestrequest.ScsiControllerGuids[i]] = hcsschema.Scsi{
 				Attachments: make(map[string]hcsschema.Attachment),
 			}
 		}
 
 		doc.VirtualMachine.Devices.Scsi[guestrequest.ScsiControllerGuids[0]].Attachments["0"] = hcsschema.Attachment{
-
 			Path:  scratchPath,
 			Type_: "VirtualDisk",
 		}
 
-		uvm.scsiLocations[0][0] = newSCSIMount(uvm,
+		if err := uvm.scsi.SetRootMount(uvm.scsi.NewMount(
 			doc.VirtualMachine.Devices.Scsi[guestrequest.ScsiControllerGuids[0]].Attachments["0"].Path,
 			"",
-			doc.VirtualMachine.Devices.Scsi[guestrequest.ScsiControllerGuids[0]].Attachments["0"].Type_,
+			scsi.AttachmentType(doc.VirtualMachine.Devices.Scsi[guestrequest.ScsiControllerGuids[0]].Attachments["0"].Type_),
 			"",
 			1,
 			0,
 			0,
 			false,
-			false)
+			false,
+		)); err != nil {
+			return nil, err
+		}
 	} else {
 		doc.VirtualMachine.RestoreState = &hcsschema.RestoreState{}
 		doc.VirtualMachine.RestoreState.TemplateSystemId = opts.TemplateConfig.UVMID
 
-		for _, cloneableResource := range opts.TemplateConfig.Resources {
-			err = cloneableResource.Clone(ctx, uvm, &resource.CloneData{
+		for _, r := range opts.TemplateConfig.Resources {
+			err = uvm.Clone(ctx, r, &resource.CloneData{
 				Doc:           doc,
 				ScratchFolder: scratchFolder,
 				UVMID:         opts.ID,

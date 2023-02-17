@@ -69,26 +69,10 @@ func (uvm *utilityVM) Save(ctx context.Context) error {
 	return nil
 }
 
-func (uvm *utilityVM) Modify(ctx context.Context, config *hcsschema.ModifySettingRequest) error {
-	return uvm.cs.Modify(ctx, config)
-}
-
 func (uvm *utilityVM) Wait() error {
 	return uvm.cs.Wait()
 }
 
 func (uvm *utilityVM) ExitError() error {
 	return uvm.cs.ExitError()
-}
-
-func (uvm *utilityVM) GuestOS() vm.GuestOS {
-	return uvm.guestOS
-}
-
-func (uvm *utilityVM) DevicesPhysicallyBacked() bool {
-	return uvm.backingType == vm.MemoryBackingTypePhysical
-}
-
-func (*utilityVM) DisallowWritableFileShares() bool {
-	return false
 }

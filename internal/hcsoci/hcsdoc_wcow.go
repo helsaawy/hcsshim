@@ -24,6 +24,7 @@ import (
 	"github.com/Microsoft/hcsshim/internal/oci"
 	"github.com/Microsoft/hcsshim/internal/processorinfo"
 	"github.com/Microsoft/hcsshim/internal/uvm"
+	"github.com/Microsoft/hcsshim/internal/uvm/resource/scsi"
 	"github.com/Microsoft/hcsshim/internal/uvmfolder"
 	"github.com/Microsoft/hcsshim/internal/wclayer"
 	"github.com/Microsoft/hcsshim/osversion"
@@ -71,7 +72,7 @@ func createMountsConfig(ctx context.Context, coi *createOptionsInternal) (*mount
 				mountPath := mount.Source
 				var err error
 				if mount.Type == "extensible-virtual-disk" {
-					_, mountPath, err = uvm.ParseExtensibleVirtualDiskPath(mount.Source)
+					_, mountPath, err = scsi.ParseExtensibleVirtualDiskPath(mount.Source)
 					if err != nil {
 						return nil, err
 					}

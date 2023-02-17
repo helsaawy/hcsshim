@@ -13,7 +13,7 @@ import (
 	"testing"
 
 	"github.com/Microsoft/hcsshim/internal/hcs"
-	"github.com/Microsoft/hcsshim/internal/uvm"
+	"github.com/Microsoft/hcsshim/internal/uvm/resource/plan9"
 	"github.com/Microsoft/hcsshim/osversion"
 
 	"github.com/Microsoft/hcsshim/test/internal/require"
@@ -34,7 +34,7 @@ func TestPlan9(t *testing.T) {
 
 	dir := t.TempDir()
 	var iterations uint32 = 64
-	var shares []*uvm.Plan9Share
+	var shares []*plan9.Share
 	for i := 0; i < int(iterations); i++ {
 		share, err := vm.AddPlan9(context.Background(), dir, fmt.Sprintf("/tmp/%s", filepath.Base(dir)), false, false, nil)
 		if err != nil {

@@ -205,16 +205,6 @@ func newDefaultOptions(id, owner string) *Options {
 	return opts
 }
 
-// ID returns the ID of the VM's compute system.
-func (uvm *UtilityVM) ID() string {
-	return uvm.hcsSystem.ID()
-}
-
-// OS returns the operating system of the utility VM.
-func (uvm *UtilityVM) OS() string {
-	return uvm.operatingSystem
-}
-
 func (uvm *UtilityVM) create(ctx context.Context, doc interface{}) error {
 	uvm.exitCh = make(chan struct{})
 	system, err := hcs.CreateComputeSystem(ctx, uvm.id, doc)
@@ -251,15 +241,33 @@ func (uvm *UtilityVM) Close() (err error) {
 	defer func() { oc.SetSpanStatus(span, err) }()
 	span.AddAttributes(trace.StringAttribute(logfields.UVMID, uvm.id))
 
+	// close the resources
+	switch uvm.operatingSystem {
+	case "windows":
+		if err := uvm.vsmb.Close(ctx); err != nil {
+			log.G(ctx).WithError(err).Error("vSMB close failed")
+		}
+	case "linux":
+		if err := uvm.plan9.Close(ctx); err != nil {
+			log.G(ctx).WithError(err).Error("Plan9 close failed")
+		}
+	default:
+		// we really should not be here...
+	}
+	if err := uvm.scsi.Close(ctx); err != nil {
+		log.G(ctx).WithError(err).Error("SCSI close failed")
+	}
+
 	windows.Close(uvm.vmmemProcess)
 
+	// close the underlying uVM itself
 	if uvm.hcsSystem != nil {
 		_ = uvm.hcsSystem.Terminate(ctx)
 		_ = uvm.Wait()
 	}
 
 	if err := uvm.CloseGCSConnection(); err != nil {
-		log.G(ctx).Errorf("close GCS connection failed: %s", err)
+		log.G(ctx).WithError(err).Error("lose GCS connection failed")
 	}
 
 	// outputListener will only be nil for a Create -> Stop without a Start. In
@@ -284,18 +292,6 @@ func (uvm *UtilityVM) Close() (err error) {
 	}
 
 	return nil
-}
-
-func (uvm *UtilityVM) Pause(ctx context.Context) error {
-	return uvm.hcsSystem.Pause(ctx)
-}
-
-func (uvm *UtilityVM) Resume(ctx context.Context) error {
-	return uvm.hcsSystem.Resume(ctx)
-}
-
-func (uvm *UtilityVM) Stop(ctx context.Context) error {
-	return uvm.hcsSystem.Terminate(ctx)
 }
 
 // CreateContainer creates a container in the utility VM.

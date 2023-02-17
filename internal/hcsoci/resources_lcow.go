@@ -20,7 +20,7 @@ import (
 	"github.com/Microsoft/hcsshim/internal/layers"
 	"github.com/Microsoft/hcsshim/internal/log"
 	"github.com/Microsoft/hcsshim/internal/resources"
-	"github.com/Microsoft/hcsshim/internal/uvm"
+	"github.com/Microsoft/hcsshim/internal/uvm/resource/scsi"
 )
 
 func allocateLinuxResources(ctx context.Context, coi *createOptionsInternal, r *resources.Resources, isSandbox bool) error {
@@ -88,7 +88,7 @@ func allocateLinuxResources(ctx context.Context, coi *createOptionsInternal, r *
 					return errors.Wrapf(err, "adding SCSI physical disk mount %+v", mount)
 				}
 
-				uvmPathForFile = scsiMount.UVMPath
+				uvmPathForFile = scsiMount.GuestPath()
 				r.Add(scsiMount)
 				coi.Spec.Mounts[i].Type = "none"
 			} else if mount.Type == "virtual-disk" {
@@ -104,13 +104,13 @@ func allocateLinuxResources(ctx context.Context, coi *createOptionsInternal, r *
 					readOnly,
 					false,
 					mount.Options,
-					uvm.VMAccessTypeIndividual,
+					scsi.VMAccessTypeIndividual,
 				)
 				if err != nil {
 					return errors.Wrapf(err, "adding SCSI virtual disk mount %+v", mount)
 				}
 
-				uvmPathForFile = scsiMount.UVMPath
+				uvmPathForFile = scsiMount.GuestPath()
 				r.Add(scsiMount)
 				coi.Spec.Mounts[i].Type = "none"
 			} else if strings.HasPrefix(mount.Source, guestpath.SandboxMountPrefix) {

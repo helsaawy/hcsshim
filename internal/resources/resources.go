@@ -10,6 +10,8 @@ import (
 	"github.com/Microsoft/hcsshim/internal/layers"
 	"github.com/Microsoft/hcsshim/internal/log"
 	"github.com/Microsoft/hcsshim/internal/uvm"
+	"github.com/Microsoft/hcsshim/internal/uvm/resource/scsi"
+	"github.com/Microsoft/hcsshim/internal/uvm/resource/vsmb"
 )
 
 // NetNS returns the network namespace for the container
@@ -97,6 +99,11 @@ type Resources struct {
 type ResourceCloser interface {
 	Release(context.Context) error
 }
+
+var (
+	_ ResourceCloser = &scsi.Mount{}
+	_ ResourceCloser = &vsmb.Share{}
+)
 
 // NewContainerResources returns a new empty container Resources struct with the
 // given container id

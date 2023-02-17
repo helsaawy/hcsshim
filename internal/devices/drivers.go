@@ -5,6 +5,7 @@ package devices
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/Microsoft/go-winio/pkg/guid"
@@ -13,6 +14,8 @@ import (
 	"github.com/Microsoft/hcsshim/internal/log"
 	"github.com/Microsoft/hcsshim/internal/resources"
 	"github.com/Microsoft/hcsshim/internal/uvm"
+	"github.com/Microsoft/hcsshim/internal/uvm/resource"
+	"github.com/Microsoft/hcsshim/internal/uvm/resource/scsi"
 )
 
 // InstallDriver mounts a share from the host into the UVM, installs any kernel drivers in the share,
@@ -54,7 +57,7 @@ func InstallDrivers(ctx context.Context, vm *uvm.UtilityVM, share string, gpuDri
 	}
 
 	// no need to reinstall if the driver has already been added in LCOW, return early
-	if _, err := vm.GetScsiUvmPath(ctx, share); err != uvm.ErrNotAttached {
+	if _, err := vm.GetScsiUvmPath(ctx, share); !errors.Is(err, resource.ErrNotAttached) {
 		return nil, err
 	}
 
@@ -66,7 +69,7 @@ func InstallDrivers(ctx context.Context, vm *uvm.UtilityVM, share string, gpuDri
 		true,
 		false,
 		[]string{},
-		uvm.VMAccessTypeIndividual)
+		scsi.VMAccessTypeIndividual)
 	if err != nil {
 		return closer, fmt.Errorf("failed to add SCSI disk to utility VM for path %+v: %s", share, err)
 	}

@@ -14,8 +14,6 @@ import (
 
 	"github.com/Microsoft/go-winio"
 	"github.com/Microsoft/go-winio/pkg/guid"
-	"github.com/Microsoft/hcsshim/internal/security"
-	"github.com/Microsoft/hcsshim/pkg/securitypolicy"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"go.opencensus.io/trace"
@@ -28,7 +26,11 @@ import (
 	"github.com/Microsoft/hcsshim/internal/processorinfo"
 	"github.com/Microsoft/hcsshim/internal/protocol/guestrequest"
 	"github.com/Microsoft/hcsshim/internal/schemaversion"
+	"github.com/Microsoft/hcsshim/internal/security"
+	"github.com/Microsoft/hcsshim/internal/uvm/resource/plan9"
+	"github.com/Microsoft/hcsshim/internal/uvm/resource/scsi"
 	"github.com/Microsoft/hcsshim/osversion"
+	"github.com/Microsoft/hcsshim/pkg/securitypolicy"
 )
 
 // General information about how this works at a high level.
@@ -399,9 +401,9 @@ func makeLCOWVMGSDoc(ctx context.Context, opts *OptionsLCOW, uvm *UtilityVM) (_ 
 		}
 	}
 
-	if uvm.scsiControllerCount > 0 {
+	if uvm.scsi.ControllerCount() > 0 {
 		doc.VirtualMachine.Devices.Scsi = map[string]hcsschema.Scsi{}
-		for i := 0; i < int(uvm.scsiControllerCount); i++ {
+		for i := 0; i < int(uvm.scsi.ControllerCount()); i++ {
 			doc.VirtualMachine.Devices.Scsi[guestrequest.ScsiControllerGuids[i]] = hcsschema.Scsi{
 				Attachments: make(map[string]hcsschema.Attachment),
 			}
@@ -569,9 +571,9 @@ func makeLCOWDoc(ctx context.Context, opts *OptionsLCOW, uvm *UtilityVM) (_ *hcs
 		}
 	}
 
-	if uvm.scsiControllerCount > 0 {
+	if uvm.scsi.ControllerCount() > 0 {
 		doc.VirtualMachine.Devices.Scsi = map[string]hcsschema.Scsi{}
-		for i := 0; i < int(uvm.scsiControllerCount); i++ {
+		for i := 0; i < int(uvm.scsi.ControllerCount()); i++ {
 			doc.VirtualMachine.Devices.Scsi[guestrequest.ScsiControllerGuids[i]] = hcsschema.Scsi{
 				Attachments: make(map[string]hcsschema.Attachment),
 			}
@@ -643,7 +645,19 @@ func makeLCOWDoc(ctx context.Context, opts *OptionsLCOW, uvm *UtilityVM) (_ *hcs
 				Path:     rootfsFullPath,
 				ReadOnly: true,
 			}
-			uvm.scsiLocations[0][0] = newSCSIMount(uvm, rootfsFullPath, "/", "VirtualDisk", "", 1, 0, 0, true, false)
+			if err := uvm.scsi.SetRootMount(uvm.scsi.NewMount(
+				rootfsFullPath,
+				"/",
+				scsi.VirtualDiskAttachment,
+				"",
+				1,
+				0,
+				0,
+				true,
+				false,
+			)); err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -769,7 +783,6 @@ func CreateLCOW(ctx context.Context, opts *OptionsLCOW) (_ *UtilityVM, err error
 		id:                      opts.ID,
 		owner:                   opts.Owner,
 		operatingSystem:         "linux",
-		scsiControllerCount:     opts.SCSIControllerCount,
 		vpmemMaxCount:           opts.VPMemDeviceCount,
 		vpmemMaxSizeBytes:       opts.VPMemSizeBytes,
 		vpciDevices:             make(map[VPCIDeviceKey]*VPCIDevice),
@@ -781,18 +794,20 @@ func CreateLCOW(ctx context.Context, opts *OptionsLCOW) (_ *UtilityVM, err error
 		noWritableFileShares:    opts.NoWritableFileShares,
 		confidentialUVMOptions:  opts.ConfidentialOptions,
 	}
+	controllerCount := opts.SCSIControllerCount
+	// vpmemMaxCount has been set to 0 which means we are going to need multiple SCSI controllers
+	// to support lots of layers.
+	if osversion.Build() >= osversion.RS5 && uvm.vpmemMaxCount == 0 {
+		controllerCount = 4
+	}
+	uvm.scsi = scsi.NewManager(uvm, controllerCount)
+	uvm.plan9 = plan9.NewManager(uvm, opts.NoWritableFileShares)
 
 	defer func() {
 		if err != nil {
 			uvm.Close()
 		}
 	}()
-
-	// vpmemMaxCount has been set to 0 which means we are going to need multiple SCSI controllers
-	// to support lots of layers.
-	if osversion.Build() >= osversion.RS5 && uvm.vpmemMaxCount == 0 {
-		uvm.scsiControllerCount = 4
-	}
 
 	if err = verifyOptions(ctx, opts); err != nil {
 		return nil, errors.Wrap(err, errBadUVMOpts.Error())

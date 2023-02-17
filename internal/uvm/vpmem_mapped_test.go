@@ -41,14 +41,16 @@ func setupNewVPMemScenario(ctx context.Context, t *testing.T, size uint64, hostP
 }
 
 func Test_VPMem_MapDevice_New(t *testing.T) {
+	ctx := context.Background()
 	// basic scenario already validated in the helper function
-	setupNewVPMemScenario(context.TODO(), t, memory.MiB, "foo", "bar")
+	setupNewVPMemScenario(ctx, t, memory.MiB, "foo", "bar")
 }
 
 func Test_VPMem_UnmapDevice_With_Removal(t *testing.T) {
-	pmem, _ := setupNewVPMemScenario(context.TODO(), t, memory.MiB, "foo", "bar")
+	ctx := context.Background()
+	pmem, _ := setupNewVPMemScenario(ctx, t, memory.MiB, "foo", "bar")
 
-	err := pmem.unmapVHDLayer(context.TODO(), "foo")
+	err := pmem.unmapVHDLayer(ctx, "foo")
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err)
 	}
@@ -58,8 +60,9 @@ func Test_VPMem_UnmapDevice_With_Removal(t *testing.T) {
 }
 
 func Test_VPMem_UnmapDevice_Without_Removal(t *testing.T) {
-	pmem, mappedDevice := setupNewVPMemScenario(context.TODO(), t, memory.MiB, "foo", "bar")
-	err := pmem.mapVHDLayer(context.TODO(), mappedDevice)
+	ctx := context.Background()
+	pmem, mappedDevice := setupNewVPMemScenario(ctx, t, memory.MiB, "foo", "bar")
+	err := pmem.mapVHDLayer(ctx, mappedDevice)
 	if err != nil {
 		t.Fatalf("unexpected error when mapping device: %s", err)
 	}
@@ -71,7 +74,7 @@ func Test_VPMem_UnmapDevice_Without_Removal(t *testing.T) {
 		t.Fatalf("expected refCount=2, got refCount=%d", m.refCount)
 	}
 
-	err = pmem.unmapVHDLayer(context.TODO(), "foo")
+	err = pmem.unmapVHDLayer(ctx, "foo")
 	if err != nil {
 		t.Fatalf("error unmapping device: %s", err)
 	}

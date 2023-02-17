@@ -14,6 +14,8 @@ import (
 	"github.com/Microsoft/hcsshim/internal/hcs/schema1"
 	"github.com/Microsoft/hcsshim/internal/hns"
 	"github.com/Microsoft/hcsshim/internal/uvm/resource"
+	"github.com/Microsoft/hcsshim/internal/uvm/resource/plan9"
+	"github.com/Microsoft/hcsshim/internal/uvm/resource/scsi"
 	"github.com/Microsoft/hcsshim/internal/uvm/resource/vsmb"
 )
 
@@ -66,10 +68,20 @@ type UtilityVM struct {
 	// on the uVM. This prevents containers in the uVM modifying files and directories
 	// made available via the "mounts" options in the container spec, or shared
 	// to the uVM directly.
+	//
 	// This option does not prevent writable SCSI mounts.
 	noWritableFileShares bool
 
-	vsmb *vsmb.Manager
+	// Enable scratch encryption
+	encryptScratch bool
+
+	// resource manangers
+
+	scsi  *scsi.Manager  // SCSI devices that are mapped into a Windows or Linux utility VM
+	vsmb  *vsmb.Manager  // WCOW only
+	plan9 *plan9.Manager // Plan9 shares are directories mapped into a Linux utility VM.
+
+	// TODO: create managers for vPMEM and vPCI
 
 	// VPMEM devices that are mapped into a Linux UVM. These are used for read-only layers, or for
 	// booting from VHD.
@@ -79,17 +91,7 @@ type UtilityVM struct {
 	vpmemDevicesDefault     [MaxVPMEMCount]*vPMemInfoDefault
 	vpmemDevicesMultiMapped [MaxVPMEMCount]*vPMemInfoMulti
 
-	// SCSI devices that are mapped into a Windows or Linux utility VM
-
-	// Hyper-V supports 4 controllers, 64 slots per controller. Limited to 1 controller for now though.
-	scsiLocations       [4][64]*SCSIMount
-	scsiControllerCount uint32 // Number of SCSI controllers in the utility VM
-	encryptScratch      bool   // Enable scratch encryption
-
 	vpciDevices map[VPCIDeviceKey]*VPCIDevice // map of device instance id to vpci device
-
-	// Plan9 are directories mapped into a Linux utility VM
-	plan9Counter uint64 // Each newly-added plan9 share has a counter used as its ID in the ResourceURI and for the name
 
 	namespaces map[string]*namespaceInfo
 
@@ -146,21 +148,30 @@ type UtilityVM struct {
 	confidentialUVMOptions *ConfidentialOptions
 }
 
-var _ resource.ResourceHost[*vsmb.Share] = &UtilityVM{}
+var _ resource.Host = &UtilityVM{}
 
-func (uvm *UtilityVM) Manager() (resource.Manager[*vsmb.Share], error) {
-	if uvm.operatingSystem == "linux" {
-		return nil, resource.ErrNotSupported
-	}
-	return uvm.vsmb, nil
+// ID returns the ID of the VM's compute system.
+func (uvm *UtilityVM) ID() string {
+	return uvm.hcsSystem.ID()
 }
 
-// DevicesPhysicallyBacked describes if additional devices added to the UVM
-// should be physically backed
+// OS returns the operating system of the utility VM.
+func (uvm *UtilityVM) OS() string {
+	return uvm.operatingSystem
+}
+
+// ScratchEncryptionEnabled is a getter for `uvm.encryptScratch`.
+//
+// Returns true if the scratch disks should be encrypted, false otherwise.
+func (uvm *UtilityVM) ScratchEncryptionEnabled() bool {
+	return uvm.encryptScratch
+}
+
+// DevicesPhysicallyBacked describes if devices added to the uVM should be physically backed
 func (uvm *UtilityVM) DevicesPhysicallyBacked() bool {
 	return uvm.devicesPhysicallyBacked
 }
 
-func (uvm *UtilityVM) DisallowWritableFileShares() bool {
-	return uvm.noWritableFileShares
+func (uvm *UtilityVM) isWindows() bool {
+	return uvm.OS() == "windows"
 }

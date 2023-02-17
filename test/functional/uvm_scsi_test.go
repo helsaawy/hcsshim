@@ -14,6 +14,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/Microsoft/hcsshim/internal/uvm/resource/scsi"
 	"github.com/Microsoft/hcsshim/internal/wclayer"
 
 	"github.com/Microsoft/hcsshim/internal/lcow"
@@ -62,12 +63,12 @@ func testAddSCSI(u *uvm.UtilityVM, disks []string, pathPrefix string, usePath bo
 			uvmPath = fmt.Sprintf(`%s%d`, pathPrefix, i)
 		}
 		var options []string
-		scsiMount, err := u.AddSCSI(context.Background(), disks[i], uvmPath, false, false, options, uvm.VMAccessTypeIndividual)
+		scsiMount, err := u.AddSCSI(context.Background(), disks[i], uvmPath, false, false, options, scsi.VMAccessTypeIndividual)
 		if err != nil {
 			return err
 		}
-		if reAdd && scsiMount.UVMPath != uvmPath {
-			return fmt.Errorf("expecting existing path to be %s but it is %s", uvmPath, scsiMount.UVMPath)
+		if reAdd && scsiMount.GuestPath() != uvmPath {
+			return fmt.Errorf("expecting existing path to be %s but it is %s", uvmPath, scsiMount.GuestPath())
 		}
 	}
 	return nil
@@ -287,7 +288,7 @@ func TestParallelScsiOps(t *testing.T) {
 				}
 
 				var options []string
-				_, err = u.AddSCSI(context.Background(), path, "", false, false, options, uvm.VMAccessTypeIndividual)
+				_, err = u.AddSCSI(context.Background(), path, "", false, false, options, scsi.VMAccessTypeIndividual)
 				if err != nil {
 					os.Remove(path)
 					t.Errorf("failed to AddSCSI for worker: %d, iteration: %d with err: %v", scsiIndex, iteration, err)
@@ -300,7 +301,7 @@ func TestParallelScsiOps(t *testing.T) {
 					break
 				}
 
-				_, err = u.AddSCSI(context.Background(), path, fmt.Sprintf("/run/gcs/c/0/scsi/%d", iteration), false, false, options, uvm.VMAccessTypeIndividual)
+				_, err = u.AddSCSI(context.Background(), path, fmt.Sprintf("/run/gcs/c/0/scsi/%d", iteration), false, false, options, scsi.VMAccessTypeIndividual)
 				if err != nil {
 					os.Remove(path)
 					t.Errorf("failed to AddSCSI for worker: %d, iteration: %d with err: %v", scsiIndex, iteration, err)

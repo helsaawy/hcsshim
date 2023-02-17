@@ -11,6 +11,8 @@ import (
 	"github.com/Microsoft/hcsshim/internal/cow"
 	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
 	"github.com/Microsoft/hcsshim/internal/uvm/resource"
+	"github.com/Microsoft/hcsshim/internal/uvm/resource/scsi"
+	"github.com/Microsoft/hcsshim/internal/uvm/resource/vsmb"
 )
 
 const (
@@ -46,18 +48,18 @@ func (uvm *UtilityVM) GenerateTemplateConfig() (*UVMTemplateConfig, error) {
 
 	shares, err := uvm.vsmb.List(context.Background())
 	if err != nil {
-		return nil, fmt.Errorf("listing vSMB shared: %w", err)
+		return nil, fmt.Errorf("listing vSMB shares: %w", err)
 	}
-	for _, share := range shares {
-		templateConfig.Resources = append(templateConfig.Resources, share)
+	for _, r := range shares {
+		templateConfig.Resources = append(templateConfig.Resources, r)
 	}
 
-	for _, location := range uvm.scsiLocations {
-		for _, scsiMount := range location {
-			if scsiMount != nil {
-				templateConfig.Resources = append(templateConfig.Resources, scsiMount)
-			}
-		}
+	mounts, err := uvm.scsi.List(context.Background())
+	if err != nil {
+		return nil, fmt.Errorf("listing vSMB shares: %w", err)
+	}
+	for _, r := range mounts {
+		templateConfig.Resources = append(templateConfig.Resources, r)
 	}
 
 	return templateConfig, nil
@@ -68,21 +70,17 @@ func (uvm *UtilityVM) GenerateTemplateConfig() (*UVMTemplateConfig, error) {
 // uvm must be in the paused state before it can be saved as a template.save call will throw
 // an incorrect uvm state exception if uvm is not in the paused state at the time of saving.
 func (uvm *UtilityVM) SaveAsTemplate(ctx context.Context) error {
-	if err := uvm.Pause(ctx); err != nil {
+	if err := uvm.hcsSystem.Pause(ctx); err != nil {
 		return errors.Wrap(err, "error pausing the VM")
 	}
 
-	if err := uvm.Save(ctx); err != nil {
-		return errors.Wrap(err, "error saving the VM")
-	}
-	return nil
-}
-
-func (uvm *UtilityVM) Save(ctx context.Context) error {
 	saveOptions := hcsschema.SaveOptions{
 		SaveType: hcsComputeSystemSaveType,
 	}
-	return uvm.hcsSystem.Save(ctx, saveOptions)
+	if err := uvm.hcsSystem.Save(ctx, saveOptions); err != nil {
+		return errors.Wrap(err, "error saving the VM")
+	}
+	return nil
 }
 
 // CloneContainer attaches back to a container that is already running inside the UVM
@@ -96,4 +94,21 @@ func (uvm *UtilityVM) CloneContainer(ctx context.Context, id string) (cow.Contai
 		return nil, fmt.Errorf("failed to clone container %s: %s", id, err)
 	}
 	return c, nil
+}
+
+func (uvm *UtilityVM) Clone(ctx context.Context, c resource.Cloneable, cd *resource.CloneData) error {
+	switch r := c.(type) {
+	case *vsmb.Share:
+		if !uvm.isWindows() {
+			return fmt.Errorf("unsupported OS type %q: %w", uvm.operatingSystem, resource.ErrNotSupported)
+		}
+		return uvm.vsmb.Clone(ctx, r, cd)
+	case *scsi.Mount:
+		if !uvm.isWindows() {
+			return fmt.Errorf("unsupported OS type %q: %w", uvm.operatingSystem, resource.ErrNotSupported)
+		}
+		return uvm.scsi.Clone(ctx, r, cd)
+	default:
+	}
+	return fmt.Errorf("unsupported resource %T: %w", c, resource.ErrNotSupported)
 }

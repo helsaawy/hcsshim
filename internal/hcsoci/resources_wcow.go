@@ -24,6 +24,7 @@ import (
 	"github.com/Microsoft/hcsshim/internal/resources"
 	"github.com/Microsoft/hcsshim/internal/schemaversion"
 	"github.com/Microsoft/hcsshim/internal/uvm"
+	"github.com/Microsoft/hcsshim/internal/uvm/resource/scsi"
 	"github.com/Microsoft/hcsshim/internal/wclayer"
 )
 
@@ -167,7 +168,7 @@ func setupMounts(ctx context.Context, coi *createOptionsInternal, r *resources.R
 					readOnly,
 					false,
 					mount.Options,
-					uvm.VMAccessTypeIndividual,
+					scsi.VMAccessTypeIndividual,
 				)
 				if err != nil {
 					return errors.Wrapf(err, "adding SCSI virtual disk mount %+v", mount)

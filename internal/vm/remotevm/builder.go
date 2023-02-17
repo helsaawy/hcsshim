@@ -102,7 +102,6 @@ func (uvmb *utilityVMBuilder) Create(ctx context.Context) (vm.UVM, error) {
 
 	return &utilityVM{
 		id:           uvmb.id,
-		guestOS:      uvmb.guestOS,
 		job:          uvmb.job,
 		config:       uvmb.config,
 		client:       uvmb.client,

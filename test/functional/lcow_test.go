@@ -20,6 +20,7 @@ import (
 	"github.com/Microsoft/hcsshim/internal/lcow"
 	"github.com/Microsoft/hcsshim/internal/resources"
 	"github.com/Microsoft/hcsshim/internal/uvm"
+	"github.com/Microsoft/hcsshim/internal/uvm/resource/scsi"
 	"github.com/Microsoft/hcsshim/osversion"
 
 	testutilities "github.com/Microsoft/hcsshim/test/internal"
@@ -190,7 +191,7 @@ func TestLCOWSimplePodScenario(t *testing.T) {
 	}
 
 	var options []string
-	if _, err := lcowUVM.AddSCSI(context.Background(), uvmScratchFile, `/tmp/scratch`, false, false, options, uvm.VMAccessTypeIndividual); err != nil {
+	if _, err := lcowUVM.AddSCSI(context.Background(), uvmScratchFile, `/tmp/scratch`, false, false, options, scsi.VMAccessTypeIndividual); err != nil {
 		t.Fatal(err)
 	}
 
