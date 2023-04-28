@@ -4,9 +4,6 @@ package gcs
 
 import (
 	"context"
-	"encoding/base64"
-	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -15,15 +12,15 @@ import (
 
 	"github.com/Microsoft/go-winio"
 	"github.com/Microsoft/go-winio/pkg/guid"
+	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
+
 	"github.com/Microsoft/hcsshim/internal/cow"
 	"github.com/Microsoft/hcsshim/internal/hcs/schema1"
 	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
 	"github.com/Microsoft/hcsshim/internal/log"
 	"github.com/Microsoft/hcsshim/internal/logfields"
-	"github.com/Microsoft/hcsshim/internal/oc"
-	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
-	"go.opencensus.io/trace"
+	"github.com/Microsoft/hcsshim/internal/otel"
 )
 
 const (
@@ -68,9 +65,8 @@ type GuestConnectionConfig struct {
 
 // Connect establishes a GCS connection. `gcc.Conn` will be closed by this function.
 func (gcc *GuestConnectionConfig) Connect(ctx context.Context, isColdStart bool) (_ *GuestConnection, err error) {
-	ctx, span := oc.StartSpan(ctx, "gcs::GuestConnectionConfig::Connect", oc.WithClientSpanKind)
-	defer span.End()
-	defer func() { oc.SetSpanStatus(span, err) }()
+	ctx, span := otel.StartSpan(ctx, "gcs::GuestConnectionConfig::Connect", otel.WithClientSpanKind)
+	defer func() { otel.SetSpanStatusAndEnd(span, err) }()
 
 	gc := &GuestConnection{
 		nextPort:   firstIoChannelVsockPort,
@@ -144,7 +140,7 @@ func (gc *GuestConnection) connect(ctx context.Context, isColdStart bool, initGu
 			conf.TimeZoneInformation = initGuestState.Timezone
 		}
 		createReq := containerCreate{
-			requestBase:     makeRequest(ctx, nullContainerID),
+			RequestBase:     NewRequestBase(ctx, nullContainerID),
 			ContainerConfig: anyInString{conf},
 		}
 		var createResp responseBase
@@ -153,7 +149,7 @@ func (gc *GuestConnection) connect(ctx context.Context, isColdStart bool, initGu
 			return err
 		}
 		if resp.Capabilities.SendHostStartMessage {
-			startReq := makeRequest(ctx, nullContainerID)
+			startReq := NewRequestBase(ctx, nullContainerID)
 			var startResp responseBase
 			err = gc.brdg.RPC(ctx, rpcStart, &startReq, &startResp, true)
 			if err != nil {
@@ -167,12 +163,10 @@ func (gc *GuestConnection) connect(ctx context.Context, isColdStart bool, initGu
 // Modify sends a modify settings request to the null container. This is
 // generally used to prepare virtual hardware that has been added to the guest.
 func (gc *GuestConnection) Modify(ctx context.Context, settings interface{}) (err error) {
-	ctx, span := oc.StartSpan(ctx, "gcs::GuestConnection::Modify", oc.WithClientSpanKind)
-	defer span.End()
-	defer func() { oc.SetSpanStatus(span, err) }()
+	log.G(ctx).Trace("gcs::GuestConnection::Modify")
 
 	req := containerModifySettings{
-		requestBase: makeRequest(ctx, nullContainerID),
+		RequestBase: NewRequestBase(ctx, nullContainerID),
 		Request:     settings,
 	}
 	var resp responseBase
@@ -180,12 +174,10 @@ func (gc *GuestConnection) Modify(ctx context.Context, settings interface{}) (er
 }
 
 func (gc *GuestConnection) DumpStacks(ctx context.Context) (response string, err error) {
-	ctx, span := oc.StartSpan(ctx, "gcs::GuestConnection::DumpStacks", oc.WithClientSpanKind)
-	defer span.End()
-	defer func() { oc.SetSpanStatus(span, err) }()
+	log.G(ctx).Trace("gcs::GuestConnection::DumpStacks")
 
 	req := dumpStacksRequest{
-		requestBase: makeRequest(ctx, nullContainerID),
+		RequestBase: NewRequestBase(ctx, nullContainerID),
 	}
 	var resp dumpStacksResponse
 	err = gc.brdg.RPC(ctx, rpcDumpStacks, &req, &resp, false)
@@ -193,13 +185,10 @@ func (gc *GuestConnection) DumpStacks(ctx context.Context) (response string, err
 }
 
 func (gc *GuestConnection) DeleteContainerState(ctx context.Context, cid string) (err error) {
-	ctx, span := oc.StartSpan(ctx, "gcs::GuestConnection::DeleteContainerState", oc.WithClientSpanKind)
-	defer span.End()
-	defer func() { oc.SetSpanStatus(span, err) }()
-	span.AddAttributes(trace.StringAttribute("cid", cid))
+	log.G(ctx).Trace("gcs::GuestConnection::DeleteContainerState")
 
 	req := deleteContainerStateRequest{
-		requestBase: makeRequest(ctx, cid),
+		RequestBase: NewRequestBase(ctx, cid),
 	}
 	var resp responseBase
 	return gc.brdg.RPC(ctx, rpcDeleteContainerState, &req, &resp, false)
@@ -216,9 +205,7 @@ func (gc *GuestConnection) Close() error {
 
 // CreateProcess creates a process in the container host.
 func (gc *GuestConnection) CreateProcess(ctx context.Context, settings interface{}) (_ cow.Process, err error) {
-	ctx, span := oc.StartSpan(ctx, "gcs::GuestConnection::CreateProcess", oc.WithClientSpanKind)
-	defer span.End()
-	defer func() { oc.SetSpanStatus(span, err) }()
+	log.G(ctx).Trace("gcs::GuestConnection::CreateProcess")
 
 	return gc.exec(ctx, nullContainerID, settings)
 }
@@ -268,7 +255,7 @@ func (gc *GuestConnection) notify(ntf *containerNotification) error {
 	if ch == nil {
 		return fmt.Errorf("container %s not found", cid)
 	}
-	logrus.WithField(logfields.ContainerID, cid).Info("container terminated in guest")
+	logrus.WithField(logfields.ContainerID, cid).Debug("container terminated in guest")
 	close(ch)
 	return nil
 }
@@ -281,30 +268,4 @@ func (gc *GuestConnection) clearNotifies() {
 	for _, ch := range chs {
 		close(ch)
 	}
-}
-
-func makeRequest(ctx context.Context, cid string) requestBase {
-	r := requestBase{
-		ContainerID: cid,
-	}
-	span := trace.FromContext(ctx)
-	if span != nil {
-		sc := span.SpanContext()
-		r.OpenCensusSpanContext = &ocspancontext{
-			TraceID:      hex.EncodeToString(sc.TraceID[:]),
-			SpanID:       hex.EncodeToString(sc.SpanID[:]),
-			TraceOptions: uint32(sc.TraceOptions),
-		}
-		if sc.Tracestate != nil {
-			entries := sc.Tracestate.Entries()
-			if len(entries) > 0 {
-				if bytes, err := json.Marshal(sc.Tracestate.Entries()); err == nil {
-					r.OpenCensusSpanContext.Tracestate = base64.StdEncoding.EncodeToString(bytes)
-				} else {
-					log.G(ctx).WithError(err).Warn("failed to encode OpenCensus Tracestate")
-				}
-			}
-		}
-	}
-	return r
 }

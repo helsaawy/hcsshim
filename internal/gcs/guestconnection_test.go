@@ -4,8 +4,6 @@ package gcs
 
 import (
 	"context"
-	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -17,11 +15,21 @@ import (
 	"github.com/Microsoft/go-winio"
 	"github.com/Microsoft/go-winio/pkg/guid"
 	"github.com/sirupsen/logrus"
-	"go.opencensus.io/trace"
-	"go.opencensus.io/trace/tracestate"
+	tracesdk "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/trace"
 
-	"github.com/Microsoft/hcsshim/internal/oc"
+	"github.com/Microsoft/hcsshim/internal/otel"
 )
+
+func init() {
+	// need a tracer so OTel creates recoding spans and sets their trace/span ID
+	if _, err := otel.InitializeProvider(
+		tracesdk.WithSpanProcessor(tracesdk.NewSimpleSpanProcessor(nil)),
+		tracesdk.WithSampler(tracesdk.AlwaysSample()),
+	); err != nil {
+		panic(err)
+	}
+}
 
 const pipePortFmt = `\\.\pipe\gctest-port-%d`
 
@@ -119,7 +127,7 @@ func simpleGcsLoop(t *testing.T, rw io.ReadWriter) error {
 		case rpcWaitForProcess:
 			// nothing
 		case rpcShutdownForced:
-			var req requestBase
+			var req RequestBase
 			err = json.Unmarshal(b, &req)
 			if err != nil {
 				return err
@@ -130,7 +138,7 @@ func simpleGcsLoop(t *testing.T, rw io.ReadWriter) error {
 			}
 			time.Sleep(50 * time.Millisecond)
 			err = sendJSON(t, rw, msgType(msgTypeNotify|notifyContainer), 0, &containerNotification{
-				requestBase: requestBase{
+				RequestBase: RequestBase{
 					ContainerID: req.ContainerID,
 				},
 			})
@@ -261,93 +269,131 @@ func TestGcsWaitProcessBridgeTerminated(t *testing.T) {
 	}
 }
 
-func Test_makeRequestNoSpan(t *testing.T) {
-	r := makeRequest(context.Background(), t.Name())
+var requestBaseTests = []struct {
+	n      string
+	update func(*testing.T, RequestBase) RequestBase
+}{
+	{
+		"id",
+		func(t *testing.T, r RequestBase) RequestBase {
+			t.Helper()
+			return r
+		},
+	},
+	{
+		"json",
+		func(t *testing.T, r RequestBase) RequestBase {
+			t.Helper()
 
-	if r.ContainerID != t.Name() {
-		t.Fatalf("expected ContainerID: %q, got: %q", t.Name(), r.ContainerID)
-	}
-	var empty guid.GUID
-	if r.ActivityID != empty {
-		t.Fatalf("expected ActivityID empty, got: %q", r.ActivityID.String())
-	}
-	if r.OpenCensusSpanContext != nil {
-		t.Fatal("expected nil span context")
+			b, err := json.Marshal(r)
+			if err != nil {
+				t.Fatalf("requestBase JSON marshal: %v", err)
+			}
+			rr := RequestBase{}
+			if err := json.Unmarshal(b, &rr); err != nil {
+				t.Fatalf("requestBase JSON unmarshal")
+			}
+			return rr
+		},
+	},
+}
+
+func Test_makeRequestNoSpan(t *testing.T) {
+	n := t.Name()
+	r := NewRequestBase(context.Background(), n)
+
+	for _, tt := range requestBaseTests {
+		t.Run(tt.n, func(t *testing.T) {
+			r = tt.update(t, r)
+			if r.ContainerID != n {
+				t.Fatalf("expected ContainerID: %q, got: %q", n, r.ContainerID)
+			}
+			if r.ActivityID != (guid.GUID{}) {
+				t.Fatalf("expected ActivityID empty, got: %q", r.ActivityID.String())
+			}
+			if len(r.OTelCarrier) != 0 {
+				t.Fatal("expected empty trace context")
+			}
+		})
 	}
 }
 
 func Test_makeRequestWithSpan(t *testing.T) {
-	ctx, span := oc.StartSpan(context.Background(), t.Name())
+	ctx, span := otel.StartSpan(context.Background(), t.Name())
 	defer span.End()
-	r := makeRequest(ctx, t.Name())
+	n := t.Name()
+	r := NewRequestBase(ctx, n)
 
-	if r.ContainerID != t.Name() {
-		t.Fatalf("expected ContainerID: %q, got: %q", t.Name(), r.ContainerID)
-	}
-	var empty guid.GUID
-	if r.ActivityID != empty {
-		t.Fatalf("expected ActivityID empty, got: %q", r.ActivityID.String())
-	}
-	if r.OpenCensusSpanContext == nil {
-		t.Fatal("expected non-nil span context")
-	}
-	sc := span.SpanContext()
-	encodedTraceID := hex.EncodeToString(sc.TraceID[:])
-	if r.OpenCensusSpanContext.TraceID != encodedTraceID {
-		t.Fatalf("expected encoded TraceID: %q, got: %q", encodedTraceID, r.OpenCensusSpanContext.TraceID)
-	}
-	encodedSpanID := hex.EncodeToString(sc.SpanID[:])
-	if r.OpenCensusSpanContext.SpanID != encodedSpanID {
-		t.Fatalf("expected encoded SpanID: %q, got: %q", encodedSpanID, r.OpenCensusSpanContext.SpanID)
-	}
-	encodedTraceOptions := uint32(sc.TraceOptions)
-	if r.OpenCensusSpanContext.TraceOptions != encodedTraceOptions {
-		t.Fatalf("expected encoded TraceOptions: %v, got: %v", encodedTraceOptions, r.OpenCensusSpanContext.TraceOptions)
-	}
-	if r.OpenCensusSpanContext.Tracestate != "" {
-		t.Fatalf("expected encoded TraceState: '', got: %q", r.OpenCensusSpanContext.Tracestate)
+	for _, tt := range requestBaseTests {
+		t.Run(tt.n, func(t *testing.T) {
+			r = tt.update(t, r)
+			if r.ContainerID != n {
+				t.Fatalf("expected ContainerID: %q, got: %q", n, r.ContainerID)
+			}
+
+			if len(r.OTelCarrier) == 0 {
+				t.Fatal("expected non-empty trace context")
+			}
+
+			if r.ActivityID != (guid.GUID{}) {
+				t.Fatalf("expected ActivityID empty, got: %q", r.ActivityID.String())
+			}
+
+			// use a new context as the base, without the span from above
+			// the extracted span context will have remote set, so update the original to match to
+			// equality can succeed
+			sc := span.SpanContext().WithRemote(true)
+			extractedSC := trace.SpanContextFromContext(r.ExtractContext(context.Background()))
+			if !sc.Equal(extractedSC) {
+				t.Fatalf("extracted SpanContext %v != %v", extractedSC, sc)
+			}
+		})
 	}
 }
 
 func Test_makeRequestWithSpan_TraceStateEmptyEntries(t *testing.T) {
 	// Start a remote context span so we can forward trace state.
-	ts, err := tracestate.New(nil)
-	if err != nil {
-		t.Fatalf("failed to make test Tracestate")
-	}
-	parent := trace.SpanContext{
-		Tracestate: ts,
-	}
-	ctx, span := trace.StartSpanWithRemoteParent(context.Background(), t.Name(), parent)
+	parent := trace.SpanContext{}.WithTraceState(trace.TraceState{})
+	ctx, span := otel.StartSpanWithRemoteParent(context.Background(), t.Name(), parent)
 	defer span.End()
-	r := makeRequest(ctx, t.Name())
+	r := NewRequestBase(ctx, t.Name())
 
-	if r.OpenCensusSpanContext == nil {
-		t.Fatal("expected non-nil span context")
-	}
-	if r.OpenCensusSpanContext.Tracestate != "" {
-		t.Fatalf("expected encoded TraceState: '', got: %q", r.OpenCensusSpanContext.Tracestate)
+	for _, tt := range requestBaseTests {
+		t.Run(tt.n, func(t *testing.T) {
+			r = tt.update(t, r)
+
+			if len(r.OTelCarrier) == 0 {
+				t.Fatal("expected non-empty trace context")
+			}
+			sc2 := trace.SpanContextFromContext(r.ExtractContext(context.Background()))
+			if ts2 := sc2.TraceState(); ts2.Len() != 0 {
+				t.Fatalf("expected encoded TraceState: '', got: %q", ts2)
+			}
+		})
 	}
 }
 
 func Test_makeRequestWithSpan_TraceStateEntries(t *testing.T) {
 	// Start a remote context span so we can forward trace state.
-	ts, err := tracestate.New(nil, tracestate.Entry{Key: "test", Value: "test"})
+	ts, err := trace.TraceState{}.Insert("test", "also a test")
 	if err != nil {
 		t.Fatalf("failed to make test Tracestate")
 	}
-	parent := trace.SpanContext{
-		Tracestate: ts,
-	}
-	ctx, span := trace.StartSpanWithRemoteParent(context.Background(), t.Name(), parent)
+	parent := trace.SpanContext{}.WithTraceState(ts)
+	ctx, span := otel.StartSpanWithRemoteParent(context.Background(), t.Name(), parent)
 	defer span.End()
-	r := makeRequest(ctx, t.Name())
+	r := NewRequestBase(ctx, t.Name())
 
-	if r.OpenCensusSpanContext == nil {
-		t.Fatal("expected non-nil span context")
-	}
-	encodedTraceState := base64.StdEncoding.EncodeToString([]byte(`[{"Key":"test","Value":"test"}]`))
-	if r.OpenCensusSpanContext.Tracestate != encodedTraceState {
-		t.Fatalf("expected encoded TraceState: %q, got: %q", encodedTraceState, r.OpenCensusSpanContext.Tracestate)
+	for _, tt := range requestBaseTests {
+		t.Run(tt.n, func(t *testing.T) {
+			r = tt.update(t, r)
+			if len(r.OTelCarrier) == 0 {
+				t.Fatal("expected non-empty trace context")
+			}
+			sc2 := trace.SpanContextFromContext(r.ExtractContext(context.Background()))
+			if ts2 := sc2.TraceState(); ts2.String() != ts.String() {
+				t.Fatalf("expected encoded TraceState: %q, got: %q", ts.String(), ts2.String())
+			}
+		})
 	}
 }

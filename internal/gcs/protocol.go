@@ -1,15 +1,17 @@
-//go:build windows
-
 package gcs
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strconv"
 
 	"github.com/Microsoft/go-winio/pkg/guid"
+	"go.opentelemetry.io/otel/propagation"
+
 	"github.com/Microsoft/hcsshim/internal/hcs/schema1"
 	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
+	"github.com/Microsoft/hcsshim/internal/otel"
 )
 
 // LinuxGcsVsockPort is the vsock port number that the Linux GCS will
@@ -136,42 +138,28 @@ func (typ msgType) String() string {
 	return s + ")"
 }
 
-// ocspancontext is the internal JSON representation of the OpenCensus
-// `trace.SpanContext` for fowarding to a GCS that supports it.
-type ocspancontext struct {
-	// TraceID is the `hex` encoded string of the OpenCensus
-	// `SpanContext.TraceID` to propagate to the guest.
-	TraceID string `json:",omitempty"`
-	// SpanID is the `hex` encoded string of the OpenCensus `SpanContext.SpanID`
-	// to propagate to the guest.
-	SpanID string `json:",omitempty"`
-
-	// TraceOptions is the OpenCensus `SpanContext.TraceOptions` passed through
-	// to propagate to the guest.
-	TraceOptions uint32 `json:",omitempty"`
-
-	// Tracestate is the `base64` encoded string of marshaling the OpenCensus
-	// `SpanContext.TraceState.Entries()` to JSON.
-	//
-	// If `SpanContext.Tracestate == nil ||
-	// len(SpanContext.Tracestate.Entries()) == 0` this will be `""`.
-	Tracestate string `json:",omitempty"`
-}
-
-type requestBase struct {
+type RequestBase struct {
 	ContainerID string    `json:"ContainerId"`
 	ActivityID  guid.GUID `json:"ActivityId"`
 
-	// OpenCensusSpanContext is the encoded OpenCensus `trace.SpanContext` if
-	// set when making the request.
-	//
-	// NOTE: This is not a part of the protocol but because its a JSON protocol
-	// adding fields is a non-breaking change. If the guest supports it this is
-	// just additive context.
-	OpenCensusSpanContext *ocspancontext `json:"ocsc,omitempty"`
+	// Carrier for OTel SpanContext (and additional propagators)
+	OTelCarrier propagation.MapCarrier
 }
 
-func (req *requestBase) Base() *requestBase {
+func NewRequestBase(ctx context.Context, cid string) RequestBase {
+	req := RequestBase{
+		ContainerID: cid,
+		OTelCarrier: propagation.MapCarrier{},
+	}
+	otel.InjectContext(ctx, req.OTelCarrier)
+	return req
+}
+
+func (req *RequestBase) ExtractContext(ctx context.Context) context.Context {
+	return otel.ExtractContext(ctx, req.OTelCarrier)
+}
+
+func (req *RequestBase) Base() *RequestBase {
 	return req
 }
 
@@ -197,7 +185,7 @@ func (resp *responseBase) Base() *responseBase {
 }
 
 type negotiateProtocolRequest struct {
-	requestBase
+	RequestBase
 	MinimumVersion uint32
 	MaximumVersion uint32
 }
@@ -209,7 +197,7 @@ type negotiateProtocolResponse struct {
 }
 
 type dumpStacksRequest struct {
-	requestBase
+	RequestBase
 }
 
 type dumpStacksResponse struct {
@@ -218,11 +206,11 @@ type dumpStacksResponse struct {
 }
 
 type deleteContainerStateRequest struct {
-	requestBase
+	RequestBase
 }
 
 type containerCreate struct {
-	requestBase
+	RequestBase
 	ContainerConfig anyInString
 }
 
@@ -232,7 +220,7 @@ type uvmConfig struct {
 }
 
 type containerNotification struct {
-	requestBase
+	RequestBase
 	Type       string      // Compute.System.NotificationType
 	Operation  string      // Compute.System.ActiveOperation
 	Result     int32       // HResult
@@ -240,7 +228,7 @@ type containerNotification struct {
 }
 
 type containerExecuteProcess struct {
-	requestBase
+	RequestBase
 	Settings executeProcessSettings
 }
 
@@ -263,20 +251,20 @@ type executeProcessVsockStdioRelaySettings struct {
 }
 
 type containerResizeConsole struct {
-	requestBase
+	RequestBase
 	ProcessID uint32 `json:"ProcessId"`
 	Height    uint16
 	Width     uint16
 }
 
 type containerWaitForProcess struct {
-	requestBase
+	RequestBase
 	ProcessID   uint32 `json:"ProcessId"`
 	TimeoutInMs uint32
 }
 
 type containerSignalProcess struct {
-	requestBase
+	RequestBase
 	ProcessID uint32      `json:"ProcessId"`
 	Options   interface{} `json:",omitempty"`
 }
@@ -302,17 +290,17 @@ func (q *containerPropertiesQueryV2) UnmarshalText(b []byte) error {
 }
 
 type containerGetProperties struct {
-	requestBase
+	RequestBase
 	Query containerPropertiesQuery
 }
 
 type containerGetPropertiesV2 struct {
-	requestBase
+	RequestBase
 	Query containerPropertiesQueryV2
 }
 
 type containerModifySettings struct {
-	requestBase
+	RequestBase
 	Request interface{}
 }
 

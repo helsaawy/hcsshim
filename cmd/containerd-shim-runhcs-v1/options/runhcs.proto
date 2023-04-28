@@ -107,6 +107,9 @@ message Options {
 
 	// scrub_logs enables removing environment variables and other potentially sensitive information from logs
 	bool scrub_logs = 20;
+
+	// trace_config configures the Open Telemetry tracer and exporter settings
+	TraceConfig trace_config = 21;
 }
 
 // ProcessDetails contains additional information about a process. This is the additional
@@ -121,4 +124,30 @@ message ProcessDetails {
 	uint32 process_id = 7;
 	uint64 user_time_100_ns = 8;
 	string exec_id = 9;
+}
+
+message TraceConfig {
+	enum ExporterType {
+		ETW = 0;
+		OTLP = 1 ;
+	}
+
+	// exporter_type is the type of exporter to use.
+	ExporterType exporter_type = 1;
+
+	// configuration for the OTLP exporter, if selected by exporter_type.
+	OTLPConfig otlp_config = 2;
+}
+
+message OTLPConfig {
+	string endpoint = 1;
+
+	// protocol is the OTLP protocol to use
+	//
+	// See link for possible values.
+	// https://github.com/open-telemetry/opentelemetry-specification/blob/v1.8.0/specification/protocol/exporter.md#specify-protocol
+	string protocol = 2;
+
+	// insecure allows an insecure grpc OTLP connection
+	bool insecure = 3;
 }

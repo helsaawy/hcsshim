@@ -11,11 +11,10 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/Microsoft/hcsshim/internal/otel"
 	"github.com/pkg/errors"
-	"go.opencensus.io/trace"
+	"go.opentelemetry.io/otel/attribute"
 	"golang.org/x/sys/unix"
-
-	"github.com/Microsoft/hcsshim/internal/oc"
 )
 
 const procMountFile = "/proc/mounts"
@@ -115,13 +114,12 @@ func MountRShared(path string) error {
 // UnmountPath unmounts the target path if it exists and is a mount path. If
 // removeTarget this will remove the previously mounted folder.
 func UnmountPath(ctx context.Context, target string, removeTarget bool) (err error) {
-	_, span := oc.StartSpan(ctx, "storage::UnmountPath")
-	defer span.End()
-	defer func() { oc.SetSpanStatus(span, err) }()
+	_, span := otel.StartSpan(ctx, otel.Name("storage", "UnmountPath"))
+	defer func() { otel.SetSpanStatusAndEnd(span, err) }()
 
-	span.AddAttributes(
-		trace.StringAttribute("target", target),
-		trace.BoolAttribute("remove", removeTarget))
+	span.SetAttributes(
+		attribute.String("target", target),
+		attribute.Bool("remove", removeTarget))
 
 	if _, err := osStat(target); err != nil {
 		if os.IsNotExist(err) {

@@ -10,20 +10,19 @@ import (
 	"unsafe"
 
 	"github.com/Microsoft/hcsshim/internal/hcserror"
-	"github.com/Microsoft/hcsshim/internal/oc"
+	"github.com/Microsoft/hcsshim/internal/otel"
 	"github.com/Microsoft/hcsshim/osversion"
-	"go.opencensus.io/trace"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 // ExpandScratchSize expands the size of a layer to at least size bytes.
 func ExpandScratchSize(ctx context.Context, path string, size uint64) (err error) {
 	title := "hcsshim::ExpandScratchSize"
-	ctx, span := oc.StartSpan(ctx, title)
-	defer span.End()
-	defer func() { oc.SetSpanStatus(span, err) }()
-	span.AddAttributes(
-		trace.StringAttribute("path", path),
-		trace.Int64Attribute("size", int64(size)))
+	ctx, span := otel.StartSpan(ctx, title)
+	defer func() { otel.SetSpanStatusAndEnd(span, err) }()
+	span.SetAttributes(
+		attribute.String("path", path),
+		attribute.Int64("size", int64(size)))
 
 	err = expandSandboxSize(&stdDriverInfo, path, size)
 	if err != nil {

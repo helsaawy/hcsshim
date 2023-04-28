@@ -14,14 +14,15 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"go.opencensus.io/trace"
+	"go.opentelemetry.io/otel/attribute"
 	"golang.org/x/sys/unix"
 
 	"github.com/Microsoft/hcsshim/internal/guest/storage"
 	"github.com/Microsoft/hcsshim/internal/guest/storage/crypt"
 	dm "github.com/Microsoft/hcsshim/internal/guest/storage/devicemapper"
 	"github.com/Microsoft/hcsshim/internal/log"
-	"github.com/Microsoft/hcsshim/internal/oc"
+	"github.com/Microsoft/hcsshim/internal/otel"
+
 	"github.com/Microsoft/hcsshim/internal/protocol/guestrequest"
 	"github.com/Microsoft/hcsshim/internal/protocol/guestresource"
 )
@@ -103,13 +104,11 @@ func Mount(
 	encrypted bool,
 	options []string,
 	verityInfo *guestresource.DeviceVerityInfo) (err error) {
-	spnCtx, span := oc.StartSpan(ctx, "scsi::Mount")
-	defer span.End()
-	defer func() { oc.SetSpanStatus(span, err) }()
-
-	span.AddAttributes(
-		trace.Int64Attribute("controller", int64(controller)),
-		trace.Int64Attribute("lun", int64(lun)))
+	spnCtx, span := otel.StartSpan(ctx, "scsi::Mount")
+	defer func() { otel.SetSpanStatusAndEnd(span, err) }()
+	span.SetAttributes(
+		attribute.Int64("controller", int64(controller)),
+		attribute.Int64("lun", int64(lun)))
 
 	source, err := controllerLunToName(spnCtx, controller, lun)
 	if err != nil {
@@ -214,14 +213,12 @@ func Unmount(
 	encrypted bool,
 	verityInfo *guestresource.DeviceVerityInfo,
 ) (err error) {
-	ctx, span := oc.StartSpan(ctx, "scsi::Unmount")
-	defer span.End()
-	defer func() { oc.SetSpanStatus(span, err) }()
-
-	span.AddAttributes(
-		trace.Int64Attribute("controller", int64(controller)),
-		trace.Int64Attribute("lun", int64(lun)),
-		trace.StringAttribute("target", target))
+	ctx, span := otel.StartSpan(ctx, "scsi::Unmount")
+	defer func() { otel.SetSpanStatusAndEnd(span, err) }()
+	span.SetAttributes(
+		attribute.Int64("controller", int64(controller)),
+		attribute.Int64("lun", int64(lun)),
+		attribute.String("target", target))
 
 	// unmount target
 	if err := storageUnmountPath(ctx, target, true); err != nil {
@@ -249,13 +246,11 @@ func Unmount(
 // ControllerLunToName finds the `/dev/sd*` path to the SCSI device on
 // `controller` index `lun`.
 func ControllerLunToName(ctx context.Context, controller, lun uint8) (_ string, err error) {
-	ctx, span := oc.StartSpan(ctx, "scsi::ControllerLunToName")
-	defer span.End()
-	defer func() { oc.SetSpanStatus(span, err) }()
-
-	span.AddAttributes(
-		trace.Int64Attribute("controller", int64(controller)),
-		trace.Int64Attribute("lun", int64(lun)))
+	ctx, span := otel.StartSpan(ctx, "scsi::ControllerLunToName")
+	defer func() { otel.SetSpanStatusAndEnd(span, err) }()
+	span.SetAttributes(
+		attribute.Int64("controller", int64(controller)),
+		attribute.Int64("lun", int64(lun)))
 
 	scsiID := fmt.Sprintf("%d:0:0:%d", controller, lun)
 	// Devices matching the given SCSI code should each have a subdirectory
@@ -293,13 +288,11 @@ func ControllerLunToName(ctx context.Context, controller, lun uint8) (_ string, 
 //
 // If the device is not attached returns no error.
 func UnplugDevice(ctx context.Context, controller, lun uint8) (err error) {
-	_, span := oc.StartSpan(ctx, "scsi::UnplugDevice")
-	defer span.End()
-	defer func() { oc.SetSpanStatus(span, err) }()
-
-	span.AddAttributes(
-		trace.Int64Attribute("controller", int64(controller)),
-		trace.Int64Attribute("lun", int64(lun)))
+	_, span := otel.StartSpan(ctx, "scsi::UnplugDevice")
+	defer func() { otel.SetSpanStatusAndEnd(span, err) }()
+	span.SetAttributes(
+		attribute.Int64("controller", int64(controller)),
+		attribute.Int64("lun", int64(lun)))
 
 	scsiID := fmt.Sprintf("%d:0:0:%d", controller, lun)
 	f, err := os.OpenFile(filepath.Join(scsiDevicesPath, scsiID, "delete"), os.O_WRONLY, 0644)

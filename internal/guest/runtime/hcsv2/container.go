@@ -16,7 +16,7 @@ import (
 	oci "github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"go.opencensus.io/trace"
+	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/Microsoft/hcsshim/internal/guest/gcserr"
 	"github.com/Microsoft/hcsshim/internal/guest/prot"
@@ -27,7 +27,7 @@ import (
 	"github.com/Microsoft/hcsshim/internal/guest/transport"
 	"github.com/Microsoft/hcsshim/internal/log"
 	"github.com/Microsoft/hcsshim/internal/logfields"
-	"github.com/Microsoft/hcsshim/internal/oc"
+	"github.com/Microsoft/hcsshim/internal/otel"
 	"github.com/Microsoft/hcsshim/internal/protocol/guestrequest"
 	"github.com/Microsoft/hcsshim/internal/protocol/guestresource"
 )
@@ -230,9 +230,9 @@ func (c *Container) Update(ctx context.Context, resources interface{}) error {
 
 // Wait waits for the container's init process to exit.
 func (c *Container) Wait() prot.NotificationType {
-	_, span := oc.StartSpan(context.Background(), "opengcs::Container::Wait")
+	_, span := otel.StartSpan(context.Background(), otel.Name("opengcs", "Container", "Wait"))
 	defer span.End()
-	span.AddAttributes(trace.StringAttribute(logfields.ContainerID, c.id))
+	span.SetAttributes(attribute.String(logfields.ContainerID, c.id))
 
 	c.initProcess.writersWg.Wait()
 	c.etL.Lock()
@@ -255,9 +255,9 @@ func (c *Container) setExitType(signal syscall.Signal) {
 
 // GetStats returns the cgroup metrics for the container.
 func (c *Container) GetStats(ctx context.Context) (*v1.Metrics, error) {
-	_, span := oc.StartSpan(ctx, "opengcs::Container::GetStats")
+	_, span := otel.StartSpan(ctx, otel.Name("opengcs", "Container", "GetStats"))
 	defer span.End()
-	span.AddAttributes(trace.StringAttribute("cid", c.id))
+	span.SetAttributes(attribute.String("cid", c.id))
 
 	cgroupPath := c.spec.Linux.CgroupsPath
 	cg, err := cgroups.Load(cgroups.StaticPath(cgroupPath))

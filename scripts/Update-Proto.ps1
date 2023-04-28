@@ -1,49 +1,47 @@
 $ErrorActionPreference = 'Stop'
 $VerbosePreference = 'Continue'
 
-try {
-    $root = Split-Path -Path $PSScriptRoot -Parent
-    Push-Location $root
+$root = Split-Path -Path $PSScriptRoot -Parent
 
-    @('go', 'protoc') | ForEach-Object {
-        if ( $null -eq (Get-Command $_ -ErrorAction Ignore) ) {
-            throw "executable $_ not in path"
-        }
+@('go', 'protoc') | ForEach-Object {
+    if ( $null -eq (Get-Command $_ -CommandType Application -ErrorAction Ignore) ) {
+        Write-Error -ErrorAction Stop "Missing executable: $_"
     }
+}
 
-    # Install protobuild and co; rely on tools.go to vendor correct dependencies
-    @(
-        'github.com/containerd/protobuild',
-        'github.com/containerd/protobuild/cmd/go-fix-acronym',
-        'github.com/containerd/ttrpc/cmd/protoc-gen-go-ttrpc',
-        'google.golang.org/grpc/cmd/protoc-gen-go-grpc',
-        'google.golang.org/protobuf/cmd/protoc-gen-go'
-    ) | ForEach-Object { go install $_ }
+function run([string]$cmd, [string[]]$params) {
+    Write-Verbose "$cmd $params"
+    & $cmd @params 2>&1
+    if ( $LASTEXITCODE -ne 0 ) {
+        Write-Error "Command failed: $cmd $params"
+    }
+}
 
-    go list ./... |
-        Where-Object { $_ -notlike '*vendor*' } |
-        ForEach-Object {
-            Write-Verbose "protobuild $_"
-            protobuild $_
+# Install protobuild and co; rely on tools.go to vendor correct dependencies
+@(
+    'github.com/containerd/protobuild',
+    'github.com/containerd/protobuild/cmd/go-fix-acronym',
+    'github.com/containerd/ttrpc/cmd/protoc-gen-go-ttrpc',
+    'google.golang.org/grpc/cmd/protoc-gen-go-grpc',
+    'google.golang.org/protobuf/cmd/protoc-gen-go'
+) | ForEach-Object { run go ('install', $_) }
+
+# difficult to exclude a directory from Get-ChildItem
+Get-ChildItem -Filter *.proto -Recurse -Name -Path $root |
+    Where-Object { ($_ -notlike 'vendor*') -and ($_ -notlike 'protobuf*') -and ($_ -notlike 'test*') } |
+    ForEach-Object {
+        $dir = Join-Path $root (Split-Path -Parent $_)
+        $pkg = go list -f '{{.ImportPath}}' $dir
+
+        run protobuild $pkg
+
+        $acronyms = 'Id|Io|Guid|Uuid|Os'
+        if ( $dir -like (Join-Path $root 'cmd\containerd-shim-runhcs-v1\stats') ) {
+            $acronyms += '|Vm|Ns'
         }
-
-    # don't have [gogoproto.customname] customization, so update acronyms manually
-    # skip vendored files, and protofiles added to ./protobuf/ directory
-    Get-ChildItem -Filter *.pb.go -Recurse -Name |
-        Where-Object { $_ -notlike 'vendor*' -and $_ -notlike 'protobuf*' } |
-        ForEach-Object {
-            $p = "$(Join-Path $root $_)".Trim()
-            $cmd = "go-fix-acronym -w -a '(Id|Io|Guid|Uuid|Os)$' $p"
-            Write-Verbose $cmd
-            Invoke-Expression $cmd
-
-            if ( $p -like "$(Join-Path $root 'cmd\containerd-shim-runhcs-v1\stats')*" ) {
-                $cmd = "go-fix-acronym -w -a '(Vm|Ns)$' $p"
-                Write-Verbose $cmd
-                Invoke-Expression $cmd
-            }
+        Get-ChildItem -Filter *.pb.go -Name -Path $dir |
+            ForEach-Object {
+                $f = Join-Path $dir $_
+                run go-fix-acronym ('-w', '-a', "($acronyms)`$", $f)
         }
-} catch {
-    Pop-Location
-    throw $_
 }

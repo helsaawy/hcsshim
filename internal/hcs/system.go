@@ -12,17 +12,18 @@ import (
 	"syscall"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+
 	"github.com/Microsoft/hcsshim/internal/cow"
 	"github.com/Microsoft/hcsshim/internal/hcs/schema1"
 	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
 	"github.com/Microsoft/hcsshim/internal/jobobject"
 	"github.com/Microsoft/hcsshim/internal/log"
 	"github.com/Microsoft/hcsshim/internal/logfields"
-	"github.com/Microsoft/hcsshim/internal/oc"
+	"github.com/Microsoft/hcsshim/internal/otel"
 	"github.com/Microsoft/hcsshim/internal/timeout"
 	"github.com/Microsoft/hcsshim/internal/vmcompute"
 	"github.com/sirupsen/logrus"
-	"go.opencensus.io/trace"
 )
 
 type System struct {
@@ -60,10 +61,9 @@ func CreateComputeSystem(ctx context.Context, id string, hcsDocumentInterface in
 
 	// hcsCreateComputeSystemContext is an async operation. Start the outer span
 	// here to measure the full create time.
-	ctx, span := oc.StartSpan(ctx, operation)
-	defer span.End()
-	defer func() { oc.SetSpanStatus(span, err) }()
-	span.AddAttributes(trace.StringAttribute("cid", id))
+	ctx, span := otel.StartSpan(ctx, operation)
+	defer func() { otel.SetSpanStatusAndEnd(span, err) }()
+	span.SetAttributes(attribute.String("cid", id))
 
 	computeSystem := newSystem(id)
 
@@ -196,10 +196,9 @@ func (computeSystem *System) Start(ctx context.Context) (err error) {
 
 	// hcsStartComputeSystemContext is an async operation. Start the outer span
 	// here to measure the full start time.
-	ctx, span := oc.StartSpan(ctx, operation)
-	defer span.End()
-	defer func() { oc.SetSpanStatus(span, err) }()
-	span.AddAttributes(trace.StringAttribute("cid", computeSystem.id))
+	ctx, span := otel.StartSpan(ctx, operation)
+	defer func() { otel.SetSpanStatusAndEnd(span, err) }()
+	span.SetAttributes(attribute.String("cid", computeSystem.id))
 
 	computeSystem.handleLock.RLock()
 	defer computeSystem.handleLock.RUnlock()
@@ -274,9 +273,9 @@ func (computeSystem *System) Terminate(ctx context.Context) error {
 // safe to call multiple times.
 func (computeSystem *System) waitBackground() {
 	operation := "hcs::System::waitBackground"
-	ctx, span := oc.StartSpan(context.Background(), operation)
+	ctx, span := otel.StartSpan(context.Background(), operation)
 	defer span.End()
-	span.AddAttributes(trace.StringAttribute("cid", computeSystem.id))
+	span.SetAttributes(attribute.String("cid", computeSystem.id))
 
 	err := waitForNotification(ctx, computeSystem.callbackNumber, hcsNotificationSystemExited, nil)
 	switch err {
@@ -293,7 +292,7 @@ func (computeSystem *System) waitBackground() {
 		computeSystem.waitError = err
 		close(computeSystem.waitBlock)
 	})
-	oc.SetSpanStatus(span, err)
+	otel.SetSpanStatus(span, err)
 }
 
 func (computeSystem *System) WaitChannel() <-chan struct{} {
@@ -566,10 +565,9 @@ func (computeSystem *System) Pause(ctx context.Context) (err error) {
 
 	// hcsPauseComputeSystemContext is an async operation. Start the outer span
 	// here to measure the full pause time.
-	ctx, span := oc.StartSpan(ctx, operation)
-	defer span.End()
-	defer func() { oc.SetSpanStatus(span, err) }()
-	span.AddAttributes(trace.StringAttribute("cid", computeSystem.id))
+	ctx, span := otel.StartSpan(ctx, operation)
+	defer func() { otel.SetSpanStatusAndEnd(span, err) }()
+	span.SetAttributes(attribute.String("cid", computeSystem.id))
 
 	computeSystem.handleLock.RLock()
 	defer computeSystem.handleLock.RUnlock()
@@ -594,10 +592,9 @@ func (computeSystem *System) Resume(ctx context.Context) (err error) {
 
 	// hcsResumeComputeSystemContext is an async operation. Start the outer span
 	// here to measure the full restore time.
-	ctx, span := oc.StartSpan(ctx, operation)
-	defer span.End()
-	defer func() { oc.SetSpanStatus(span, err) }()
-	span.AddAttributes(trace.StringAttribute("cid", computeSystem.id))
+	ctx, span := otel.StartSpan(ctx, operation)
+	defer func() { otel.SetSpanStatusAndEnd(span, err) }()
+	span.SetAttributes(attribute.String("cid", computeSystem.id))
 
 	computeSystem.handleLock.RLock()
 	defer computeSystem.handleLock.RUnlock()
@@ -622,10 +619,9 @@ func (computeSystem *System) Save(ctx context.Context, options interface{}) (err
 
 	// hcsSaveComputeSystemContext is an async operation. Start the outer span
 	// here to measure the full save time.
-	ctx, span := oc.StartSpan(ctx, operation)
-	defer span.End()
-	defer func() { oc.SetSpanStatus(span, err) }()
-	span.AddAttributes(trace.StringAttribute("cid", computeSystem.id))
+	ctx, span := otel.StartSpan(ctx, operation)
+	defer func() { otel.SetSpanStatusAndEnd(span, err) }()
+	span.SetAttributes(attribute.String("cid", computeSystem.id))
 
 	saveOptions, err := json.Marshal(options)
 	if err != nil {
@@ -737,11 +733,8 @@ func (computeSystem *System) OpenProcess(ctx context.Context, pid int) (*Process
 // Close cleans up any state associated with the compute system but does not terminate or wait for it.
 func (computeSystem *System) Close() (err error) {
 	operation := "hcs::System::Close"
-	ctx, span := oc.StartSpan(context.Background(), operation)
-	defer span.End()
-	defer func() { oc.SetSpanStatus(span, err) }()
-	span.AddAttributes(trace.StringAttribute("cid", computeSystem.id))
-
+	ctx, span := otel.StartSpan(context.Background(), operation)
+	defer func() { otel.SetSpanStatusAndEnd(span, err) }()
 	computeSystem.handleLock.Lock()
 	defer computeSystem.handleLock.Unlock()
 

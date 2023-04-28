@@ -3,17 +3,13 @@
 package uvm
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net"
 	"time"
 
-	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sys/windows"
 
@@ -36,84 +32,8 @@ import (
 // generally misunderstood.
 const entropyBytes = 512
 
-type gcsLogEntryStandard struct {
-	Time    time.Time    `json:"time"`
-	Level   logrus.Level `json:"level"`
-	Message string       `json:"msg"`
-}
-
-type gcsLogEntry struct {
-	gcsLogEntryStandard
-	Fields map[string]interface{}
-}
-
-// FUTURE-jstarks: Change the GCS log format to include type information
-// (e.g. by using a different encoding such as protobuf).
-func (e *gcsLogEntry) UnmarshalJSON(b []byte) error {
-	// Default the log level to info.
-	e.Level = logrus.InfoLevel
-	if err := json.Unmarshal(b, &e.gcsLogEntryStandard); err != nil {
-		return err
-	}
-	if err := json.Unmarshal(b, &e.Fields); err != nil {
-		return err
-	}
-	// Do not allow fatal or panic level errors to propagate.
-	if e.Level < logrus.ErrorLevel {
-		e.Level = logrus.ErrorLevel
-	}
-	// Clear special fields.
-	delete(e.Fields, "time")
-	delete(e.Fields, "level")
-	delete(e.Fields, "msg")
-	// Normalize floats to integers.
-	for k, v := range e.Fields {
-		if d, ok := v.(float64); ok && float64(int64(d)) == d {
-			e.Fields[k] = int64(d)
-		}
-	}
-	return nil
-}
-
 func isDisconnectError(err error) bool {
 	return hcs.IsAny(err, windows.WSAECONNABORTED, windows.WSAECONNRESET)
-}
-
-func parseLogrus(vmid string) func(r io.Reader) {
-	return func(r io.Reader) {
-		j := json.NewDecoder(r)
-		e := log.L.Dup()
-		fields := e.Data
-		for {
-			for k := range fields {
-				delete(fields, k)
-			}
-			gcsEntry := gcsLogEntry{Fields: e.Data}
-			err := j.Decode(&gcsEntry)
-			if err != nil {
-				// Something went wrong. Read the rest of the data as a single
-				// string and log it at once -- it's probably a GCS panic stack.
-				if !errors.Is(err, io.EOF) && !isDisconnectError(err) {
-					logrus.WithFields(logrus.Fields{
-						logfields.UVMID: vmid,
-						logrus.ErrorKey: err,
-					}).Error("gcs log read")
-				}
-				rest, _ := io.ReadAll(io.MultiReader(j.Buffered(), r))
-				rest = bytes.TrimSpace(rest)
-				if len(rest) != 0 {
-					logrus.WithFields(logrus.Fields{
-						logfields.UVMID: vmid,
-						"stderr":        string(rest),
-					}).Error("gcs terminated")
-				}
-				break
-			}
-			fields[logfields.UVMID] = vmid
-			fields["vm.time"] = gcsEntry.Time
-			e.Log(gcsEntry.Level, gcsEntry.Message)
-		}
-	}
 }
 
 // When using an external GCS connection it is necessary to send a ModifySettings request

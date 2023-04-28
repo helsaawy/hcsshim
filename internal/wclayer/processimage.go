@@ -6,18 +6,17 @@ import (
 	"context"
 	"os"
 
-	"github.com/Microsoft/hcsshim/internal/oc"
-	"go.opencensus.io/trace"
+	"github.com/Microsoft/hcsshim/internal/otel"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 // ProcessBaseLayer post-processes a base layer that has had its files extracted.
 // The files should have been extracted to <path>\Files.
 func ProcessBaseLayer(ctx context.Context, path string) (err error) {
 	title := "hcsshim::ProcessBaseLayer"
-	ctx, span := oc.StartSpan(ctx, title) //nolint:ineffassign,staticcheck
-	defer span.End()
-	defer func() { oc.SetSpanStatus(span, err) }()
-	span.AddAttributes(trace.StringAttribute("path", path))
+	ctx, span := otel.StartSpan(ctx, title) //nolint:ineffassign,staticcheck
+	defer func() { otel.SetSpanStatusAndEnd(span, err) }()
+	span.SetAttributes(attribute.String("path", path))
 
 	err = processBaseImage(path)
 	if err != nil {
@@ -30,10 +29,9 @@ func ProcessBaseLayer(ctx context.Context, path string) (err error) {
 // The files should have been extracted to <path>\Files.
 func ProcessUtilityVMImage(ctx context.Context, path string) (err error) {
 	title := "hcsshim::ProcessUtilityVMImage"
-	ctx, span := oc.StartSpan(ctx, title) //nolint:ineffassign,staticcheck
-	defer span.End()
-	defer func() { oc.SetSpanStatus(span, err) }()
-	span.AddAttributes(trace.StringAttribute("path", path))
+	ctx, span := otel.StartSpan(ctx, title) //nolint:ineffassign,staticcheck
+	defer func() { otel.SetSpanStatusAndEnd(span, err) }()
+	span.SetAttributes(attribute.String("path", path))
 
 	err = processUtilityImage(path)
 	if err != nil {

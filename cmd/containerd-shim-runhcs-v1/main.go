@@ -16,21 +16,22 @@ import (
 	specs "github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
-	"go.opencensus.io/trace"
 
 	"github.com/Microsoft/hcsshim/internal/log"
-	"github.com/Microsoft/hcsshim/internal/oc"
 	"github.com/Microsoft/hcsshim/internal/shimdiag"
 
 	// register common types spec with typeurl
 	_ "github.com/containerd/containerd/runtime"
 )
 
+// Add a manifest to get proper Windows version detection.
+//go:generate go run github.com/josephspurrier/goversioninfo/cmd/goversioninfo@v1.4.0 -platform-specific
+
 const usage = ``
 const ttrpcAddressEnv = "TTRPC_ADDRESS"
 
-// Add a manifest to get proper Windows version detection.
-//go:generate go run github.com/josephspurrier/goversioninfo/cmd/goversioninfo@v1.4.0 -platform-specific
+// gracefulShutdownTimeout is how long to wait for clean-up before just exiting
+const gracefulShutdownTimeout = 3 * time.Second
 
 // version will be populated by the Makefile, read from
 // VERSION file of the source code.
@@ -40,16 +41,20 @@ var version = ""
 // and will be populated by the Makefile
 var gitCommit = ""
 
+// flags
 var (
 	namespaceFlag        string
 	addressFlag          string
 	containerdBinaryFlag string
 
 	idFlag string
-
-	// gracefulShutdownTimeout is how long to wait for clean-up before just exiting
-	gracefulShutdownTimeout = 3 * time.Second
 )
+
+// The ETW provider created for tracing/logging.
+// Ideally this would be stored in within service, but that is initialized later, within
+// [serveCommand].
+// todo: after upgrading to urfave/cli/v2, pass this via the cli.Context.Context
+var etwProvider *etw.Provider
 
 func etwCallback(sourceID guid.GUID, state etw.ProviderState, level etw.Level, matchAnyKeyword uint64, matchAllKeyword uint64, filterData uintptr) {
 	if state == etw.ProviderStateCaptureState {
@@ -68,30 +73,27 @@ func etwCallback(sourceID guid.GUID, state etw.ProviderState, level etw.Level, m
 func main() {
 	logrus.AddHook(log.NewHook())
 
+	var err error
 	// Provider ID: 0b52781f-b24d-5685-ddf6-69830ed40ec3
 	// Provider and hook aren't closed explicitly, as they will exist until process exit.
-	provider, err := etw.NewProvider("Microsoft.Virtualization.RunHCS", etwCallback)
+	etwProvider, err = etw.NewProvider("Microsoft.Virtualization.RunHCS", etwCallback)
 	if err != nil {
-		logrus.Error(err)
+		logrus.WithError(err).Error("failed to create ETW provider")
 	} else {
-		if hook, err := etwlogrus.NewHookFromProvider(provider); err == nil {
+		if hook, err := etwlogrus.NewHookFromProvider(etwProvider); err == nil {
 			logrus.AddHook(hook)
 		} else {
 			logrus.Error(err)
 		}
 	}
 
-	_ = provider.WriteEvent(
+	_ = etwProvider.WriteEvent(
 		"ShimLaunched",
 		nil,
 		etw.WithFields(
 			etw.StringArray("Args", os.Args),
 		),
 	)
-
-	// Register our OpenCensus logrus exporter
-	trace.ApplyConfig(trace.Config{DefaultSampler: oc.DefaultSampler})
-	trace.RegisterExporter(&oc.LogrusExporter{})
 
 	app := cli.NewApp()
 	app.Name = "containerd-shim-runhcs-v1"
@@ -138,17 +140,18 @@ func main() {
 		deleteCommand,
 		serveCommand,
 	}
-	app.Before = func(context *cli.Context) error {
-		if namespaceFlag = context.GlobalString("namespace"); namespaceFlag == "" {
+
+	app.Before = func(ctx *cli.Context) (err error) {
+		if namespaceFlag = ctx.GlobalString("namespace"); namespaceFlag == "" {
 			return errors.New("namespace is required")
 		}
-		if addressFlag = context.GlobalString("address"); addressFlag == "" {
+		if addressFlag = ctx.GlobalString("address"); addressFlag == "" {
 			return errors.New("address is required")
 		}
-		if containerdBinaryFlag = context.GlobalString("publish-binary"); containerdBinaryFlag == "" {
+		if containerdBinaryFlag = ctx.GlobalString("publish-binary"); containerdBinaryFlag == "" {
 			return errors.New("publish-binary is required")
 		}
-		if idFlag = context.GlobalString("id"); idFlag == "" {
+		if idFlag = ctx.GlobalString("id"); idFlag == "" {
 			return errors.New("id is required")
 		}
 		return nil

@@ -11,11 +11,11 @@ import (
 
 	oci "github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/pkg/errors"
-	"go.opencensus.io/trace"
+	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/Microsoft/hcsshim/internal/guest/network"
 	specInternal "github.com/Microsoft/hcsshim/internal/guest/spec"
-	"github.com/Microsoft/hcsshim/internal/oc"
+	"github.com/Microsoft/hcsshim/internal/otel"
 	"github.com/Microsoft/hcsshim/pkg/annotations"
 )
 
@@ -32,10 +32,9 @@ func getSandboxResolvPath(id string) string {
 }
 
 func setupSandboxContainerSpec(ctx context.Context, id string, spec *oci.Spec) (err error) {
-	ctx, span := oc.StartSpan(ctx, "hcsv2::setupSandboxContainerSpec")
-	defer span.End()
-	defer func() { oc.SetSpanStatus(span, err) }()
-	span.AddAttributes(trace.StringAttribute("cid", id))
+	ctx, span := otel.StartSpan(ctx, otel.Name("hcsv2", "setupSandboxContainerSpec"))
+	defer func() { otel.SetSpanStatusAndEnd(span, err) }()
+	span.SetAttributes(attribute.String("cid", id))
 
 	// Generate the sandbox root dir
 	rootDir := specInternal.SandboxRootDir(id)

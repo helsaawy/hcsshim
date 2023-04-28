@@ -149,7 +149,6 @@ func createPod(ctx context.Context, events publisher, req *task.CreateTaskReques
 			parent.Close()
 			return nil, err
 		}
-
 	} else if oci.IsJobContainer(s) {
 		// If we're making a job container fake a task (i.e reuse the wcowPodSandbox logic)
 		p.sandboxTask = newWcowPodSandboxTask(ctx, events, req.ID, req.Bundle, parent, "")

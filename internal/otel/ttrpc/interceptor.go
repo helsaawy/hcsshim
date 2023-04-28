@@ -29,7 +29,7 @@ import (
 func ClientInterceptor() ttrpc.UnaryClientInterceptor {
 	return func(ctx context.Context, req *ttrpc.Request, resp *ttrpc.Response, info *ttrpc.UnaryClientInfo, inv ttrpc.Invoker) error {
 		name, attrs := nameAndAttributes(ctx, info.FullMethod)
-		ctx, span := otel.StartSpan(ctx, name, otel.WithClientSpanKind, otel.WithAttributes(attrs...))
+		ctx, span := otel.StartSpan(ctx, name, otel.WithClientSpanKind, trace.WithAttributes(attrs...))
 		otel.InjectContext(ctx, requestCarrier{r: req})
 
 		err := inv(ctx, req, resp)
@@ -50,7 +50,7 @@ func ServerInterceptor() ttrpc.UnaryServerInterceptor {
 		}
 
 		name, attrs := nameAndAttributes(ctx, info.FullMethod)
-		ctx, span := otel.StartSpan(ctx, name, otel.WithServerSpanKind, otel.WithAttributes(attrs...))
+		ctx, span := otel.StartSpan(ctx, name, otel.WithServerSpanKind, trace.WithAttributes(attrs...))
 
 		resp, err := method(ctx, func(req interface{}) error {
 			err := unmarshal(req)

@@ -7,12 +7,14 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/url"
 	"os"
 	"strings"
 	"time"
 	"unsafe"
 
 	"github.com/Microsoft/go-winio"
+	"github.com/Microsoft/go-winio/pkg/etw"
 	task "github.com/containerd/containerd/api/runtime/task/v2"
 	"github.com/containerd/containerd/log"
 	"github.com/containerd/ttrpc"
@@ -20,6 +22,11 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	tracesdk "go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.18.0"
 	"golang.org/x/sys/windows"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
@@ -27,8 +34,11 @@ import (
 	runhcsopts "github.com/Microsoft/hcsshim/cmd/containerd-shim-runhcs-v1/options"
 	"github.com/Microsoft/hcsshim/internal/extendedtask"
 	hcslog "github.com/Microsoft/hcsshim/internal/log"
+	hcsotel "github.com/Microsoft/hcsshim/internal/otel"
+	etwexporter "github.com/Microsoft/hcsshim/internal/otel/exporters/etw"
+	etwhandler "github.com/Microsoft/hcsshim/internal/otel/handlers/etw"
+	otelttrpc "github.com/Microsoft/hcsshim/internal/otel/ttrpc"
 	"github.com/Microsoft/hcsshim/internal/shimdiag"
-	"github.com/Microsoft/hcsshim/pkg/octtrpc"
 )
 
 var svc *service
@@ -69,6 +79,7 @@ var serveCommand = cli.Command{
 		// the upstream caller by listening for a log connection and streaming
 		// the events.
 
+		gCtx := context.Background()
 		var lerrs chan error
 
 		// Default values for shim options.
@@ -86,25 +97,9 @@ var serveCommand = cli.Command{
 			shimOpts = newShimOpts
 		}
 
-		if shimOpts.Debug && shimOpts.LogLevel != "" {
-			logrus.Warning("Both Debug and LogLevel specified, Debug will be overridden")
-		}
-
-		// For now keep supporting the debug option, this used to be the only way to specify a different logging
-		// level for the shim.
-		if shimOpts.Debug {
-			logrus.SetLevel(logrus.DebugLevel)
-		}
-
-		// If log level is specified, set the corresponding logrus logging level. This overrides the debug option
-		// (unless the level being asked for IS debug also, then this doesn't do much).
-		if shimOpts.LogLevel != "" {
-			lvl, err := logrus.ParseLevel(shimOpts.LogLevel)
-			if err != nil {
-				return errors.Wrapf(err, "failed to parse shim log level %q", shimOpts.LogLevel)
-			}
-			logrus.SetLevel(lvl)
-		}
+		//
+		// logging
+		//
 
 		switch shimOpts.DebugType {
 		case runhcsopts.Options_NPIPE:
@@ -153,17 +148,53 @@ var serveCommand = cli.Command{
 			// Logrus output will be redirected in the goroutine below that
 			// handles the pipe connection.
 		case runhcsopts.Options_FILE:
-			panic("file log output mode is not supported")
+			return fmt.Errorf("file log output mode is not supported")
 		case runhcsopts.Options_ETW:
 			logrus.SetFormatter(nopFormatter{})
 			logrus.SetOutput(io.Discard)
 		}
 
-		os.Stdin.Close()
-
+		// If log level is specified, set the corresponding logrus logging level. This overrides the debug option
+		// (unless the level being asked for IS debug also, then this doesn't do much).
+		if shimOpts.LogLevel != "" {
+			lvl, err := logrus.ParseLevel(shimOpts.LogLevel)
+			if err != nil {
+				return errors.Wrapf(err, "failed to parse shim log level %q", shimOpts.LogLevel)
+			}
+			logrus.SetLevel(lvl)
+		}
 		// enable scrubbing
 		if shimOpts.ScrubLogs {
 			hcslog.SetScrubbing(true)
+		}
+
+		if shimOpts.Debug && shimOpts.LogLevel != "" {
+			logrus.Warning("Both Debug and LogLevel specified, Debug will be overridden")
+		}
+
+		// For now keep supporting the debug option, this used to be the only way to specify a different logging
+		// level for the shim.
+		if shimOpts.Debug {
+			logrus.SetLevel(logrus.DebugLevel)
+		}
+
+		// signal we have ready and (basically?) up and running
+		os.Stdin.Close()
+
+		// can log info/debug statements now
+
+		logrus.WithField("options", hcslog.Format(gCtx, shimOpts)).Info("received shim options")
+
+		// tracing
+		// log but don't raise errors, since shim can continue without error handler and span exporter
+		if cleanup, err := setUpOTel(gCtx, ctx, newShimOpts.GetTraceConfig()); err != nil {
+			logrus.WithError(err).Error("OTel tracing initialization failed")
+		} else {
+			defer func() {
+				if err := cleanup(gCtx); err != nil {
+					logrus.WithError(err).Error("OTel cleanup failed")
+				}
+			}()
 		}
 
 		// Force the cli.ErrWriter to be os.Stdout for this. We use stderr for
@@ -194,7 +225,7 @@ var serveCommand = cli.Command{
 			return fmt.Errorf("failed to create new service: %w", err)
 		}
 
-		s, err := ttrpc.NewServer(ttrpc.WithUnaryServerInterceptor(octtrpc.ServerInterceptor()))
+		s, err := ttrpc.NewServer(ttrpc.WithUnaryServerInterceptor(otelttrpc.ServerInterceptor()))
 		if err != nil {
 			return err
 		}
@@ -215,7 +246,7 @@ var serveCommand = cli.Command{
 			// Serve loops infinitely unless s.Shutdown or s.Close are called.
 			// Passed in context is used as parent context for handling requests,
 			// but canceliing does not bring down ttrpc service.
-			if err := trapClosedConnErr(s.Serve(context.Background(), sl)); err != nil {
+			if err := trapClosedConnErr(s.Serve(gCtx, sl)); err != nil {
 				logrus.WithError(err).Fatal("containerd-shim: ttrpc server failure")
 				serrs <- err
 				return
@@ -254,7 +285,7 @@ var serveCommand = cli.Command{
 				return nil
 			}
 			// currently the ttrpc shutdown is the only clean up to wait on
-			sctx, cancel := context.WithTimeout(context.Background(), gracefulShutdownTimeout)
+			sctx, cancel := context.WithTimeout(gCtx, gracefulShutdownTimeout)
 			defer cancel()
 			err = s.Shutdown(sctx)
 		}
@@ -289,6 +320,82 @@ func readOptions(r io.Reader) (*runhcsopts.Options, error) {
 		return v.(*runhcsopts.Options), nil
 	}
 	return nil, nil
+}
+
+// Initialize OTel tracer, set error handler, and register exporter
+func setUpOTel(gCtx context.Context, ctx *cli.Context, opts *runhcsopts.TraceConfig) (func(context.Context) error, error) {
+	if opts == nil {
+		opts = &runhcsopts.TraceConfig{
+			ExporterType: runhcsopts.TraceConfig_ETW,
+		}
+	}
+	logrus.WithField("config", hcslog.Format(gCtx, opts)).Debug("initializing OTel")
+
+	// set the error handler, this will write any internal OTel errors to ETW
+	h, err := etwhandler.New(etwhandler.WithExistingETWProvider(etwProvider), etwhandler.WithETWLevel(etw.LevelError))
+	if err != nil {
+		return nil, fmt.Errorf("create OTel ETW error handler: %w", err)
+	}
+	otel.SetErrorHandler(h)
+
+	var exporter tracesdk.SpanExporter
+	switch opts.GetExporterType() {
+	case runhcsopts.TraceConfig_ETW:
+		exporter, err = etwexporter.New(etwexporter.WithExistingETWProvider(etwProvider))
+	case runhcsopts.TraceConfig_OTLP:
+		conf := opts.GetOtlpConfig()
+		if conf == nil {
+			err = fmt.Errorf("OTLP config cannot be nil")
+			break
+		}
+
+		// based off of containerd tracing processor plugin
+		// github.com/containerd/containerd/tracing/plugin/otlp.go
+		switch p := conf.Protocol; p {
+		case "", "http/protobuf":
+			var u *url.URL
+			u, err = url.Parse(conf.Endpoint)
+			if err != nil {
+				err = fmt.Errorf("invalid OTLP endpoint %q: %w", conf.Endpoint, err)
+				break
+			}
+			opts := []otlptracehttp.Option{
+				otlptracehttp.WithEndpoint(u.Host),
+			}
+			if u.Scheme == "http" {
+				opts = append(opts, otlptracehttp.WithInsecure())
+			}
+			exporter, err = otlptracehttp.New(gCtx, opts...)
+		case "grpc":
+			opts := []otlptracegrpc.Option{
+				otlptracegrpc.WithEndpoint(conf.Endpoint),
+			}
+			if conf.Insecure {
+				opts = append(opts, otlptracegrpc.WithInsecure())
+			}
+			exporter, err = otlptracegrpc.New(gCtx, opts...)
+		default:
+			err = fmt.Errorf("unsupported OTLP protocol %s", p)
+		}
+	}
+	if err != nil {
+		return nil, fmt.Errorf("shim OTel %s exporter: %w", opts.GetExporterType().String(), err)
+	}
+
+	// if exporter is nil, this SpanProcessor will nop
+	sp := tracesdk.NewBatchSpanProcessor(exporter)
+	// register processor to export spans received from the GCS
+	hcsotel.RegisterSpanProcessor(sp)
+	return hcsotel.InitializeProvider(
+		tracesdk.WithSpanProcessor(sp),
+		tracesdk.WithSampler(tracesdk.AlwaysSample()),
+		tracesdk.WithResource(
+			hcsotel.DefaultResource(ctx.App.Name, version,
+				semconv.ServiceInstanceID(idFlag),
+				semconv.ServiceNamespace(namespaceFlag),
+				semconv.NetSockHostAddr(addressFlag)),
+		),
+	)
 }
 
 // createEvent creates a Windows event ACL'd to builtin administrator

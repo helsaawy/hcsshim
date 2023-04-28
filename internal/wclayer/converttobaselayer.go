@@ -1,3 +1,5 @@
+//go:build windows
+
 package wclayer
 
 import (
@@ -7,14 +9,15 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"github.com/pkg/errors"
+	"go.opentelemetry.io/otel/attribute"
+	"golang.org/x/sys/windows"
+
 	"github.com/Microsoft/hcsshim/internal/hcserror"
 	"github.com/Microsoft/hcsshim/internal/longpath"
-	"github.com/Microsoft/hcsshim/internal/oc"
+	"github.com/Microsoft/hcsshim/internal/otel"
 	"github.com/Microsoft/hcsshim/internal/safefile"
 	"github.com/Microsoft/hcsshim/internal/winapi"
-	"github.com/pkg/errors"
-	"go.opencensus.io/trace"
-	"golang.org/x/sys/windows"
 )
 
 var hiveNames = []string{"DEFAULT", "SAM", "SECURITY", "SOFTWARE", "SYSTEM"}
@@ -136,10 +139,9 @@ func convertToBaseLayer(ctx context.Context, root *os.File) error {
 // desired file content for a UtilityVM under UtilityVM/Files/
 func ConvertToBaseLayer(ctx context.Context, path string) (err error) {
 	title := "hcsshim::ConvertToBaseLayer"
-	ctx, span := trace.StartSpan(ctx, title)
-	defer span.End()
-	defer func() { oc.SetSpanStatus(span, err) }()
-	span.AddAttributes(trace.StringAttribute("path", path))
+	ctx, span := otel.StartSpan(ctx, title)
+	defer func() { otel.SetSpanStatusAndEnd(span, err) }()
+	span.SetAttributes(attribute.String("path", path))
 
 	root, err := safefile.OpenRoot(path)
 	if err != nil {

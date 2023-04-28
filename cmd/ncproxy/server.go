@@ -9,17 +9,18 @@ import (
 	"sync"
 
 	"github.com/Microsoft/go-winio"
-	"github.com/Microsoft/hcsshim/internal/log"
-	ncproxystore "github.com/Microsoft/hcsshim/internal/ncproxy/store"
-	"github.com/Microsoft/hcsshim/internal/ncproxyttrpc"
-	ncproxygrpc "github.com/Microsoft/hcsshim/pkg/ncproxy/ncproxygrpc/v1"
-	"github.com/Microsoft/hcsshim/pkg/octtrpc"
 	"github.com/containerd/ttrpc"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	bolt "go.etcd.io/bbolt"
 	"go.opencensus.io/plugin/ocgrpc"
 	"google.golang.org/grpc"
+
+	"github.com/Microsoft/hcsshim/internal/log"
+	ncproxystore "github.com/Microsoft/hcsshim/internal/ncproxy/store"
+	"github.com/Microsoft/hcsshim/internal/ncproxyttrpc"
+	otelttrpc "github.com/Microsoft/hcsshim/internal/otel/ttrpc"
+	ncproxygrpc "github.com/Microsoft/hcsshim/pkg/ncproxy/ncproxygrpc/v1"
 )
 
 type server struct {
@@ -47,7 +48,7 @@ func newServer(ctx context.Context, conf *config, dbPath string) (*server, error
 	agentCache := newComputeAgentCache()
 	reconnectComputeAgents(ctx, agentStore, agentCache)
 
-	ttrpcServer, err := ttrpc.NewServer(ttrpc.WithUnaryServerInterceptor(octtrpc.ServerInterceptor()))
+	ttrpcServer, err := ttrpc.NewServer(ttrpc.WithUnaryServerInterceptor(otelttrpc.ServerInterceptor()))
 	if err != nil {
 		log.G(ctx).WithError(err).Error("failed to create ttrpc server")
 		return nil, err

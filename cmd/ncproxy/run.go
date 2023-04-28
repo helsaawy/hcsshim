@@ -12,23 +12,26 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Microsoft/go-winio/pkg/etw"
+	"github.com/Microsoft/go-winio/pkg/etwlogrus"
+	"github.com/Microsoft/go-winio/pkg/guid"
 	nodenetsvc "github.com/Microsoft/hcsshim/pkg/ncproxy/nodenetsvc/v1"
 	"github.com/containerd/ttrpc"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
 	"go.opencensus.io/plugin/ocgrpc"
-	"go.opencensus.io/trace"
+	"go.opentelemetry.io/otel"
+	tracesdk "go.opentelemetry.io/otel/sdk/trace"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"github.com/Microsoft/go-winio/pkg/etw"
-	"github.com/Microsoft/go-winio/pkg/etwlogrus"
-	"github.com/Microsoft/go-winio/pkg/guid"
 	"github.com/Microsoft/hcsshim/internal/computeagent"
 	"github.com/Microsoft/hcsshim/internal/debug"
 	"github.com/Microsoft/hcsshim/internal/log"
-	"github.com/Microsoft/hcsshim/internal/oc"
+	hcsotel "github.com/Microsoft/hcsshim/internal/otel"
+	etwexporter "github.com/Microsoft/hcsshim/internal/otel/exporters/etw"
+	etwhandler "github.com/Microsoft/hcsshim/internal/otel/handlers/etw"
 )
 
 type nodeNetSvcConn struct {
@@ -100,6 +103,55 @@ and 'node network' services.`
 	app.Commands = []cli.Command{
 		configCommand,
 	}
+
+	var traceCleanup func(context.Context) error
+	app.Before = func(ctx *cli.Context) error {
+		// Provider ID: cf9f01fe-87b3-568d-ecef-9f54b7c5ff70
+		// Hook isn't closed explicitly, as it will exist until process exit.
+		provider, err := etw.NewProvider("Microsoft.Virtualization.NCProxy", etwCallback)
+		if err != nil {
+			logrus.WithError(err).Error("failed to create ETW provider")
+			return nil
+		}
+
+		if hook, err := etwlogrus.NewHookFromProvider(provider); err == nil {
+			logrus.AddHook(hook)
+		} else {
+			logrus.Error(err)
+		}
+
+		// set the error handler, this will write any internal OTel errors to ETW
+		h, err := etwhandler.New(etwhandler.WithExistingETWProvider(provider), etwhandler.WithETWLevel(etw.LevelError))
+		if err != nil {
+			logrus.WithError(err).Error("failed to create OTel error handler")
+		} else {
+			otel.SetErrorHandler(h)
+		}
+
+		exporter, err := etwexporter.New(etwexporter.WithExistingETWProvider(provider))
+		if err != nil {
+			logrus.WithError(err).Error("failed to create OTel exporter")
+		}
+
+		sp := tracesdk.NewBatchSpanProcessor(exporter)
+		hcsotel.RegisterSpanProcessor(sp)
+		if traceCleanup, err = hcsotel.InitializeProvider(
+			tracesdk.WithSpanProcessor(sp),
+			tracesdk.WithSampler(tracesdk.AlwaysSample()),
+			tracesdk.WithResource(hcsotel.DefaultResource(app.Name, "")),
+		); err != nil {
+			logrus.WithError(err).Error("failed to initialize OTel trace provider")
+		}
+
+		return nil
+	}
+	app.After = func(_ *cli.Context) error {
+		if traceCleanup != nil {
+			_ = traceCleanup(context.Background())
+		}
+		return nil
+	}
+
 	app.Action = func(ctx *cli.Context) error {
 		return run(ctx)
 	}
@@ -116,22 +168,6 @@ func run(clicontext *cli.Context) error {
 		unregisterSvc = clicontext.GlobalBool("unregister-service")
 		runSvc        = clicontext.GlobalBool("run-service")
 	)
-
-	// Provider ID: cf9f01fe-87b3-568d-ecef-9f54b7c5ff70
-	// Hook isn't closed explicitly, as it will exist until process exit.
-	if provider, err := etw.NewProvider("Microsoft.Virtualization.NCProxy", etwCallback); err == nil {
-		if hook, err := etwlogrus.NewHookFromProvider(provider); err == nil {
-			logrus.AddHook(hook)
-		} else {
-			logrus.Error(err)
-		}
-	} else {
-		logrus.Error(err)
-	}
-
-	// Register our OpenCensus logrus exporter
-	trace.ApplyConfig(trace.Config{DefaultSampler: trace.AlwaysSample()})
-	trace.RegisterExporter(&oc.LogrusExporter{})
 
 	// If no logging directory passed in use where ncproxy is located.
 	if logDir == "" {

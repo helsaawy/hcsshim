@@ -60,11 +60,6 @@ func StartSpan(ctx context.Context, name string, opts ...trace.SpanStartOption) 
 	return ctx, s
 }
 
-// WithAttributes wraps "go.opentelemetry.io/otel/trace".WithAttributes.
-func WithAttributes(attributes ...attribute.KeyValue) trace.SpanStartEventOption {
-	return trace.WithAttributes(attributes...)
-}
-
 //
 // for RPC request and response attribute, the keys follow OTel semantic conventions,
 // but there doesn't seems to be precident/recommendations for adding the request/response

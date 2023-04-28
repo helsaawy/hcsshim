@@ -9,13 +9,13 @@ import (
 	"os"
 
 	"github.com/pkg/errors"
-	"go.opencensus.io/trace"
+	"go.opentelemetry.io/otel/attribute"
 	"golang.org/x/sys/unix"
 
 	"github.com/Microsoft/hcsshim/internal/guest/storage"
 	dm "github.com/Microsoft/hcsshim/internal/guest/storage/devicemapper"
 	"github.com/Microsoft/hcsshim/internal/log"
-	"github.com/Microsoft/hcsshim/internal/oc"
+	"github.com/Microsoft/hcsshim/internal/otel"
 	"github.com/Microsoft/hcsshim/internal/protocol/guestresource"
 )
 
@@ -76,13 +76,11 @@ func Mount(
 	mappingInfo *guestresource.LCOWVPMemMappingInfo,
 	verityInfo *guestresource.DeviceVerityInfo,
 ) (err error) {
-	mCtx, span := oc.StartSpan(ctx, "pmem::Mount")
-	defer span.End()
-	defer func() { oc.SetSpanStatus(span, err) }()
-
-	span.AddAttributes(
-		trace.Int64Attribute("deviceNumber", int64(device)),
-		trace.StringAttribute("target", target))
+	mCtx, span := otel.StartSpan(ctx, "pmem::Mount")
+	defer func() { otel.SetSpanStatusAndEnd(span, err) }()
+	span.SetAttributes(
+		attribute.Int64("deviceNumber", int64(device)),
+		attribute.String("target", target))
 
 	devicePath := fmt.Sprintf(pMemFmt, device)
 
@@ -127,13 +125,11 @@ func Unmount(
 	mappingInfo *guestresource.LCOWVPMemMappingInfo,
 	verityInfo *guestresource.DeviceVerityInfo,
 ) (err error) {
-	_, span := oc.StartSpan(ctx, "pmem::Unmount")
-	defer span.End()
-	defer func() { oc.SetSpanStatus(span, err) }()
-
-	span.AddAttributes(
-		trace.Int64Attribute("device", int64(devNumber)),
-		trace.StringAttribute("target", target))
+	_, span := otel.StartSpan(ctx, "pmem::Unmount")
+	defer func() { otel.SetSpanStatusAndEnd(span, err) }()
+	span.SetAttributes(
+		attribute.Int64("device", int64(devNumber)),
+		attribute.String("target", target))
 
 	if err := storage.UnmountPath(ctx, target, true); err != nil {
 		return errors.Wrapf(err, "failed to unmount target: %s", target)

@@ -14,17 +14,17 @@ import (
 
 	"github.com/Microsoft/go-winio"
 	"github.com/Microsoft/go-winio/pkg/guid"
+	"github.com/Microsoft/hcsshim/internal/otel"
 	"github.com/Microsoft/hcsshim/internal/security"
 	"github.com/Microsoft/hcsshim/pkg/securitypolicy"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"go.opencensus.io/trace"
+	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/Microsoft/hcsshim/internal/gcs"
 	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
 	"github.com/Microsoft/hcsshim/internal/log"
 	"github.com/Microsoft/hcsshim/internal/logfields"
-	"github.com/Microsoft/hcsshim/internal/oc"
 	"github.com/Microsoft/hcsshim/internal/processorinfo"
 	"github.com/Microsoft/hcsshim/internal/protocol/guestrequest"
 	"github.com/Microsoft/hcsshim/internal/schemaversion"
@@ -156,7 +156,7 @@ func NewDefaultOptionsLCOW(id, owner string) *OptionsLCOW {
 		ExecCommandLine:         fmt.Sprintf("/bin/gcs -v4 -log-format json -loglevel %s", logrus.StandardLogger().Level.String()),
 		ForwardStdout:           false,
 		ForwardStderr:           true,
-		OutputHandler:           parseLogrus(id),
+		OutputHandler:           parseLCOWOutput(id),
 		VPMemDeviceCount:        DefaultVPMEMCount,
 		VPMemSizeBytes:          DefaultVPMemSizeBytes,
 		VPMemNoMultiMapping:     osversion.Get().Build < osversion.V19H1,
@@ -745,9 +745,8 @@ func makeLCOWDoc(ctx context.Context, opts *OptionsLCOW, uvm *UtilityVM) (_ *hcs
 // consumes a set of options derived from various defaults and options
 // expressed as annotations.
 func CreateLCOW(ctx context.Context, opts *OptionsLCOW) (_ *UtilityVM, err error) {
-	ctx, span := oc.StartSpan(ctx, "uvm::CreateLCOW")
-	defer span.End()
-	defer func() { oc.SetSpanStatus(span, err) }()
+	ctx, span := otel.StartSpan(ctx, "uvm::CreateLCOW")
+	defer func() { otel.SetSpanStatusAndEnd(span, err) }()
 
 	if opts.ID == "" {
 		g, err := guid.NewV4()
@@ -757,12 +756,12 @@ func CreateLCOW(ctx context.Context, opts *OptionsLCOW) (_ *UtilityVM, err error
 		opts.ID = g.String()
 	}
 
-	span.AddAttributes(trace.StringAttribute(logfields.UVMID, opts.ID))
+	span.SetAttributes(attribute.String(logfields.UVMID, opts.ID))
 	log.G(ctx).WithField("options", fmt.Sprintf("%+v", opts)).Debug("uvm::CreateLCOW options")
 
 	// We dont serialize OutputHandler so if it is missing we need to put it back to the default.
 	if opts.OutputHandler == nil {
-		opts.OutputHandler = parseLogrus(opts.ID)
+		opts.OutputHandler = parseLCOWOutput(opts.ID)
 	}
 
 	uvm := &UtilityVM{

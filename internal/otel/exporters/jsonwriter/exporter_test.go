@@ -183,7 +183,7 @@ func TestExporter(t *testing.T) {
 		}
 
 		_, span := hcsotel.StartSpan(ctx, n,
-			hcsotel.WithAttributes(attrs...),
+			trace.WithAttributes(attrs...),
 		)
 		defer func() { hcsotel.SetSpanStatusAndEnd(span, err) }()
 		defer func() {
@@ -211,7 +211,7 @@ func TestExporter(t *testing.T) {
 			hcsotel.Attribute("Another name", "bob"),
 			hcsotel.Attribute("ints", []int64{2, 3, 16, 58}),
 		}
-		ctx, span := hcsotel.StartSpan(ctx, n, hcsotel.WithAttributes(attrs...))
+		ctx, span := hcsotel.StartSpan(ctx, n, trace.WithAttributes(attrs...))
 		defer func() { hcsotel.SetSpanStatusAndEnd(span, nil) }()
 
 		records[n] = record{attrs: attrs}

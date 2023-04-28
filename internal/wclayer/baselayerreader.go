@@ -1,3 +1,5 @@
+//go:build windows
+
 package wclayer
 
 import (
@@ -9,13 +11,14 @@ import (
 	"syscall"
 
 	"github.com/Microsoft/go-winio"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/Microsoft/hcsshim/internal/longpath"
-	"github.com/Microsoft/hcsshim/internal/oc"
-	"go.opencensus.io/trace"
+	"github.com/Microsoft/hcsshim/internal/otel"
 )
 
 type baseLayerReader struct {
-	s            *trace.Span
+	s            trace.Span
 	root         string
 	result       chan *fileEntry
 	proceed      chan bool
@@ -23,7 +26,7 @@ type baseLayerReader struct {
 	backupReader *winio.BackupFileReader
 }
 
-func newBaseLayerReader(root string, s *trace.Span) (r *baseLayerReader) {
+func newBaseLayerReader(root string, s trace.Span) (r *baseLayerReader) {
 	r = &baseLayerReader{
 		s:       s,
 		root:    root,
@@ -205,7 +208,7 @@ func (r *baseLayerReader) Read(b []byte) (int, error) {
 func (r *baseLayerReader) Close() (err error) {
 	defer r.s.End()
 	defer func() {
-		oc.SetSpanStatus(r.s, err)
+		otel.SetSpanStatus(r.s, err)
 		close(r.proceed)
 	}()
 	r.proceed <- false

@@ -4,7 +4,9 @@ import (
 	"context"
 
 	"github.com/sirupsen/logrus"
-	"go.opencensus.io/trace"
+	"go.opentelemetry.io/otel/trace"
+
+	"github.com/Microsoft/hcsshim/internal/logfields"
 )
 
 type entryContextKeyType int
@@ -30,6 +32,8 @@ var (
 	U = UpdateContext
 )
 
+// todo: we only use the context to get span information, remove that from the hook and add it to G() and co.
+
 // GetEntry returns a `logrus.Entry` stored in the context, if one exists.
 // Otherwise, it returns a default entry that points to the current context.
 //
@@ -42,6 +46,13 @@ func GetEntry(ctx context.Context) *logrus.Entry {
 
 	if entry == nil {
 		entry = L.WithContext(ctx)
+	}
+
+	if sc := trace.SpanContextFromContext(ctx); sc.IsValid() {
+		entry = entry.WithFields(logrus.Fields{
+			logfields.TraceID: sc.TraceID().String(),
+			logfields.SpanID:  sc.SpanID().String(),
+		})
 	}
 
 	return entry
@@ -101,8 +112,8 @@ func WithContext(ctx context.Context, entry *logrus.Entry) (context.Context, *lo
 // operations triggered by the cancellation require a non-cancelled context to
 // execute.
 func Copy(dst context.Context, src context.Context) context.Context {
-	if s := trace.FromContext(src); s != nil {
-		dst = trace.NewContext(dst, s)
+	if sc := trace.SpanContextFromContext(src); sc.IsValid() {
+		dst = trace.ContextWithSpanContext(src, sc)
 	}
 
 	if e := fromContext(src); e != nil {

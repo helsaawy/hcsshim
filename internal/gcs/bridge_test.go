@@ -69,7 +69,7 @@ func reflector(t *testing.T, rw io.ReadWriteCloser, delay time.Duration) {
 }
 
 type testReq struct {
-	requestBase
+	RequestBase
 	X, Y int
 }
 

@@ -20,11 +20,11 @@ import (
 
 	"github.com/containerd/containerd/namespaces"
 	"github.com/sirupsen/logrus"
-	"go.opencensus.io/trace"
+	tracesdk "go.opentelemetry.io/otel/sdk/trace"
 
 	"github.com/Microsoft/hcsshim/internal/cow"
 	"github.com/Microsoft/hcsshim/internal/hcsoci"
-	"github.com/Microsoft/hcsshim/internal/oc"
+	"github.com/Microsoft/hcsshim/internal/otel"
 	"github.com/Microsoft/hcsshim/internal/resources"
 	"github.com/Microsoft/hcsshim/internal/uvm"
 	"github.com/Microsoft/hcsshim/internal/winapi"
@@ -124,9 +124,6 @@ func init() {
 func TestMain(m *testing.M) {
 	flag.Parse()
 
-	trace.ApplyConfig(trace.Config{DefaultSampler: oc.DefaultSampler})
-	trace.RegisterExporter(&oc.LogrusExporter{})
-
 	// default is stderr, but test2json does not consume stderr, so logs would be out of sync
 	// and powershell considers output on stderr as an error when execing
 	logrus.SetOutput(os.Stdout)
@@ -134,6 +131,14 @@ func TestMain(m *testing.M) {
 	logrus.SetLevel(flagLogLevel.Level)
 
 	logrus.Debugf("using features: %s", flagFeatures.Strings())
+
+	// need a tracer so OTel creates recoding spans and sets their trace/span ID
+	if _, err := otel.InitializeProvider(
+		tracesdk.WithSpanProcessor(tracesdk.NewSimpleSpanProcessor(nil)),
+		tracesdk.WithSampler(tracesdk.AlwaysSample()),
+	); err != nil {
+		logrus.WithError(err).Error("failed to initialize OTel trace provider")
+	}
 
 	images := []*layers.LazyImageLayers{alpineImagePaths, nanoserverImagePaths, servercoreImagePaths}
 	for _, l := range images {

@@ -4,6 +4,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io"
@@ -19,7 +20,8 @@ import (
 	oci "github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"go.opencensus.io/trace"
+	"go.opentelemetry.io/otel"
+	tracesdk "go.opentelemetry.io/otel/sdk/trace"
 
 	"github.com/Microsoft/hcsshim/internal/guest/bridge"
 	"github.com/Microsoft/hcsshim/internal/guest/kmsg"
@@ -28,7 +30,8 @@ import (
 	"github.com/Microsoft/hcsshim/internal/guest/transport"
 	"github.com/Microsoft/hcsshim/internal/guestpath"
 	"github.com/Microsoft/hcsshim/internal/log"
-	"github.com/Microsoft/hcsshim/internal/oc"
+	hcsotel "github.com/Microsoft/hcsshim/internal/otel"
+	"github.com/Microsoft/hcsshim/internal/otel/exporters/jsonwriter"
 	"github.com/Microsoft/hcsshim/pkg/securitypolicy"
 )
 
@@ -209,12 +212,8 @@ func main() {
 
 	flag.Parse()
 
-	// If v4 enable opencensus
-	if *v4 {
-		trace.ApplyConfig(trace.Config{DefaultSampler: trace.AlwaysSample()})
-		trace.RegisterExporter(&oc.LogrusExporter{})
-	}
-
+	// setup logging before OTel, since a non-fatal error emitted by OTel setup will crash
+	// the IO parsing in the host if the log entry is not JSON-formatted
 	logrus.AddHook(log.NewHook())
 
 	var logWriter *os.File
@@ -264,12 +263,19 @@ func main() {
 	if err != nil {
 		logrus.Fatal(err)
 	}
-
 	logrus.SetLevel(level)
 
 	log.SetScrubbing(*scrubLogs)
 
-	baseLogPath := guestpath.LCOWRootPrefixInUVM
+	// If v4 enable OTel
+	if *v4 {
+		cleanup, err := setupOTel()
+		if err != nil {
+			logrus.WithError(err).Error("failed to setup GCS OTel")
+		} else if cleanup != nil {
+			defer cleanup(context.Background()) //nolint: errcheck
+		}
+	}
 
 	logrus.Info("GCS started")
 
@@ -285,6 +291,8 @@ func main() {
 			logrus.WithError(err).Fatal("failed to set core dump location")
 		}
 	}
+
+	baseLogPath := guestpath.LCOWRootPrefixInUVM
 
 	// Continuously log /dev/kmsg
 	go kmsg.ReadForever(kmsg.LogLevel(*kmsgLogLevel))
@@ -391,4 +399,24 @@ func main() {
 			logrus.ErrorKey: err,
 		}).Fatal("failed to serve gcs service")
 	}
+}
+
+func setupOTel() (func(context.Context) error, error) {
+	exporter, err := jsonwriter.New(os.Stderr)
+	if err != nil {
+		return nil, fmt.Errorf("create exporter: %w", err)
+	}
+
+	otel.SetErrorHandler(otel.ErrorHandlerFunc(func(err error) {
+		logrus.WithError(err).Error("gcs OTel internal error")
+	}))
+
+	traceCleanup, err := hcsotel.InitializeProvider(
+		tracesdk.WithBatcher(exporter),
+		tracesdk.WithSampler(tracesdk.AlwaysSample()),
+		tracesdk.WithResource(hcsotel.DefaultResource("gcs", "")))
+	if err != nil {
+		return nil, fmt.Errorf("initialize trace provider: %w", err)
+	}
+	return traceCleanup, nil
 }

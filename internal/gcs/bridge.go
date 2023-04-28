@@ -19,6 +19,7 @@ import (
 	"golang.org/x/sys/windows"
 
 	"github.com/Microsoft/hcsshim/internal/log"
+	"github.com/Microsoft/hcsshim/internal/otel"
 )
 
 const (
@@ -34,7 +35,7 @@ const (
 )
 
 type requestMessage interface {
-	Base() *requestBase
+	Base() *RequestBase
 }
 
 type responseMessage interface {
@@ -220,7 +221,10 @@ func (call *rpc) Wait() {
 // If allowCancel is set and the context becomes done, returns an error without
 // waiting for a response. Avoid this on messages that are not idempotent or
 // otherwise safe to ignore the response of.
-func (brdg *bridge) RPC(ctx context.Context, proc rpcProc, req requestMessage, resp responseMessage, allowCancel bool) error {
+func (brdg *bridge) RPC(ctx context.Context, proc rpcProc, req requestMessage, resp responseMessage, allowCancel bool) (err error) {
+	ctx, span := otel.StartSpan(ctx, "gcs::bridge::RPC::"+proc.String(), otel.WithClientSpanKind)
+	defer func() { otel.SetSpanStatusAndEnd(span, err) }()
+
 	call, err := brdg.AsyncRPC(ctx, proc, req, resp)
 	if err != nil {
 		return err

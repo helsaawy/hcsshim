@@ -12,6 +12,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/Microsoft/go-winio/pkg/guid"
 	"github.com/Microsoft/hcsshim/internal/guest/gcserr"
 	"github.com/Microsoft/hcsshim/internal/guest/prot"
 	"github.com/Microsoft/hcsshim/internal/guest/transport"
@@ -475,10 +476,14 @@ func Test_Bridge_ListenAndServe_UnknownMessageHandler_Success(t *testing.T) {
 		b.quitChan <- true
 	}()
 
+	g, err := guid.FromString("00000000-0000-0000-0000-000000000001")
+	if err != nil {
+		t.Fatalf("invalid guid: %v", err)
+	}
 	message := &prot.ContainerResizeConsole{
 		MessageBase: prot.MessageBase{
 			ContainerID: "01234567-89ab-cdef-0123-456789abcdef",
-			ActivityID:  "00000000-0000-0000-0000-000000000001",
+			ActivityID:  g,
 		},
 	}
 	if err := serverSend(lc.CWrite(), prot.ComputeSystemResizeConsoleV1, prot.SequenceID(1), message); err != nil {
@@ -504,7 +509,7 @@ func Test_Bridge_ListenAndServe_UnknownMessageHandler_Success(t *testing.T) {
 		t.Error("Response header had wrong sequence id")
 	}
 	verifyResponseIsDefaultHandler(t, response)
-	if response.ActivityID != message.ActivityID {
+	if response.ActivityID != message.ActivityID.String() {
 		t.Fatal("Response had invalid activity id")
 	}
 }
@@ -517,10 +522,14 @@ func Test_Bridge_ListenAndServe_CorrectHandler_Success(t *testing.T) {
 	defer lc.close()
 
 	mux := NewBridgeMux()
+	g, err := guid.FromString("00000000-0000-0000-0000-000000000010")
+	if err != nil {
+		t.Fatalf("invalid guid: %v", err)
+	}
 	message := &prot.ContainerResizeConsole{
 		MessageBase: prot.MessageBase{
 			ContainerID: "01234567-89ab-cdef-0123-456789abcdef",
-			ActivityID:  "00000000-0000-0000-0000-000000000010",
+			ActivityID:  g,
 		},
 	}
 	resizeFn := func(r *Request) (RequestResponse, error) {
@@ -543,7 +552,7 @@ func Test_Bridge_ListenAndServe_CorrectHandler_Success(t *testing.T) {
 
 		return &prot.MessageResponseBase{
 			Result:     1,
-			ActivityID: rBody.ActivityID,
+			ActivityID: rBody.ActivityID.String(),
 		}, nil
 	}
 	mux.HandleFunc(prot.ComputeSystemResizeConsoleV1, prot.PvV4, resizeFn)
@@ -582,7 +591,7 @@ func Test_Bridge_ListenAndServe_CorrectHandler_Success(t *testing.T) {
 	if header.ID != prot.SequenceID(1) {
 		t.Error("response header had wrong sequence id")
 	}
-	if response.ActivityID != message.ActivityID {
+	if response.ActivityID != message.ActivityID.String() {
 		t.Error("response body did not have same activity id")
 	}
 	if response.Result != 1 {

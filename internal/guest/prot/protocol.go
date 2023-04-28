@@ -11,6 +11,7 @@ import (
 	oci "github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/pkg/errors"
 
+	"github.com/Microsoft/hcsshim/internal/gcs"
 	"github.com/Microsoft/hcsshim/internal/guest/commonutils"
 	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
 	"github.com/Microsoft/hcsshim/internal/protocol/guestrequest"
@@ -276,42 +277,9 @@ type GcsGuestCapabilities struct {
 	DeleteContainerStateSupported bool `json:",omitempty"`
 }
 
-// ocspancontext is the internal JSON representation of the OpenCensus
-// `trace.SpanContext` for fowarding to a GCS that supports it.
-type ocspancontext struct {
-	// TraceID is the `hex` encoded string of the OpenCensus
-	// `SpanContext.TraceID` to propagate to the guest.
-	TraceID string `json:",omitempty"`
-	// SpanID is the `hex` encoded string of the OpenCensus `SpanContext.SpanID`
-	// to propagate to the guest.
-	SpanID string `json:",omitempty"`
-
-	// TraceOptions is the OpenCensus `SpanContext.TraceOptions` passed through
-	// to propagate to the guest.
-	TraceOptions uint32 `json:",omitempty"`
-
-	// Tracestate is the `base64` encoded string of marshaling the OpenCensus
-	// `SpanContext.TraceState.Entries()` to JSON.
-	//
-	// If `SpanContext.Tracestate == nil ||
-	// len(SpanContext.Tracestate.Entries()) == 0` this will be `""`.
-	Tracestate string `json:",omitempty"`
-}
-
 // MessageBase is the base type embedded in all messages sent from the HCS to
 // the GCS, as well as ContainerNotification which is sent from GCS to HCS.
-type MessageBase struct {
-	ContainerID string `json:"ContainerId"`
-	ActivityID  string `json:"ActivityId"`
-
-	// OpenCensusSpanContext is the encoded OpenCensus `trace.SpanContext` if
-	// set when making the request.
-	//
-	// NOTE: This is not a part of the protocol but because its a JSON protocol
-	// adding fields is a non-breaking change. If the guest supports it this is
-	// just additive context.
-	OpenCensusSpanContext *ocspancontext `json:"ocsc,omitempty"`
-}
+type MessageBase = gcs.RequestBase
 
 // NegotiateProtocol is the message from the HCS used to determine the protocol
 // version that will be used for future communication.

@@ -5,10 +5,8 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/Microsoft/hcsshim/internal/logfields"
 	"github.com/containerd/containerd/log"
 	"github.com/sirupsen/logrus"
-	"go.opencensus.io/trace"
 )
 
 const nullString = "null"
@@ -39,10 +37,6 @@ type Hook struct {
 	//
 	// Default is [DurationFormatString], which appends a duration unit after the value.
 	DurationFormat DurationFormat
-
-	// AddSpanContext adds [logfields.TraceID] and [logfields.SpanID] fields to
-	// the entry from the span context stored in [logrus.Entry.Context], if it exists.
-	AddSpanContext bool
 }
 
 var _ logrus.Hook = &Hook{}
@@ -51,7 +45,6 @@ func NewHook() *Hook {
 	return &Hook{
 		TimeFormat:     log.RFC3339NanoFixed,
 		DurationFormat: DurationFormatString,
-		AddSpanContext: true,
 	}
 }
 
@@ -60,9 +53,8 @@ func (h *Hook) Levels() []logrus.Level {
 }
 
 func (h *Hook) Fire(e *logrus.Entry) (err error) {
-	// JSON encode, if necessary, then add span information
+	// JSON encode, if necessary
 	h.encode(e)
-	h.addSpanContext(e)
 
 	return nil
 }
@@ -157,18 +149,4 @@ func (h *Hook) encode(e *logrus.Entry) {
 		}
 		d[k] = string(b)
 	}
-}
-
-func (h *Hook) addSpanContext(e *logrus.Entry) {
-	ctx := e.Context
-	if !h.AddSpanContext || ctx == nil {
-		return
-	}
-	span := trace.FromContext(ctx)
-	if span == nil {
-		return
-	}
-	sctx := span.SpanContext()
-	e.Data[logfields.TraceID] = sctx.TraceID.String()
-	e.Data[logfields.SpanID] = sctx.SpanID.String()
 }

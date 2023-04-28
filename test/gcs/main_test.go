@@ -12,14 +12,14 @@ import (
 
 	cgroups "github.com/containerd/cgroups/v3/cgroup1"
 	"github.com/sirupsen/logrus"
-	"go.opencensus.io/trace"
+	tracesdk "go.opentelemetry.io/otel/sdk/trace"
 
 	"github.com/Microsoft/hcsshim/internal/guest/runtime"
 	"github.com/Microsoft/hcsshim/internal/guest/runtime/hcsv2"
 	"github.com/Microsoft/hcsshim/internal/guest/runtime/runc"
 	"github.com/Microsoft/hcsshim/internal/guest/transport"
 	"github.com/Microsoft/hcsshim/internal/guestpath"
-	"github.com/Microsoft/hcsshim/internal/oc"
+	"github.com/Microsoft/hcsshim/internal/otel"
 	"github.com/Microsoft/hcsshim/internal/protocol/guestresource"
 	"github.com/Microsoft/hcsshim/pkg/securitypolicy"
 
@@ -79,14 +79,20 @@ func TestMain(m *testing.M) {
 func setup() (err error) {
 	_ = os.MkdirAll(guestpath.LCOWRootPrefixInUVM, 0755)
 
-	trace.ApplyConfig(trace.Config{DefaultSampler: oc.DefaultSampler})
-	trace.RegisterExporter(&oc.LogrusExporter{})
-
 	logrus.SetLevel(flagLogLevel.Level)
 	// test2json does not consume stderr
 	logrus.SetOutput(os.Stdout)
 	logrus.SetFormatter(&logrus.TextFormatter{FullTimestamp: true})
+
 	logrus.Debugf("using features: %s", flagFeatures.Strings())
+
+	// need a tracer so OTel creates recoding spans and sets their trace/span ID
+	if _, err := otel.InitializeProvider(
+		tracesdk.WithSpanProcessor(tracesdk.NewSimpleSpanProcessor(nil)),
+		tracesdk.WithSampler(tracesdk.AlwaysSample()),
+	); err != nil {
+		logrus.WithError(err).Error("failed to initialize OTel trace provider")
+	}
 
 	// should already start in gcs cgroup
 	if !*flagJoinGCSCgroup {

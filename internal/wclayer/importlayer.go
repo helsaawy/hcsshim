@@ -9,10 +9,12 @@ import (
 	"strings"
 
 	"github.com/Microsoft/go-winio"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/Microsoft/hcsshim/internal/hcserror"
-	"github.com/Microsoft/hcsshim/internal/oc"
+	"github.com/Microsoft/hcsshim/internal/otel"
 	"github.com/Microsoft/hcsshim/internal/safefile"
-	"go.opencensus.io/trace"
 )
 
 // ImportLayer will take the contents of the folder at importFolderPath and import
@@ -21,13 +23,12 @@ import (
 // be present on the system at the paths provided in parentLayerPaths.
 func ImportLayer(ctx context.Context, path string, importFolderPath string, parentLayerPaths []string) (err error) {
 	title := "hcsshim::ImportLayer"
-	ctx, span := oc.StartSpan(ctx, title)
-	defer span.End()
-	defer func() { oc.SetSpanStatus(span, err) }()
-	span.AddAttributes(
-		trace.StringAttribute("path", path),
-		trace.StringAttribute("importFolderPath", importFolderPath),
-		trace.StringAttribute("parentLayerPaths", strings.Join(parentLayerPaths, ", ")))
+	ctx, span := otel.StartSpan(ctx, title)
+	defer func() { otel.SetSpanStatusAndEnd(span, err) }()
+	span.SetAttributes(
+		attribute.String("path", path),
+		attribute.String("importFolderPath", importFolderPath),
+		attribute.String("parentLayerPaths", strings.Join(parentLayerPaths, ", ")))
 
 	// Generate layer descriptors
 	layers, err := layerPathsToDescriptors(ctx, parentLayerPaths)
@@ -59,7 +60,7 @@ type LayerWriter interface {
 
 type legacyLayerWriterWrapper struct {
 	ctx context.Context
-	s   *trace.Span
+	s   trace.Span
 
 	*legacyLayerWriter
 	path             string
@@ -67,8 +68,7 @@ type legacyLayerWriterWrapper struct {
 }
 
 func (r *legacyLayerWriterWrapper) Close() (err error) {
-	defer r.s.End()
-	defer func() { oc.SetSpanStatus(r.s, err) }()
+	defer func() { otel.SetSpanStatusAndEnd(r.s, err) }()
 	defer os.RemoveAll(r.root.Name())
 	defer r.legacyLayerWriter.CloseRoots()
 
@@ -125,16 +125,15 @@ func (r *legacyLayerWriterWrapper) Close() (err error) {
 // The caller must have taken the SeBackupPrivilege and SeRestorePrivilege privileges
 // to call this and any methods on the resulting LayerWriter.
 func NewLayerWriter(ctx context.Context, path string, parentLayerPaths []string) (_ LayerWriter, err error) {
-	ctx, span := oc.StartSpan(ctx, "hcsshim::NewLayerWriter")
+	ctx, span := otel.StartSpan(ctx, "hcsshim::NewLayerWriter")
 	defer func() {
 		if err != nil {
-			oc.SetSpanStatus(span, err)
-			span.End()
+			otel.SetSpanStatusAndEnd(span, err)
 		}
 	}()
-	span.AddAttributes(
-		trace.StringAttribute("path", path),
-		trace.StringAttribute("parentLayerPaths", strings.Join(parentLayerPaths, ", ")))
+	span.SetAttributes(
+		attribute.String("path", path),
+		attribute.String("parentLayerPaths", strings.Join(parentLayerPaths, ", ")))
 
 	if len(parentLayerPaths) == 0 {
 		// This is a base layer. It gets imported differently.
