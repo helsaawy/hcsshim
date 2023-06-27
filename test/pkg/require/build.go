@@ -10,6 +10,8 @@ import (
 	_ "github.com/Microsoft/hcsshim/test/pkg/manifest" // manifest test binary automatically
 )
 
+// todo: update package tests to use require
+
 func Build(tb testing.TB, b uint16) {
 	tb.Helper()
 	if osversion.Build() < b {

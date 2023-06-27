@@ -7,7 +7,8 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// OSVersion is a wrapper for Windows version information
+// OSVersion is a wrapper for Windows version information.
+//
 // https://msdn.microsoft.com/en-us/library/windows/desktop/ms724439(v=vs.85).aspx
 type OSVersion struct {
 	Version      uint32

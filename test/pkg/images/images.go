@@ -3,10 +3,7 @@ package images
 // not technically constants, but close enough ...
 
 import (
-	"errors"
 	"fmt"
-
-	"github.com/Microsoft/hcsshim/osversion"
 )
 
 const (
@@ -17,8 +14,6 @@ const (
 	ImageLinuxPause31      = "k8s.gcr.io/pause:3.1"
 	ImageMCRLinuxPause     = "mcr.microsoft.com/oss/kubernetes/pause:3.1"
 )
-
-var ErrUnsupportedBuild = errors.New("unsupported build")
 
 var (
 	ImageWindowsNanoserver1709 = NanoserverImage("1709")
@@ -77,32 +72,4 @@ func NanoserverImage(tag string) string {
 
 func ServercoreImage(tag string) string {
 	return makeImageURL(MCRWindowsImageRepo, "servercore", tag)
-}
-
-var _buildToTag = map[uint16]string{
-	osversion.RS1:      "1607",
-	osversion.RS2:      "1703",
-	osversion.RS3:      "1709",
-	osversion.RS4:      "1803",
-	osversion.RS5:      "1809",
-	osversion.V19H1:    "1903",
-	osversion.V19H2:    "1909",
-	osversion.V20H1:    "2004",
-	osversion.V20H2:    "20H2",
-	osversion.LTSC2022: "ltsc2022",
-}
-
-func ImageFromBuild(build uint16) (string, error) {
-	if tag, ok := _buildToTag[build]; ok {
-		return tag, nil
-	}
-
-	// Due to some efforts in improving down-level compatibility for Windows containers (see
-	// https://techcommunity.microsoft.com/t5/containers/windows-server-2022-and-beyond-for-containers/ba-p/2712487)
-	// the ltsc2022 image should continue to work on builds ws2022 and onwards. With this in mind,
-	// if there's no mapping for the host build, just use the Windows Server 2022 image.
-	if build > osversion.LTSC2022 {
-		return "ltsc2022", nil
-	}
-	return "", ErrUnsupportedBuild
 }

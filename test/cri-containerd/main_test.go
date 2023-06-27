@@ -167,7 +167,7 @@ func requireBinary(tb testing.TB, binary string) string {
 }
 
 func getWindowsNanoserverImage(build uint16) string {
-	tag, err := images.ImageFromBuild(build)
+	tag, err := osversion.ContainerTagFromBuild(build)
 	if err != nil {
 		panic(err)
 	}
@@ -176,7 +176,7 @@ func getWindowsNanoserverImage(build uint16) string {
 
 //nolint:unused // may be used in future tests
 func getWindowsServerCoreImage(build uint16) string {
-	tag, err := images.ImageFromBuild(build)
+	tag, err := osversion.ContainerTagFromBuild(build)
 	if err != nil {
 		panic(err)
 	}
