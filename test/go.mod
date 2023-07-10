@@ -30,6 +30,8 @@ require (
 require (
 	github.com/AdaLogics/go-fuzz-headers v0.0.0-20230106234847-43070de90fa1 // indirect
 	github.com/AdamKorcz/go-118-fuzz-build v0.0.0-20221215162035-5330a85ea652 // indirect
+	github.com/Microsoft/cosesign1go v0.0.1 // indirect
+	github.com/Microsoft/didx509go v0.0.2 // indirect
 	github.com/OneOfOne/xxhash v1.2.8 // indirect
 	github.com/agnivade/levenshtein v1.0.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.2.1 // indirect

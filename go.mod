@@ -15,7 +15,7 @@ require (
 	github.com/golang/mock v1.6.0
 	github.com/google/go-cmp v0.5.9
 	github.com/google/go-containerregistry v0.15.2
-	github.com/lestrrat-go/jwx v1.2.26
+	github.com/lestrrat-go/jwx v1.2.26 // indirect
 	github.com/linuxkit/virtsock v0.0.0-20201010232012-f8cee7dfc7a3
 	github.com/mattn/go-shellwords v1.0.12
 	github.com/open-policy-agent/opa v0.42.2
@@ -25,7 +25,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/sirupsen/logrus v1.9.3
 	github.com/urfave/cli v1.22.13
-	github.com/veraison/go-cose v1.0.0-rc.1
+	github.com/veraison/go-cose v1.0.0 // indirect
 	github.com/vishvananda/netlink v1.2.1-beta.2
 	github.com/vishvananda/netns v0.0.4
 	go.etcd.io/bbolt v1.3.7
@@ -37,6 +37,8 @@ require (
 )
 
 require (
+	github.com/Microsoft/cosesign1go v0.0.1
+	github.com/Microsoft/didx509go v0.0.2
 	github.com/containerd/protobuild v0.3.0
 	google.golang.org/grpc/cmd/protoc-gen-go-grpc v1.1.0
 )
