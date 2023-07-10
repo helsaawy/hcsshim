@@ -10,6 +10,7 @@ require (
 	github.com/containerd/console v1.0.3
 	github.com/containerd/containerd v1.7.0
 	github.com/containerd/go-runc v1.0.0
+	github.com/containerd/protobuild v0.3.0
 	github.com/containerd/ttrpc v1.2.2
 	github.com/containerd/typeurl/v2 v2.1.1
 	github.com/golang/mock v1.6.0
@@ -33,12 +34,8 @@ require (
 	golang.org/x/sync v0.3.0
 	golang.org/x/sys v0.9.0
 	google.golang.org/grpc v1.55.0
-	google.golang.org/protobuf v1.30.0
-)
-
-require (
-	github.com/containerd/protobuild v0.3.0
 	google.golang.org/grpc/cmd/protoc-gen-go-grpc v1.1.0
+	google.golang.org/protobuf v1.30.0
 )
 
 require (
