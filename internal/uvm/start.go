@@ -219,6 +219,12 @@ func (uvm *UtilityVM) Start(ctx context.Context) (err error) {
 			err = uvm.hcsSystem.ExitError()
 		}
 		uvm.exitErr = err
+		e := log.G(ctx).WithField(logfields.UVMID, uvm.id)
+		if err != nil {
+			e.WithError(err).Trace("uvm exited with err")
+		} else {
+			e.Trace("uvm exited")
+		}
 		close(uvm.exitCh)
 	}()
 

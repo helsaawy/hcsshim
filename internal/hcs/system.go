@@ -283,8 +283,8 @@ func (computeSystem *System) waitBackground() {
 	case nil:
 		log.G(ctx).Debug("system exited")
 	case ErrVmcomputeUnexpectedExit:
-		log.G(ctx).Debug("unexpected system exit")
 		computeSystem.exitError = makeSystemError(computeSystem, operation, err, nil)
+		log.G(ctx).WithError(computeSystem.exitError).Debug("unexpected system exit")
 		err = nil
 	default:
 		err = makeSystemError(computeSystem, operation, err, nil)

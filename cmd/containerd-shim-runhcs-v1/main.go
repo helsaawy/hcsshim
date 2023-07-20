@@ -4,8 +4,8 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -32,20 +32,19 @@ const ttrpcAddressEnv = "TTRPC_ADDRESS"
 // Add a manifest to get proper Windows version detection.
 //go:generate go run github.com/josephspurrier/goversioninfo/cmd/goversioninfo -platform-specific
 
-// version will be populated by the Makefile, read from
-// VERSION file of the source code.
-var version = ""
-
-// gitCommit will be the hash that the binary was built from
-// and will be populated by the Makefile
-var gitCommit = ""
+// todo: update build process to use these
+var (
+	// version is the shim version
+	version = ""
+	// gitCommit is the hash that the binary was built from
+	gitCommit = ""
+)
 
 var (
 	namespaceFlag        string
 	addressFlag          string
 	containerdBinaryFlag string
-
-	idFlag string
+	idFlag               string
 
 	// gracefulShutdownTimeout is how long to wait for clean-up before just exiting
 	gracefulShutdownTimeout = 3 * time.Second
@@ -65,6 +64,9 @@ func etwCallback(sourceID guid.GUID, state etw.ProviderState, level etw.Level, m
 	}
 }
 
+// shim binary must conform to containerd requirements:
+// https://github.com/containerd/containerd/blob/main/runtime/v2/README.md
+
 func main() {
 	logrus.AddHook(log.NewHook())
 
@@ -80,6 +82,11 @@ func main() {
 			logrus.Error(err)
 		}
 	}
+
+	// containerd expects errors to be printed to stderr, and command responses on stdout
+	// serve stderr is written to panic.log
+	// logs should already be re-directed to ETW (and npipe, potentially)
+	logrus.SetOutput(io.Discard)
 
 	_ = provider.WriteEvent(
 		"ShimLaunched",
@@ -107,51 +114,47 @@ func main() {
 	v = append(v, fmt.Sprintf("spec: %s", specs.Version))
 	app.Version = strings.Join(v, "\n")
 
+	// containerd calls the shim as `<shim.exe> <flags> <command>`, so flags for start and delete
+	// must be declared globally here
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
-			Name:  "namespace",
-			Usage: "the namespace of the container",
+			Name:        "namespace",
+			Usage:       "the namespace of the container",
+			Required:    true,
+			Destination: &namespaceFlag,
 		},
 		cli.StringFlag{
-			Name:  "address",
-			Usage: "the address of the containerd's main socket",
+			Name:        "address",
+			Usage:       "the address of the containerd's main socket",
+			Required:    true,
+			Destination: &addressFlag,
 		},
 		cli.StringFlag{
-			Name:  "publish-binary",
-			Usage: "the binary path to publish events back to containerd",
+			Name:        "publish-binary",
+			Usage:       "the binary path to publish events back to containerd",
+			Required:    true,
+			Destination: &containerdBinaryFlag,
 		},
 		cli.StringFlag{
-			Name:  "id",
-			Usage: "the id of the container",
+			Name:        "id",
+			Usage:       "the id of the container",
+			Required:    true,
+			Destination: &idFlag,
 		},
 		cli.StringFlag{
 			Name:  "bundle",
-			Usage: "the bundle path to delete (delete command only).",
+			Usage: "the bundle path to delete (delete command only)",
 		},
+		// todo: containerd passes this flag if it is running with log level debug or trace -- use this instead of opt fields
 		cli.BoolFlag{
 			Name:  "debug",
-			Usage: "run the shim in debug mode",
+			Usage: "run the shim in debug mode (currently unused)",
 		},
 	}
 	app.Commands = []cli.Command{
 		startCommand,
 		deleteCommand,
 		serveCommand,
-	}
-	app.Before = func(context *cli.Context) error {
-		if namespaceFlag = context.GlobalString("namespace"); namespaceFlag == "" {
-			return errors.New("namespace is required")
-		}
-		if addressFlag = context.GlobalString("address"); addressFlag == "" {
-			return errors.New("address is required")
-		}
-		if containerdBinaryFlag = context.GlobalString("publish-binary"); containerdBinaryFlag == "" {
-			return errors.New("publish-binary is required")
-		}
-		if idFlag = context.GlobalString("id"); idFlag == "" {
-			return errors.New("id is required")
-		}
-		return nil
 	}
 
 	if err := app.Run(os.Args); err != nil {

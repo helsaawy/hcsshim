@@ -18,7 +18,6 @@ import (
 	"github.com/containerd/containerd/runtime/v2/shim"
 	"github.com/containerd/ttrpc"
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
 )
 
@@ -35,9 +34,6 @@ The start command can either start a new shim or return an address to an existin
 `,
 	SkipArgReorder: true,
 	Action: func(context *cli.Context) (err error) {
-		// We cant write anything to stdout/stderr for this cmd.
-		logrus.SetOutput(io.Discard)
-
 		// On Windows there are two scenarios that will launch a shim.
 		//
 		// 1. The config.json in the bundle path contains the kubernetes

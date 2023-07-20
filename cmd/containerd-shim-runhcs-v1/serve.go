@@ -150,13 +150,10 @@ var serveCommand = cli.Command{
 					logrus.SetOutput(cur)
 				}
 			}()
-			// Logrus output will be redirected in the goroutine below that
-			// handles the pipe connection.
 		case runhcsopts.Options_FILE:
 			panic("file log output mode is not supported")
 		case runhcsopts.Options_ETW:
 			logrus.SetFormatter(nopFormatter{})
-			logrus.SetOutput(io.Discard)
 		}
 
 		os.Stdin.Close()
@@ -216,7 +213,8 @@ var serveCommand = cli.Command{
 			// Passed in context is used as parent context for handling requests,
 			// but canceliing does not bring down ttrpc service.
 			if err := trapClosedConnErr(s.Serve(context.Background(), sl)); err != nil {
-				logrus.WithError(err).Fatal("containerd-shim: ttrpc server failure")
+				// Fatal calls os.Exit
+				logrus.WithError(err).Error("containerd-shim: ttrpc server failure")
 				serrs <- err
 				return
 			}
@@ -239,7 +237,10 @@ var serveCommand = cli.Command{
 
 			// This is our best indication that we have not errored on creation
 			// and are successfully serving the API.
-			// Closing stdout signals to containerd that shim started successfully
+			//
+			// start forwards our stdout to its stderr (and sends our stderr to panic.log), and then
+			// waits for us to close it before writing our address to its stdout and existing.
+			// Closing stdout signals to start that it report to containerd that we started successfully
 			os.Stdout.Close()
 		}
 
