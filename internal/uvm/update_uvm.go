@@ -7,19 +7,20 @@ import (
 	"fmt"
 
 	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
+	"github.com/Microsoft/hcsshim/internal/option"
 	"github.com/Microsoft/hcsshim/pkg/annotations"
 	"github.com/Microsoft/hcsshim/pkg/ctrdtaskapi"
 	"github.com/opencontainers/runtime-spec/specs-go"
 )
 
 func (uvm *UtilityVM) Update(ctx context.Context, data interface{}, annots map[string]string) error {
-	var memoryLimitInBytes *uint64
-	var processorLimits *hcsschema.ProcessorLimits
+	var memoryLimitInBytes option.Option[uint64]
+	var processorLimits option.Option[hcsschema.ProcessorLimits]
 
 	switch resources := data.(type) {
 	case *specs.WindowsResources:
 		if resources.Memory != nil {
-			memoryLimitInBytes = resources.Memory.Limit
+			memoryLimitInBytes = option.Some(*resources.Memory.Limit)
 		}
 		if resources.CPU != nil {
 			processorLimits = &hcsschema.ProcessorLimits{}
@@ -32,8 +33,7 @@ func (uvm *UtilityVM) Update(ctx context.Context, data interface{}, annots map[s
 		}
 	case *specs.LinuxResources:
 		if resources.Memory != nil {
-			mem := uint64(*resources.Memory.Limit)
-			memoryLimitInBytes = &mem
+			memoryLimitInBytes = option.Some(uint64(*resources.Memory.Limit))
 		}
 		if resources.CPU != nil {
 			processorLimits = &hcsschema.ProcessorLimits{}
@@ -50,12 +50,12 @@ func (uvm *UtilityVM) Update(ctx context.Context, data interface{}, annots map[s
 		return fmt.Errorf("invalid resource: %+v", resources)
 	}
 
-	if memoryLimitInBytes != nil {
-		if err := uvm.UpdateMemory(ctx, *memoryLimitInBytes); err != nil {
+	if option.IsSome(memoryLimitInBytes) {
+		if err := uvm.UpdateMemory(ctx, option.Unwrap(memoryLimitInBytes)); err != nil {
 			return err
 		}
 	}
-	if processorLimits != nil {
+	if option.IsSome(processorLimits) {
 		if err := uvm.UpdateCPULimits(ctx, processorLimits); err != nil {
 			return err
 		}
