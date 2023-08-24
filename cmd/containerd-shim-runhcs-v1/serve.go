@@ -47,7 +47,7 @@ var serveCommand = cli.Command{
 			Usage: "is the task id a Kubernetes sandbox id",
 		},
 	},
-	Action: func(ctx *cli.Context) error {
+	Action: func(cCtx *cli.Context) error {
 		// On Windows the serve command is internally used to actually create
 		// the process that hosts the containerd/ttrpc entrypoint to the Runtime
 		// V2 API's. The model requires this 2nd invocation of the shim process
@@ -69,6 +69,7 @@ var serveCommand = cli.Command{
 		// the upstream caller by listening for a log connection and streaming
 		// the events.
 
+		ctx := context.Background()
 		var lerrs chan error
 
 		// Default values for shim options.
@@ -85,6 +86,10 @@ var serveCommand = cli.Command{
 			// We received a valid shim options struct.
 			shimOpts = newShimOpts
 		}
+
+		//
+		// logging
+		//
 
 		if shimOpts.Debug && shimOpts.LogLevel != "" {
 			logrus.Warning("Both Debug and LogLevel specified, Debug will be overridden")
@@ -153,7 +158,7 @@ var serveCommand = cli.Command{
 			// Logrus output will be redirected in the goroutine below that
 			// handles the pipe connection.
 		case runhcsopts.Options_FILE:
-			panic("file log output mode is not supported")
+			return fmt.Errorf("file log output mode is not supported")
 		case runhcsopts.Options_ETW:
 			logrus.SetFormatter(nopFormatter{})
 			logrus.SetOutput(io.Discard)
@@ -166,11 +171,18 @@ var serveCommand = cli.Command{
 			hcslog.SetScrubbing(true)
 		}
 
+		// signal we have ready and (basically?) up and running
+		os.Stdin.Close()
+
+		// can log info/debug statements now
+
+		logrus.WithField("options", hcslog.Format(ctx, shimOpts)).Debug("received shim options")
+
 		// Force the cli.ErrWriter to be os.Stdout for this. We use stderr for
 		// the panic.log attached via start.
 		cli.ErrWriter = os.Stdout
 
-		socket := ctx.String("socket")
+		socket := cCtx.String("socket")
 		if !strings.HasPrefix(socket, `\\.\pipe`) {
 			return errors.New("socket is required to be pipe address")
 		}
@@ -189,7 +201,7 @@ var serveCommand = cli.Command{
 		// Setup the ttrpc server
 		svc, err = NewService(WithEventPublisher(ttrpcEventPublisher),
 			WithTID(idFlag),
-			WithIsSandbox(ctx.Bool("is-sandbox")))
+			WithIsSandbox(cCtx.Bool("is-sandbox")))
 		if err != nil {
 			return fmt.Errorf("failed to create new service: %w", err)
 		}
@@ -215,7 +227,7 @@ var serveCommand = cli.Command{
 			// Serve loops infinitely unless s.Shutdown or s.Close are called.
 			// Passed in context is used as parent context for handling requests,
 			// but canceliing does not bring down ttrpc service.
-			if err := trapClosedConnErr(s.Serve(context.Background(), sl)); err != nil {
+			if err := trapClosedConnErr(s.Serve(ctx, sl)); err != nil {
 				logrus.WithError(err).Fatal("containerd-shim: ttrpc server failure")
 				serrs <- err
 				return
@@ -254,7 +266,7 @@ var serveCommand = cli.Command{
 				return nil
 			}
 			// currently the ttrpc shutdown is the only clean up to wait on
-			sctx, cancel := context.WithTimeout(context.Background(), gracefulShutdownTimeout)
+			sctx, cancel := context.WithTimeout(ctx, gracefulShutdownTimeout)
 			defer cancel()
 			err = s.Shutdown(sctx)
 		}
