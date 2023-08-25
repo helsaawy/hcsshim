@@ -51,6 +51,12 @@ var (
 	gracefulShutdownTimeout = 3 * time.Second
 )
 
+// TODO: switch to "github.com/urfave/cli/v2" (or v3) and add etwProvider to cli.Context,
+//  or define an `app` struct to hold global state
+
+// the etw provider used for logging/tracing/metrics.
+var etwProvider *etw.Provider
+
 func etwCallback(sourceID guid.GUID, state etw.ProviderState, level etw.Level, matchAnyKeyword uint64, matchAllKeyword uint64, filterData uintptr) {
 	if state == etw.ProviderStateCaptureState {
 		resp, err := svc.DiagStacks(context.Background(), &shimdiag.StacksRequest{})
@@ -68,20 +74,21 @@ func etwCallback(sourceID guid.GUID, state etw.ProviderState, level etw.Level, m
 func main() {
 	logrus.AddHook(log.NewHook())
 
+	var err error
 	// Provider ID: 0b52781f-b24d-5685-ddf6-69830ed40ec3
 	// Provider and hook aren't closed explicitly, as they will exist until process exit.
-	provider, err := etw.NewProvider("Microsoft.Virtualization.RunHCS", etwCallback)
+	etwProvider, err = etw.NewProvider("Microsoft.Virtualization.RunHCS", etwCallback)
 	if err != nil {
 		logrus.Error(err)
 	} else {
-		if hook, err := etwlogrus.NewHookFromProvider(provider); err == nil {
+		if hook, err := etwlogrus.NewHookFromProvider(etwProvider); err == nil {
 			logrus.AddHook(hook)
 		} else {
 			logrus.Error(err)
 		}
 	}
 
-	_ = provider.WriteEvent(
+	_ = etwProvider.WriteEvent(
 		"ShimLaunched",
 		nil,
 		etw.WithFields(

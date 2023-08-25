@@ -5,6 +5,7 @@ package etwmetric
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/Microsoft/go-winio/pkg/etw"
@@ -16,7 +17,14 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 
 	hcsotel "github.com/Microsoft/hcsshim/internal/otel"
+	oteletw "github.com/Microsoft/hcsshim/internal/otel/etw"
 )
+
+// names (and inclusion of instrumentation scope and resource) based on OTel specification
+// (and OTLP convention):
+//
+//  - https://opentelemetry.io/docs/reference/specification/common/mapping-to-non-otlp/
+//  - https://github.com/open-telemetry/opentelemetry-proto/blob/main/opentelemetry/proto/metrics/v1/metrics.proto
 
 // time.RFC3339Nano with nanoseconds padded using zeros to
 // ensure the formatted time is always the same number of characters.
@@ -36,6 +44,8 @@ const (
 	fieldDescription = "description"
 	fieldUnit        = "unit"
 	fieldValue       = "value"
+
+	fieldInstrumentationScope = "otel.scope"
 )
 
 // not thread-safe
@@ -96,13 +106,17 @@ func (e *exporter) Export(ctx context.Context, metrics *metricdata.ResourceMetri
 		return hcsotel.ErrNoETWProvider
 	}
 
+	if !e.provider.IsEnabledForLevel(e.level) {
+		return nil
+	}
+
 	// todo (go1.20): switch to multierrors and handle individual errors
 	// Errors will be sent to configured error handler
 	var errs []error
-	rsc := e.resource(metrics.Resource)
+	rsc := e.serializeResource(metrics.Resource)
 
 	for _, scope := range metrics.ScopeMetrics {
-		is := e.instrumentationScope(scope.Scope)
+		is := e.serializeInstrumentationScope(scope.Scope)
 		for _, m := range scope.Metrics {
 			// short circut on context cancellation
 			if err := ctx.Err(); err != nil {
@@ -119,11 +133,11 @@ func (e *exporter) Export(ctx context.Context, metrics *metricdata.ResourceMetri
 
 			data, err := e.serializeData(m.Data)
 			if err != nil {
-				errs = append(errs, fmt.Errorf("metric data serialization: %s: %w", m.Name, err))
+				errs = append(errs, fmt.Errorf("metric data serialization for %q: %w", m.Name, err))
 				continue
 			}
 
-			// each data point in the metric gets its own event, with unique attributes
+			// each data point in the metric has unique attributes, so output each in a dedicated event
 			for _, fs := range data {
 				fields := make([]etw.FieldOpt, 0, len(base)+len(fs)+2)
 				fields = append(fields, base...)
@@ -137,7 +151,7 @@ func (e *exporter) Export(ctx context.Context, metrics *metricdata.ResourceMetri
 				}
 
 				if err := e.provider.WriteEvent(eventName, opts, fields); err != nil {
-					errs = append(errs, fmt.Errorf("metric export: %s: %w", m.Name, err))
+					errs = append(errs, fmt.Errorf("metric export for %q: %w", m.Name, err))
 				}
 			}
 		}
@@ -180,27 +194,24 @@ func (e *exporter) Shutdown(ctx context.Context) (err error) {
 }
 
 // return an array of attributes for the different data points
-func (*exporter) serializeData(data metricdata.Aggregation) (fs [][]etw.FieldOpt, err error) {
-	switch a := data.(type) {
+func (e *exporter) serializeData(data metricdata.Aggregation) (fs [][]etw.FieldOpt, err error) {
+	switch data := data.(type) {
 	case metricdata.Sum[float64]:
-		fs, err = serializeSum(a)
+		fs, err = serializeSum(data)
 	case metricdata.Sum[int64]:
-		fs, err = serializeSum(a)
+		fs, err = serializeSum(data)
 	case metricdata.Gauge[float64]:
-		fs, err = serializeGauge(a)
+		fs, err = serializeGauge(data)
 	case metricdata.Gauge[int64]:
-		fs, err = serializeGauge(a)
-	case metricdata.Histogram[int64], metricdata.Histogram[float64]:
-		// TODO
-		return nil, fmt.Errorf("histograms are currently unsupported")
+		fs, err = serializeGauge(data)
+	case metricdata.Histogram[int64]:
+		fs, err = serializeHistogram(data)
+	case metricdata.Histogram[float64]:
+		fs, err = serializeHistogram(data)
 	default:
-		return nil, fmt.Errorf("unknown aggregation type: %T", a)
+		return nil, fmt.Errorf("unknown aggregation type: %T", data)
 	}
 	return fs, err
-}
-
-func serializeGauge[T int64 | float64](data metricdata.Gauge[T]) ([][]etw.FieldOpt, error) {
-	return serializeDataPoints(data.DataPoints)
 }
 
 func serializeSum[T int64 | float64](data metricdata.Sum[T]) ([][]etw.FieldOpt, error) {
@@ -217,49 +228,111 @@ func serializeSum[T int64 | float64](data metricdata.Sum[T]) ([][]etw.FieldOpt, 
 	return fs, nil
 }
 
+func serializeGauge[T int64 | float64](data metricdata.Gauge[T]) ([][]etw.FieldOpt, error) {
+	return serializeDataPoints(data.DataPoints)
+}
+
 func serializeDataPoints[T int64 | float64](data []metricdata.DataPoint[T]) ([][]etw.FieldOpt, error) {
-	// todo: exemplars (as array?)
+	// TODO: exemplars (as array?)
 
 	fields := make([][]etw.FieldOpt, 0, len(data))
 	for _, datum := range data {
-		fs := make([]etw.FieldOpt, 0, 10)
-		switch v := any(datum.Value).(type) {
-		case int64:
-			fs = append(fs, etw.Int64Field("value", v))
-		case float64:
-			fs = append(fs, etw.Float64Field("value", v))
-		}
+		attrs := oteletw.SerializeAttributes(datum.Attributes.ToSlice())
+		fs := make([]etw.FieldOpt, 0, 5+len(attrs)) // (start) time, value, temporality, monotonic
+		fs = append(fs, serializeNum("value", datum.Value))
+
 		if !datum.StartTime.IsZero() {
 			fs = append(fs, etw.StringField("start_time", datum.StartTime.Format(iso8601)))
 		}
 		if !datum.Time.IsZero() {
 			fs = append(fs, etw.StringField("time", datum.Time.Format(iso8601)))
 		}
-		fs = append(fs, attributesToFields(datum.Attributes.ToSlice())...)
+
+		fs = append(fs, attrs...)
 		fields = append(fields, fs)
 	}
 	return fields, nil
 }
 
-func (e *exporter) resource(rsc *resource.Resource) etw.FieldOpt {
+func serializeHistogram[T int64 | float64](data metricdata.Histogram[T]) ([][]etw.FieldOpt, error) {
+	fs, err := serializeHistogramDataPoints(data.DataPoints)
+	if err != nil {
+		return nil, err
+	}
+	for i := range fs {
+		fs[i] = append(fs[i],
+			etw.StringField("temporality", data.Temporality.String()),
+		)
+	}
+	return fs, nil
+}
+
+func serializeHistogramDataPoints[T int64 | float64](data []metricdata.HistogramDataPoint[T]) ([][]etw.FieldOpt, error) {
+	// TODO: exemplars (as array?)
+
+	fields := make([][]etw.FieldOpt, 0, len(data))
+	for _, datum := range data {
+		attrs := oteletw.SerializeAttributes(datum.Attributes.ToSlice())
+		fs := make([]etw.FieldOpt, 0, 10+len(attrs))
+
+		fs = append(fs,
+			etw.Float64Array("buckets", append(datum.Bounds, math.Inf(1))), // +inf bound is left un-added
+			etw.Uint64Array("bucket_counts", datum.BucketCounts),
+			etw.Uint64Field("count", datum.Count),
+			serializeNum("sum", datum.Sum),
+		)
+
+		if v, ok := datum.Min.Value(); ok {
+			fs = append(fs, serializeNum("min", v))
+		}
+		if v, ok := datum.Max.Value(); ok {
+			fs = append(fs, serializeNum("max", v))
+		}
+
+		if !datum.StartTime.IsZero() {
+			fs = append(fs, etw.StringField("start_time", datum.StartTime.Format(iso8601)))
+		}
+		if !datum.Time.IsZero() {
+			fs = append(fs, etw.StringField("time", datum.Time.Format(iso8601)))
+		}
+
+		fs = append(fs, attrs...)
+		fields = append(fields, fs)
+	}
+	return fields, nil
+}
+
+func serializeNum[T int64 | float64](n string, v T) etw.FieldOpt {
+	// can't type switch on type parameter
+	// https://github.com/golang/go/issues/45380
+
+	switch v := any(v).(type) {
+	case int64:
+		return etw.Int64Field(n, v)
+	case float64:
+		return etw.Float64Field(n, v)
+	}
+	// shouldn't get here, but ...
+	return etw.SmartField(n, v)
+}
+
+func (e *exporter) serializeResource(rsc *resource.Resource) etw.FieldOpt {
 	k := rsc.Equivalent()
 	if f, ok := e.rscs[k]; ok {
 		return f
 	}
 
-	var f etw.FieldOpt
-	if fs := attributesToFields(rsc.Attributes()); len(fs) > 0 {
-		f = etw.Struct("otel.resource", fs...)
-	}
+	f := oteletw.SerializeResource(rsc)
 	e.rscs[k] = f
 	return f
 }
 
-func (e *exporter) instrumentationScope(is instrumentation.Scope) etw.FieldOpt {
+func (e *exporter) serializeInstrumentationScope(is instrumentation.Scope) etw.FieldOpt {
 	if f, ok := e.scopes[is]; ok {
 		return f
 	}
 
+	// don't need to report schema URL
 	fields := make([]etw.FieldOpt, 0, 2)
 	if is.Name != "" {
 		fields = append(fields, etw.StringField("name", is.Name))
@@ -270,22 +343,9 @@ func (e *exporter) instrumentationScope(is instrumentation.Scope) etw.FieldOpt {
 
 	var f etw.FieldOpt
 	if len(fields) > 0 {
-		f = etw.Struct("otel.scope", fields...)
+		f = etw.Struct(fieldInstrumentationScope, fields...)
 	}
 
 	e.scopes[is] = f
 	return f
-}
-
-func attributesToFields(attrs []attribute.KeyValue) []etw.FieldOpt {
-	fields := make([]etw.FieldOpt, 0, len(attrs))
-
-	for _, attr := range attrs {
-		// AsInterface() will convert to the right field type based on OTel's supported field types,
-		// and then etw.SmartField will do its own type-matching
-		//
-		// Should not receive an unknown value type.
-		fields = append(fields, etw.SmartField(string(attr.Key), attr.Value.AsInterface()))
-	}
-	return fields
 }

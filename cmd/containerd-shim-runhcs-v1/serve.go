@@ -20,6 +20,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
+	"golang.org/x/exp/slices"
 	"golang.org/x/sys/windows"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
@@ -164,15 +165,13 @@ var serveCommand = cli.Command{
 			logrus.SetOutput(io.Discard)
 		}
 
+		// signal we have ready and (basically?) up and running
 		os.Stdin.Close()
 
 		// enable scrubbing
 		if shimOpts.ScrubLogs {
 			hcslog.SetScrubbing(true)
 		}
-
-		// signal we have ready and (basically?) up and running
-		os.Stdin.Close()
 
 		// can log info/debug statements now
 
@@ -181,6 +180,24 @@ var serveCommand = cli.Command{
 		// Force the cli.ErrWriter to be os.Stdout for this. We use stderr for
 		// the panic.log attached via start.
 		cli.ErrWriter = os.Stdout
+
+		//
+		// metrics
+		//
+
+		if cleanup := startMetrics(ctx, shimOpts, cCtx.App.Name, version); cleanup != nil {
+			defer func(ctx context.Context) {
+				ctx, cCleanup := context.WithTimeout(ctx, 100*time.Millisecond)
+				if err := cleanup(ctx); err != nil {
+					hcslog.G(ctx).WithError(err).Warn("could not cleanup OTel metrics provider")
+				}
+				cCleanup()
+			}(ctx)
+		}
+
+		//
+		// ttrpc server
+		//
 
 		socket := cCtx.String("socket")
 		if !strings.HasPrefix(socket, `\\.\pipe`) {
@@ -206,7 +223,12 @@ var serveCommand = cli.Command{
 			return fmt.Errorf("failed to create new service: %w", err)
 		}
 
-		s, err := ttrpc.NewServer(ttrpc.WithUnaryServerInterceptor(octtrpc.ServerInterceptor()))
+		s, err := ttrpc.NewServer(ttrpc.WithUnaryServerInterceptor(
+			chainInterceptors(
+				octtrpc.ServerInterceptor(),
+				ttrpcMetricInterceptor(),
+			),
+		))
 		if err != nil {
 			return err
 		}
@@ -227,12 +249,14 @@ var serveCommand = cli.Command{
 			// Serve loops infinitely unless s.Shutdown or s.Close are called.
 			// Passed in context is used as parent context for handling requests,
 			// but canceliing does not bring down ttrpc service.
-			if err := trapClosedConnErr(s.Serve(ctx, sl)); err != nil {
-				logrus.WithError(err).Fatal("containerd-shim: ttrpc server failure")
-				serrs <- err
-				return
+			err := trapClosedConnErr(s.Serve(ctx, sl))
+			if err != nil {
+				logrus.WithError(err).Error("containerd-shim: ttrpc server failure")
 			}
-			serrs <- nil
+			// if the service is shutdown, then serrs is closed and sending on it will panic
+			if !svc.IsShutdown() {
+				serrs <- err
+			}
 		}()
 
 		select {
@@ -276,7 +300,7 @@ var serveCommand = cli.Command{
 }
 
 func trapClosedConnErr(err error) error {
-	if err == nil || strings.Contains(err.Error(), "use of closed network connection") {
+	if err == nil || strings.Contains(err.Error(), "use of closed network connection") || errors.Is(err, ttrpc.ErrServerClosed) {
 		return nil
 	}
 	return err
@@ -335,4 +359,25 @@ func setupDebuggerEvent() {
 	}
 	logrus.WithField("event", event).Info("Halting until signalled")
 	_, _ = windows.WaitForSingleObject(handle, windows.INFINITE)
+}
+
+func chainInterceptors(fs ...ttrpc.UnaryServerInterceptor) ttrpc.UnaryServerInterceptor {
+	// we want to call the last interceptor first
+	slices.Reverse(fs)
+
+	return func(ctx context.Context, u ttrpc.Unmarshaler, usi *ttrpc.UnaryServerInfo, m ttrpc.Method) (any, error) {
+		for _, f := range fs {
+			m = iToM(f, u, usi, m)
+		}
+		return m(ctx, u)
+	}
+}
+
+func iToM(f ttrpc.UnaryServerInterceptor, u ttrpc.Unmarshaler, usi *ttrpc.UnaryServerInfo, m ttrpc.Method) ttrpc.Method {
+	if f == nil {
+		return m
+	}
+	return func(ctx context.Context, unmarshal func(any) error) (any, error) {
+		return f(ctx, u, usi, m)
+	}
 }

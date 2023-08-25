@@ -32,9 +32,9 @@ func WithAggregationSelector(selector metric.AggregationSelector) Option {
 	}
 }
 
-// WithNewETWProvider registers a new ETW provider for the exporter to use.
+// WithNewProvider registers a new ETW provider for the exporter to use.
 // The provider will be closed when the exporter is shutdown.
-func WithNewETWProvider(n string) Option {
+func WithNewProvider(n string) Option {
 	return func(e *exporter) error {
 		provider, err := etw.NewProvider(n, nil)
 		if err != nil {
@@ -47,9 +47,9 @@ func WithNewETWProvider(n string) Option {
 	}
 }
 
-// WithExistingETWProvider configures the exporter to use an existing ETW provider.
+// WithExistingProvider configures the exporter to use an existing ETW provider.
 // The provider will not be closed when the exporter is shutdown.
-func WithExistingETWProvider(p *etw.Provider) Option {
+func WithExistingProvider(p *etw.Provider) Option {
 	return func(e *exporter) error {
 		e.provider = p
 		e.closeProvider = false
@@ -57,10 +57,10 @@ func WithExistingETWProvider(p *etw.Provider) Option {
 	}
 }
 
-// WithETWLevel specifies the [etw.Level] to use when exporting metrics to ETW events.
+// WithLevel specifies the [etw.Level] to use when exporting metrics to ETW events.
 //
 // The default is [etw.LevelInfo].
-func WithETWLevel(l etw.Level) Option {
+func WithLevel(l etw.Level) Option {
 	return func(e *exporter) error {
 		e.level = l
 		return nil

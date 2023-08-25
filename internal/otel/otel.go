@@ -22,8 +22,7 @@ var ErrNoETWProvider = errors.New("no ETW provider")
 
 func DefaultResource(appName, appVersion string, attrs ...attribute.KeyValue) *resource.Resource {
 	as := []attribute.KeyValue{
-		semconv.TelemetrySDKLanguageGo,
-		semconv.TelemetrySDKName("opentelemetry"),
+		semconv.TelemetrySDKName("go.opentelemetry.io/otel"),
 		semconv.TelemetrySDKVersion(otel.Version()),
 	}
 

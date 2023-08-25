@@ -22,47 +22,49 @@ func InitializeRuntimeInstruments() {
 	//
 	// https://pkg.go.dev/go.opentelemetry.io/otel#GetMeterProvider
 
-	// naming/format based on examples/guidance here:
-	// https://opentelemetry.io/docs/specs/otel/metrics/semantic_conventions/runtime-environment-metrics
-	Int64ObservableGauge("process.runtime.go.goroutine.count",
+	// naming/format based on guidance:
+	// - https://opentelemetry.io/docs/specs/otel/metrics/semantic_conventions/
+	// - https://opentelemetry.io/docs/specs/otel/metrics/semantic_conventions/runtime-environment-metrics
+
+	Int64ObservableGauge("process.runtime.go.goroutines.count",
 		api.WithDescription("number of goroutines"),
-		api.WithUnit("{count}"),
+		api.WithUnit("{goroutine}"),
 		api.WithInt64Callback(func(_ context.Context, o api.Int64Observer) error {
 			o.Observe(int64(runtime.NumGoroutine()))
 			return nil
 		}),
 	)
 
-	Int64ObservableGauge("process.runtime.go.cgo_calls",
+	Int64ObservableGauge("process.runtime.go.cgo_call.count",
 		api.WithDescription("number of cgo calls made"),
-		api.WithUnit("{count}"),
+		api.WithUnit("{call}"),
 		api.WithInt64Callback(func(_ context.Context, o api.Int64Observer) error {
 			o.Observe(int64(runtime.NumCgoCall()))
 			return nil
 		}),
 	)
 
-	memSys := Int64ObservableGauge("process.runtime.go.memory.sys",
-		api.WithDescription("The total bytes of memory obtained from the OS"),
+	memSys := Int64ObservableGauge("process.runtime.go.memory.system",
+		api.WithDescription("total bytes of memory obtained from the OS"),
 		api.WithUnit("By"))
-	memTotal := Int64ObservableGauge("process.runtime.go.memory.total_alloc",
-		api.WithDescription("The cumulative bytes allocated for heap objects"),
+	memTotal := Int64ObservableGauge("process.runtime.go.memory.total_allocation",
+		api.WithDescription("cumulative bytes allocated for heap objects"),
 		api.WithUnit("By"))
-	memHeap := Int64ObservableGauge("process.runtime.go.memory.heap_alloc",
-		api.WithDescription("The bytes of allocated heap objects"),
+	memHeap := Int64ObservableGauge("process.runtime.go.memory.heap_allocation",
+		api.WithDescription("bytes of allocated heap objects"),
 		api.WithUnit("By"))
 	memMalloc := Int64ObservableGauge("process.runtime.go.memory.mallocs",
-		api.WithDescription("The cumulative count of heap objects allocated"),
+		api.WithDescription("cumulative count of heap objects allocated"),
 		api.WithUnit("{count}"))
 	memFree := Int64ObservableGauge("process.runtime.go.memory.frees",
-		api.WithDescription("The cumulative count of heap objects freed"),
+		api.WithDescription("cumulative count of heap objects freed"),
 		api.WithUnit("{count}"))
 
 	gcFrac := Float64ObservableGauge("process.runtime.go.gc.cpu_fraction",
-		api.WithDescription("The fraction of this program's available CPU time used by the GC."),
+		api.WithDescription("fraction of this program's available CPU time used by the GC."),
 		api.WithUnit("{fraction}"))
 	gcCount := Int64ObservableGauge("process.runtime.go.gc.cycles",
-		api.WithDescription("The number of completed GC cycles"),
+		api.WithDescription("number of completed GC cycles"),
 		api.WithUnit("{count}"))
 
 	if _, err := Meter().RegisterCallback(

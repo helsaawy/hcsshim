@@ -32,6 +32,8 @@ import (
 	"github.com/Microsoft/hcsshim/pkg/securitypolicy"
 )
 
+// TODO: set up OTel meter to export gcs runtime (and container?) stats
+
 func memoryLogFormat(metrics *cgroupstats.Metrics) logrus.Fields {
 	return logrus.Fields{
 		"memoryUsage":      metrics.Memory.Usage.Usage,

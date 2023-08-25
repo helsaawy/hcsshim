@@ -45,12 +45,6 @@ func Meter(opts ...api.MeterOption) api.Meter {
 // re-implement [api.Meter] functions, but instead of returning errors during instrument creation,
 // return a nop implementation.
 
-// onError handles errors in the below instrument creation functions, since it is ignored and
-// instead a nop version is returned.
-func onError(name string, err error) {
-	otel.Handle(fmt.Errorf("unable to create instrument %q from meter %q: %v", name, hcsotel.InstrumentationName, err))
-}
-
 // Int64Counter returns a Counter used to record int64 measurements.
 func Int64Counter(name string, options ...api.Int64CounterOption) api.Int64Counter {
 	i, err := Meter().Int64Counter(name, options...)
@@ -179,4 +173,10 @@ func Float64ObservableGauge(name string, options ...api.Float64ObservableGaugeOp
 		return noop.Float64ObservableGauge{}
 	}
 	return i
+}
+
+// onError handles errors in the below instrument creation functions, since it is ignored and
+// instead a nop version is returned.
+func onError(name string, err error) {
+	otel.Handle(fmt.Errorf("unable to create instrument %q from meter %q: %v", name, hcsotel.InstrumentationName, err))
 }

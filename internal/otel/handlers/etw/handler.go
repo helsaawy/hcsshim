@@ -18,16 +18,17 @@ const name = "OpenTelemetry.Error"
 type handler struct {
 	provider *etw.Provider
 	level    etw.Level
+	extra    []etw.FieldOpt
 }
 
 var _ otel.ErrorHandler = (*handler)(nil)
 
-// New creates a new [ote.ErrorHandler] to log errors raised durint OTel instrument creation/processing/export.
+// New creates a new [otel.ErrorHandler].
 //
 // Since [otel.ErrorHandler] does not expose a Close/Shutdown function, this error handler
-// expects the ETW provider to exist until the global OTel providers
-// (ie, ["go.opentelemetry.io/otel/trace".TracerProvider] and [go.opentelemetry.io/otel/"metric".MeterProvider])
-// are shutdown.
+// expects the ETW provider's lifetime to contain the global OTel providers' lifespans
+// (ie, ["go.opentelemetry.io/otel/trace".TracerProvider] and ["go.opentelemetry.io/otel/metric".MeterProvider]),
+// and persist after all OTel operations.
 func New(opts ...Option) (otel.ErrorHandler, error) {
 	h := &handler{
 		level: etw.LevelError,
@@ -45,10 +46,16 @@ func New(opts ...Option) (otel.ErrorHandler, error) {
 }
 
 func (h *handler) Handle(e error) {
-	// TODO: switch based on error type and write out more information/stack-trace (if available)
-	// ignore [WriteEvent] errors; theres no one to report too
+	// TODO: check if error has more information/stack-trace and write that out
+	//  https://opentelemetry.io/docs/specs/semconv/exceptions/exceptions-spans/#stacktrace-representation
+	// TODO: if error type is meaningfull (ie, not [fmt.wrapError] or [errors.errorString]), provide "exception.type"
+
+	// ignore [WriteEvent] errors; theres no one to report them to
 	_ = h.provider.WriteEvent(name,
 		[]etw.EventOpt{etw.WithLevel(h.level)},
-		[]etw.FieldOpt{etw.StringField("Error", e.Error())},
+		append(
+			[]etw.FieldOpt{etw.StringField("exception.message", e.Error())},
+			h.extra...,
+		),
 	)
 }

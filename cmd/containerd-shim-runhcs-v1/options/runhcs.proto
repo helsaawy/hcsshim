@@ -107,6 +107,9 @@ message Options {
 
 	// scrub_logs enables removing environment variables and other potentially sensitive information from logs
 	bool scrub_logs = 20;
+
+	// metric_config enables and configures the OTel metrics exporter.
+	MetricsConfig metrics_config = 21;
 }
 
 // ProcessDetails contains additional information about a process. This is the additional
@@ -121,4 +124,38 @@ message ProcessDetails {
 	uint32 process_id = 7;
 	uint64 user_time_100_ns = 8;
 	string exec_id = 9;
+}
+
+message MetricsConfig {
+	// enabled enables metrics export.
+	bool enabled = 1;
+
+	// export_interval_secs is the time between metric exports, in seconds.
+	// The default is 5 minutes.
+	uint32 export_interval_secs = 2;
+
+	enum ExporterType {
+		ETW = 0;
+		OTLP = 1 ;
+	}
+
+	// exporter_type is the type of exporter to use.
+	ExporterType exporter_type = 3;
+
+	// otlp_config is the OTLP exporter configuration.
+	// Only valid if exporter_type is OTLP.
+	OTLPConfig otlp_config = 4;
+}
+
+message OTLPConfig {
+	string endpoint = 1;
+
+	// protocol is the OTLP protocol to use
+	//
+	// See link for possible values.
+	// https://github.com/open-telemetry/opentelemetry-specification/blob/v1.8.0/specification/protocol/exporter.md#specify-protocol
+	string protocol = 2;
+
+	// insecure allows an insecure grpc OTLP connection
+	bool insecure = 3;
 }
