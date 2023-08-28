@@ -20,7 +20,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
-	"golang.org/x/exp/slices"
 	"golang.org/x/sys/windows"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
@@ -28,6 +27,7 @@ import (
 	runhcsopts "github.com/Microsoft/hcsshim/cmd/containerd-shim-runhcs-v1/options"
 	"github.com/Microsoft/hcsshim/internal/extendedtask"
 	hcslog "github.com/Microsoft/hcsshim/internal/log"
+	"github.com/Microsoft/hcsshim/internal/otel/instrumentation/otelttrpc"
 	"github.com/Microsoft/hcsshim/internal/shimdiag"
 	"github.com/Microsoft/hcsshim/pkg/octtrpc"
 )
@@ -224,9 +224,9 @@ var serveCommand = cli.Command{
 		}
 
 		s, err := ttrpc.NewServer(ttrpc.WithUnaryServerInterceptor(
-			chainInterceptors(
+			otelttrpc.ChainUnaryServerInterceptors(
 				octtrpc.ServerInterceptor(),
-				ttrpcMetricInterceptor(),
+				otelttrpc.UnaryServerInterceptor(),
 			),
 		))
 		if err != nil {
@@ -359,25 +359,4 @@ func setupDebuggerEvent() {
 	}
 	logrus.WithField("event", event).Info("Halting until signalled")
 	_, _ = windows.WaitForSingleObject(handle, windows.INFINITE)
-}
-
-func chainInterceptors(fs ...ttrpc.UnaryServerInterceptor) ttrpc.UnaryServerInterceptor {
-	// we want to call the last interceptor first
-	slices.Reverse(fs)
-
-	return func(ctx context.Context, u ttrpc.Unmarshaler, usi *ttrpc.UnaryServerInfo, m ttrpc.Method) (any, error) {
-		for _, f := range fs {
-			m = iToM(f, u, usi, m)
-		}
-		return m(ctx, u)
-	}
-}
-
-func iToM(f ttrpc.UnaryServerInterceptor, u ttrpc.Unmarshaler, usi *ttrpc.UnaryServerInfo, m ttrpc.Method) ttrpc.Method {
-	if f == nil {
-		return m
-	}
-	return func(ctx context.Context, unmarshal func(any) error) (any, error) {
-		return f(ctx, u, usi, m)
-	}
 }

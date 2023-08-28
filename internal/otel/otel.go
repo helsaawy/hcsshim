@@ -1,4 +1,4 @@
-// helper functions for dealing with OTel
+// The package contains setup and other components fir OpenTelemetry support.
 package otel
 
 import (
@@ -11,8 +11,8 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.20.0"
 )
 
-// InstrumentationName is the name of OTel ["go.opentelemetry.io/otel/metric".Meter] or
-// ["go.opentelemetry.io/otel/trace".Tracer] used in this repo.
+// InstrumentationName is the name of the OpenTelemetry [metric.Meter] or
+// [trace.Tracer] used to instrument this repo.
 //
 // Use one instrumentation library provider to simplify code.
 const InstrumentationName = "github.com/Microsoft/hcsshim"
@@ -20,12 +20,20 @@ const InstrumentationName = "github.com/Microsoft/hcsshim"
 // ErrNoETWProvider is returned when there is no configured ETW provider.
 var ErrNoETWProvider = errors.New("no ETW provider")
 
+// TODO: add azure host resource detector
+// https://github.com/open-telemetry/opentelemetry-go-contrib/tree/main/detectors
+
 func DefaultResource(appName, appVersion string, attrs ...attribute.KeyValue) *resource.Resource {
+	// required fields
+	// https://opentelemetry.io/docs/specs/otel/resource/semantic_conventions/#telemetry-sdk
 	as := []attribute.KeyValue{
+		semconv.TelemetrySDKLanguageGo,
 		semconv.TelemetrySDKName("go.opentelemetry.io/otel"),
 		semconv.TelemetrySDKVersion(otel.Version()),
 	}
 
+	// recommended fields
+	// https://opentelemetry.io/docs/specs/otel/resource/semantic_conventions/#service-experimental
 	if appName != "" {
 		as = append(as, semconv.ServiceName(appName))
 	}

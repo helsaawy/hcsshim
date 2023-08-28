@@ -10,6 +10,8 @@ import (
 
 const FieldResource = "otel.resource"
 
+// SerializeResource returns an [etw.Struct] field option containing the [resource.Resource]
+// attributes.
 func SerializeResource(rsc *resource.Resource) etw.FieldOpt {
 	if fs := SerializeAttributes(rsc.Attributes()); len(fs) > 0 {
 		return etw.Struct(FieldResource, fs...)

@@ -12,7 +12,7 @@ type Option func(*exporter) error
 // WithTemporalitySelector sets the TemporalitySelector the exporter will use
 // to determine the Temporality of an instrument based on its kind.
 // If this option is not used, the exporter will use
-// ["go.opentelemetry.io/otel/sdk/metric".DefaultTemporalitySelector].
+// [metric.DefaultTemporalitySelector].
 func WithTemporalitySelector(selector metric.TemporalitySelector) Option {
 	return func(e *exporter) error {
 		e.temporality = selector
@@ -23,7 +23,7 @@ func WithTemporalitySelector(selector metric.TemporalitySelector) Option {
 // WithAggregationSelector sets the AggregationSelector the exporter will use
 // to determine the aggregation to use for an instrument based on its kind. If
 // this option is not used, the exporter will use
-// ["go.opentelemetry.io/otel/sdk/metric".DefaultAggregationSelector]
+// [metric.DefaultAggregationSelector]
 // or the aggregation explicitly passed for a view matching an instrument.
 func WithAggregationSelector(selector metric.AggregationSelector) Option {
 	return func(e *exporter) error {

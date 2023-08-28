@@ -12,13 +12,14 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/sdk/instrumentation"
 	"go.opentelemetry.io/otel/sdk/metric"
-	"go.opentelemetry.io/otel/sdk/metric/aggregation"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"go.opentelemetry.io/otel/sdk/resource"
 
 	hcsotel "github.com/Microsoft/hcsshim/internal/otel"
 	oteletw "github.com/Microsoft/hcsshim/internal/otel/etw"
 )
+
+// TODO: export exemplars in when serializing datapoints (https://opentelemetry.io/docs/specs/otel/metrics/sdk/#exemplar)
 
 // names (and inclusion of instrumentation scope and resource) based on OTel specification
 // (and OTLP convention):
@@ -46,6 +47,7 @@ const (
 	fieldValue       = "value"
 
 	fieldInstrumentationScope = "otel.scope"
+	fieldSchemaURL            = "otel.schema_url"
 )
 
 // not thread-safe
@@ -60,9 +62,18 @@ type exporter struct {
 	temporality metric.TemporalitySelector
 	aggregation metric.AggregationSelector
 
-	// cache scopes and resources since they should not change
-	scopes map[instrumentation.Scope]etw.FieldOpt
-	rscs   map[attribute.Distinct]etw.FieldOpt // SDK should copy pointer to original resource struct
+	// cache scope and resources transformation since they should not change
+	//
+	// resources are serialized as a struct named [oteletw.FieldResource] to avoid conflicts (and clutter)
+	// in the emitted  event, but instrumentation information is added to the event directly.
+	// this is:
+	//  1. to follow [OTel mapping recomendations]
+	//  2. to streamline ETW processing based on instrumentation processing
+	//
+	// [OTel mapping recomendations]: https://opentelemetry.io/docs/specs/otel/common/mapping-to-non-otlp/#instrumentationscope
+
+	scopes map[instrumentation.Scope][]etw.FieldOpt
+	rscs   map[attribute.Distinct]etw.FieldOpt
 }
 
 var _ metric.Exporter = &exporter{}
@@ -71,7 +82,7 @@ func (e *exporter) Temporality(k metric.InstrumentKind) metricdata.Temporality {
 	return e.temporality(k)
 }
 
-func (e *exporter) Aggregation(k metric.InstrumentKind) aggregation.Aggregation {
+func (e *exporter) Aggregation(k metric.InstrumentKind) metric.Aggregation {
 	return e.aggregation(k)
 }
 
@@ -83,7 +94,7 @@ func New(opts ...Option) (metric.Exporter, error) {
 		level:       etw.LevelInfo,
 		temporality: metric.DefaultTemporalitySelector,
 		aggregation: metric.DefaultAggregationSelector,
-		scopes:      make(map[instrumentation.Scope]etw.FieldOpt),
+		scopes:      make(map[instrumentation.Scope][]etw.FieldOpt),
 		rscs:        make(map[attribute.Distinct]etw.FieldOpt),
 	}
 
@@ -114,9 +125,18 @@ func (e *exporter) Export(ctx context.Context, metrics *metricdata.ResourceMetri
 	// Errors will be sent to configured error handler
 	var errs []error
 	rsc := e.serializeResource(metrics.Resource)
+	// OTLP specifies the schema url, and allows instrumentation scopes to override resource-level schema url.
+	// follow that convention.
+	// additionally, OTel convention for scope does not specify schema URL, so we add that as a dedicated field.
+	rscURL := metrics.Resource.SchemaURL()
 
 	for _, scope := range metrics.ScopeMetrics {
 		is := e.serializeInstrumentationScope(scope.Scope)
+		url := rscURL
+		if scope.Scope.SchemaURL != "" {
+			url = scope.Scope.SchemaURL
+		}
+
 		for _, m := range scope.Metrics {
 			// short circut on context cancellation
 			if err := ctx.Err(); err != nil {
@@ -124,11 +144,18 @@ func (e *exporter) Export(ctx context.Context, metrics *metricdata.ResourceMetri
 			}
 
 			opts := []etw.EventOpt{etw.WithLevel(e.level)}
-			// rough pre-allocation guess
-			base := []etw.FieldOpt{
+			base := make([]etw.FieldOpt, 0, 5+len(is))
+			base = append(base,
 				etw.StringField(fieldName, m.Name),
 				etw.StringField(fieldDescription, m.Description),
 				etw.StringField(fieldUnit, m.Unit),
+			)
+			if url != "" {
+				base = append(base, etw.StringField(fieldSchemaURL, url))
+			}
+			base = append(base, is...)
+			if rsc != nil {
+				base = append(base, rsc)
 			}
 
 			data, err := e.serializeData(m.Data)
@@ -139,23 +166,15 @@ func (e *exporter) Export(ctx context.Context, metrics *metricdata.ResourceMetri
 
 			// each data point in the metric has unique attributes, so output each in a dedicated event
 			for _, fs := range data {
-				fields := make([]etw.FieldOpt, 0, len(base)+len(fs)+2)
+				fields := make([]etw.FieldOpt, 0, len(base)+len(fs))
 				fields = append(fields, base...)
 				fields = append(fields, fs...)
-
-				// add instrumantation scope and resource metrics data
-				for _, f := range []etw.FieldOpt{is, rsc} {
-					if f != nil {
-						fields = append(fields, f)
-					}
-				}
 
 				if err := e.provider.WriteEvent(eventName, opts, fields); err != nil {
 					errs = append(errs, fmt.Errorf("metric export for %q: %w", m.Name, err))
 				}
 			}
 		}
-
 	}
 
 	switch n := len(errs); n {
@@ -233,8 +252,6 @@ func serializeGauge[T int64 | float64](data metricdata.Gauge[T]) ([][]etw.FieldO
 }
 
 func serializeDataPoints[T int64 | float64](data []metricdata.DataPoint[T]) ([][]etw.FieldOpt, error) {
-	// TODO: exemplars (as array?)
-
 	fields := make([][]etw.FieldOpt, 0, len(data))
 	for _, datum := range data {
 		attrs := oteletw.SerializeAttributes(datum.Attributes.ToSlice())
@@ -268,8 +285,6 @@ func serializeHistogram[T int64 | float64](data metricdata.Histogram[T]) ([][]et
 }
 
 func serializeHistogramDataPoints[T int64 | float64](data []metricdata.HistogramDataPoint[T]) ([][]etw.FieldOpt, error) {
-	// TODO: exemplars (as array?)
-
 	fields := make([][]etw.FieldOpt, 0, len(data))
 	for _, datum := range data {
 		attrs := oteletw.SerializeAttributes(datum.Attributes.ToSlice())
@@ -327,7 +342,8 @@ func (e *exporter) serializeResource(rsc *resource.Resource) etw.FieldOpt {
 	return f
 }
 
-func (e *exporter) serializeInstrumentationScope(is instrumentation.Scope) etw.FieldOpt {
+// see: https://opentelemetry.io/docs/specs/otel/common/mapping-to-non-otlp/#instrumentationscope
+func (e *exporter) serializeInstrumentationScope(is instrumentation.Scope) []etw.FieldOpt {
 	if f, ok := e.scopes[is]; ok {
 		return f
 	}
@@ -335,17 +351,12 @@ func (e *exporter) serializeInstrumentationScope(is instrumentation.Scope) etw.F
 	// don't need to report schema URL
 	fields := make([]etw.FieldOpt, 0, 2)
 	if is.Name != "" {
-		fields = append(fields, etw.StringField("name", is.Name))
+		fields = append(fields, etw.StringField(fieldInstrumentationScope+".name", is.Name))
 	}
 	if is.Version != "" {
-		fields = append(fields, etw.StringField("version", is.Version))
+		fields = append(fields, etw.StringField(fieldInstrumentationScope+".version", is.Version))
 	}
 
-	var f etw.FieldOpt
-	if len(fields) > 0 {
-		f = etw.Struct(fieldInstrumentationScope, fields...)
-	}
-
-	e.scopes[is] = f
-	return f
+	e.scopes[is] = fields
+	return fields
 }

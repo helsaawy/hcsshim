@@ -7,7 +7,6 @@ import (
 
 	"go.opentelemetry.io/otel"
 	api "go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/sdk/metric"
 	semconv "go.opentelemetry.io/otel/semconv/v1.20.0"
 
@@ -35,6 +34,8 @@ func InitializeProvider(opts ...metric.Option) (func(context.Context) error, err
 }
 
 func Meter(opts ...api.MeterOption) api.Meter {
+	// TODO: if repo gets a global version value, add that here via [api.WithInstrumentationVersion]
+
 	return otel.Meter(
 		hcsotel.InstrumentationName,
 		// append opts to default MeterOptions so they can take precedence and override defaults
@@ -42,15 +43,16 @@ func Meter(opts ...api.MeterOption) api.Meter {
 	)
 }
 
-// re-implement [api.Meter] functions, but instead of returning errors during instrument creation,
-// return a nop implementation.
+// re-implement [api.Meter] functions, but instead of returning errors, use the OTel error handler.
+//
+// OTel specification (and SDK implementation) return a valid instrument, regardless of error status:
+// https://opentelemetry.io/docs/specs/otel/library-guidelines/#api-and-minimal-implementation
 
 // Int64Counter returns a Counter used to record int64 measurements.
 func Int64Counter(name string, options ...api.Int64CounterOption) api.Int64Counter {
 	i, err := Meter().Int64Counter(name, options...)
 	if err != nil {
 		onError(name, err)
-		return noop.Int64Counter{}
 	}
 	return i
 }
@@ -61,7 +63,6 @@ func Int64UpDownCounter(name string, options ...api.Int64UpDownCounterOption) ap
 	i, err := Meter().Int64UpDownCounter(name, options...)
 	if err != nil {
 		onError(name, err)
-		return noop.Int64UpDownCounter{}
 	}
 	return i
 }
@@ -71,7 +72,6 @@ func Int64Histogram(name string, options ...api.Int64HistogramOption) api.Int64H
 	i, err := Meter().Int64Histogram(name, options...)
 	if err != nil {
 		onError(name, err)
-		return noop.Int64Histogram{}
 	}
 	return i
 }
@@ -82,7 +82,6 @@ func Int64ObservableCounter(name string, options ...api.Int64ObservableCounterOp
 	i, err := Meter().Int64ObservableCounter(name, options...)
 	if err != nil {
 		onError(name, err)
-		return noop.Int64ObservableCounter{}
 	}
 	return i
 }
@@ -93,7 +92,6 @@ func Int64ObservableUpDownCounter(name string, options ...api.Int64ObservableUpD
 	i, err := Meter().Int64ObservableUpDownCounter(name, options...)
 	if err != nil {
 		onError(name, err)
-		return noop.Int64ObservableUpDownCounter{}
 	}
 	return i
 }
@@ -104,7 +102,6 @@ func Int64ObservableGauge(name string, options ...api.Int64ObservableGaugeOption
 	i, err := Meter().Int64ObservableGauge(name, options...)
 	if err != nil {
 		onError(name, err)
-		return noop.Int64ObservableGauge{}
 	}
 	return i
 }
@@ -115,7 +112,6 @@ func Float64Counter(name string, options ...api.Float64CounterOption) api.Float6
 	i, err := Meter().Float64Counter(name, options...)
 	if err != nil {
 		onError(name, err)
-		return noop.Float64Counter{}
 	}
 	return i
 }
@@ -126,7 +122,6 @@ func Float64UpDownCounter(name string, options ...api.Float64UpDownCounterOption
 	i, err := Meter().Float64UpDownCounter(name, options...)
 	if err != nil {
 		onError(name, err)
-		return noop.Float64UpDownCounter{}
 	}
 	return i
 }
@@ -137,7 +132,6 @@ func Float64Histogram(name string, options ...api.Float64HistogramOption) api.Fl
 	i, err := Meter().Float64Histogram(name, options...)
 	if err != nil {
 		onError(name, err)
-		return noop.Float64Histogram{}
 	}
 	return i
 }
@@ -148,7 +142,6 @@ func Float64ObservableCounter(name string, options ...api.Float64ObservableCount
 	i, err := Meter().Float64ObservableCounter(name, options...)
 	if err != nil {
 		onError(name, err)
-		return noop.Float64ObservableCounter{}
 	}
 	return i
 }
@@ -159,7 +152,6 @@ func Float64ObservableUpDownCounter(name string, options ...api.Float64Observabl
 	i, err := Meter().Float64ObservableUpDownCounter(name, options...)
 	if err != nil {
 		onError(name, err)
-		return noop.Float64ObservableUpDownCounter{}
 	}
 	return i
 }
@@ -170,7 +162,6 @@ func Float64ObservableGauge(name string, options ...api.Float64ObservableGaugeOp
 	i, err := Meter().Float64ObservableGauge(name, options...)
 	if err != nil {
 		onError(name, err)
-		return noop.Float64ObservableGauge{}
 	}
 	return i
 }

@@ -4,20 +4,19 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"net/url"
 	"reflect"
-	"strings"
 	"time"
 
 	"github.com/Microsoft/go-winio/pkg/etw"
-	"github.com/containerd/ttrpc"
 	"github.com/sirupsen/logrus"
+	"go.opentelemetry.io/contrib/instrumentation/runtime"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	api "go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	"go.opentelemetry.io/otel/sdk/metric"
-	"go.opentelemetry.io/otel/sdk/metric/aggregation"
 	semconv "go.opentelemetry.io/otel/semconv/v1.20.0"
-	"google.golang.org/grpc/status"
 
 	"github.com/Microsoft/hcsshim/cmd/containerd-shim-runhcs-v1/options"
 	"github.com/Microsoft/hcsshim/internal/log"
@@ -28,8 +27,7 @@ import (
 	hcsmetric "github.com/Microsoft/hcsshim/internal/otel/metric"
 )
 
-// TODO:
-// - add auto-counter for HCS code
+// TODO: instrument bridge and HCS RPC calls
 
 func startMetrics(ctx context.Context, opts *options.Options, name, version string) func(context.Context) error {
 	conf := opts.GetMetricsConfig()
@@ -66,32 +64,15 @@ func startMetrics(ctx context.Context, opts *options.Options, name, version stri
 	}
 	otel.SetErrorHandler(h)
 
-	// TODO: conf.ExporterType and OTLP config
-	exp, err := etwmetric.New(
-		etwmetric.WithExistingProvider(etwProvider),
-		// histograms are for durations, in seconds; set more appropriate boundaries boundaries
-		etwmetric.WithAggregationSelector(
-			func(ik metric.InstrumentKind) aggregation.Aggregation {
-				switch ik {
-				case metric.InstrumentKindHistogram:
-					return aggregation.ExplicitBucketHistogram{
-						Boundaries: []float64{0, 0.005, 0.01, 0.25, 0.50, 0.75, 1, 5, 10, 30, 60},
-					}
-				}
-				return metric.DefaultAggregationSelector(ik)
-			},
-		),
-	)
+	exp, err := metricExporter(ctx, conf)
 	if err != nil {
 		log.G(ctx).WithFields(logrus.Fields{
 			logrus.ErrorKey: err,
-			"provider":      etwProvider.String(),
-		}).Warning("could not create OTel metric ETW exporter")
+		}).Warning("could not create OTel metrics exporter")
 		return nil
 	}
 
-	interval := 1 * time.Minute
-	// interval := 5 * time.Minute
+	interval := 5 * time.Minute
 	if d := time.Duration(conf.ExportIntervalSecs) * time.Second; d > 0 {
 		interval = d
 		log.G(ctx).WithField("interval", interval.String()).Warning("overriding exporter read interval")
@@ -111,46 +92,60 @@ func startMetrics(ctx context.Context, opts *options.Options, name, version stri
 	}
 	entry.Info("started OTel meter provider")
 
-	hcsmetric.InitializeRuntimeInstruments()
+	// the read mem stats interval should be the max of the configured value and  reader interval,
+	// but set it explicitly here just to be safe.
+	if err := runtime.Start(runtime.WithMinimumReadMemStatsInterval(interval)); err != nil {
+		otel.Handle(fmt.Errorf("initialize runtime instrumentation: %w", err))
+	}
 	return cleanup
 }
 
-func ttrpcMetricInterceptor() ttrpc.UnaryServerInterceptor {
-	// ttrpc counters and histograms
-	// if this is called before the MeterProvider is is initialized,
-	// they will first be created as nop instruments, and then recreated with valid implementations.
-	//
-	// see: https://pkg.go.dev/go.opentelemetry.io/otel#GetMeterProvider
-	ttrpcCount := hcsmetric.Int64Counter("rpc.ttrpc.count",
-		api.WithDescription("number of ttrpc requests received"),
-		api.WithUnit("{count}"))
-	ttrpcDuration := hcsmetric.Float64Histogram("rpc.ttrpc.duration",
-		api.WithDescription("duration of ttrpc requests"),
-		api.WithUnit("s"))
-
-	return func(ctx context.Context, u ttrpc.Unmarshaler, usi *ttrpc.UnaryServerInfo, m ttrpc.Method) (any, error) {
-		start := time.Now()
-		r, err := m(ctx, u)
-		d := time.Since(start)
-
-		attrs := make([]attribute.KeyValue, 0, 4) // rpc system, service, method, & status
-		attrs = append(attrs, semconv.RPCSystemKey.String("ttrpc"))
-
-		// method names should be of the form `/service.name/request`
-		if svc, req, ok := strings.Cut(strings.TrimPrefix(usi.FullMethod, "/"), "/"); ok {
-			attrs = append(attrs,
-				semconv.RPCService(svc),
-				semconv.RPCMethod(req),
-			)
+func metricExporter(ctx context.Context, conf *options.MetricsConfig) (exp metric.Exporter, err error) {
+	et := conf.ExporterType
+	switch et {
+	case options.MetricsConfig_ETW:
+		exp, err = etwmetric.New(etwmetric.WithExistingProvider(etwProvider))
+	case options.MetricsConfig_OTLP:
+		conf := conf.GetOtlpConfig()
+		if conf == nil {
+			err = fmt.Errorf("OTLP config cannot be nil")
+			break
 		}
 
-		// ttrpc uses grpc error/status codes
-		attrs = append(attrs, attribute.Key("rpc.ttrpc.status_code").Int64(int64(status.Code(err))))
-
-		set := attribute.NewSet(attrs...)
-		ttrpcCount.Add(ctx, 1, api.WithAttributeSet(set))
-		ttrpcDuration.Record(ctx, d.Seconds(), api.WithAttributeSet(set))
-
-		return r, err
+		// based off of containerd tracing processor plugin
+		// github.com/containerd/containerd/tracing/plugin/otlp.go
+		switch p := conf.Protocol; p {
+		case "", "http/protobuf":
+			var u *url.URL
+			u, err = url.Parse(conf.Endpoint)
+			if err != nil {
+				err = fmt.Errorf("invalid OTLP endpoint %q: %w", conf.Endpoint, err)
+				break
+			}
+			opts := []otlpmetrichttp.Option{
+				otlpmetrichttp.WithEndpoint(u.Host),
+			}
+			if u.Scheme == "http" {
+				opts = append(opts, otlpmetrichttp.WithInsecure())
+			}
+			exp, err = otlpmetrichttp.New(ctx, opts...)
+		case "grpc":
+			opts := []otlpmetricgrpc.Option{
+				otlpmetricgrpc.WithEndpoint(conf.Endpoint),
+			}
+			if conf.Insecure {
+				opts = append(opts, otlpmetricgrpc.WithInsecure())
+			}
+			exp, err = otlpmetricgrpc.New(ctx, opts...)
+		default:
+			err = fmt.Errorf("unsupported OTLP protocol %s", p)
+		}
 	}
+
+	if err != nil {
+		return nil, fmt.Errorf("OpenTelemetry %q metrics exporter: %w", et.String(), err)
+	}
+
+	log.G(ctx).WithField("config", log.Format(ctx, conf)).Debug("created OTel metrics exporter")
+	return exp, nil
 }

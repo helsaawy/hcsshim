@@ -1,6 +1,4 @@
-// This package provides and [OTel error handler] that outputs via logrus.
-//
-// [OTel error handler]: https://pkg.go.dev/go.opentelemetry.io/otel#ErrorHandler
+// This package provides a logrus OTel error handler.
 package logrus
 
 import (

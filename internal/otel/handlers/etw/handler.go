@@ -27,7 +27,7 @@ var _ otel.ErrorHandler = (*handler)(nil)
 //
 // Since [otel.ErrorHandler] does not expose a Close/Shutdown function, this error handler
 // expects the ETW provider's lifetime to contain the global OTel providers' lifespans
-// (ie, ["go.opentelemetry.io/otel/trace".TracerProvider] and ["go.opentelemetry.io/otel/metric".MeterProvider]),
+// (ie, [trace.TracerProvider] and [metric.MeterProvider]),
 // and persist after all OTel operations.
 func New(opts ...Option) (otel.ErrorHandler, error) {
 	h := &handler{
