@@ -152,7 +152,7 @@ if(Linter IN_LIST _go_comps)
         _find_go_fail("Failed to get go version: `${Go_Linter_EXECUTABLE} version` failed with: ${_GO_LINTER_VERSION_RAW}")
     endif()
 
-    if (_GO_LINTER_VERSION_RAW MATCHES "^golangci-lint has version ([0-9]+)\\.([0-9]+)\\.([0-9]+)")
+    if (_GO_LINTER_VERSION_RAW MATCHES "^golangci-lint has version [v]?([0-9]+)\\.([0-9]+)\\.([0-9]+)")
         _find_go_message(VERBOSE "parsed golangci-lint version string: ${_GO_LINTER_VERSION_RAW}")
         set(Go_Linter_VERSION_MAJOR "${CMAKE_MATCH_1}")
         set(Go_Linter_VERSION_MINOR "${CMAKE_MATCH_2}")
