@@ -11,30 +11,32 @@ import (
 	"github.com/containerd/ttrpc"
 	"go.opentelemetry.io/otel/attribute"
 	api "go.opentelemetry.io/otel/metric"
-	semconv "go.opentelemetry.io/otel/semconv/v1.20.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
 	"golang.org/x/exp/slices"
 	"google.golang.org/grpc/status"
 
 	hcsmetric "github.com/Microsoft/hcsshim/internal/otel/metric"
 )
 
+var rpcSystem = semconv.RPCSystemKey.String("ttrpc")
+
 // based of otelgrpc (see doc comment) and this PR:
 // https://github.com/containerd/ttrpc/pull/145
 
 func UnaryServerInterceptor() ttrpc.UnaryServerInterceptor {
 	// even though OTel recomendation is to use only base units (ie, seconds), their convention
-	// for RPC servers is to use ms for request duration
+	// for RPC servers is to use ms for request rpcDuration
 	// (https://opentelemetry.io/docs/specs/otel/metrics/semantic_conventions/rpc-metrics/#rpc-server).
 	//
 	// The grpc interceptors follow this convention:
 	// https://github.com/open-telemetry/opentelemetry-go-contrib/blob/8f53fc19a16c5bd0b1dc1254d5e41696a9ae262e/instrumentation/google.golang.org/grpc/otelgrpc/config.go#L75
-	ttrpcDuration := hcsmetric.Int64Histogram("rpc.ttrpc.duration",
-		api.WithDescription("duration of ttrpc requests"),
+	rpcDuration := hcsmetric.Int64Histogram("rpc.server.duration",
+		api.WithDescription("Duration of inbound RPC requests"),
 		api.WithUnit("ms"))
 
 	return func(ctx context.Context, u ttrpc.Unmarshaler, usi *ttrpc.UnaryServerInfo, m ttrpc.Method) (r any, err error) {
 		attrs := make([]attribute.KeyValue, 0, 4) // rpc system, service, method, & status
-		attrs = append(attrs, semconv.RPCSystemKey.String("ttrpc"))
+		attrs = append(attrs, rpcSystem)
 		// method names should be of the form `/service.name/request`
 		if svc, req, ok := strings.Cut(strings.TrimPrefix(usi.FullMethod, "/"), "/"); ok {
 			attrs = append(attrs,
@@ -47,7 +49,7 @@ func UnaryServerInterceptor() ttrpc.UnaryServerInterceptor {
 			d := time.Since(t).Milliseconds()
 			// ttrpc uses grpc error/status codes
 
-			ttrpcDuration.Record(ctx, d, api.WithAttributeSet(attribute.NewSet(
+			rpcDuration.Record(ctx, d, api.WithAttributeSet(attribute.NewSet(
 				append(attrs, attribute.Key("rpc.ttrpc.status_code").Int64(int64(status.Code(err))))...,
 			)))
 		}(time.Now())

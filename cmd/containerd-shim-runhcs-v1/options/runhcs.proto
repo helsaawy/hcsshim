@@ -108,8 +108,9 @@ message Options {
 	// scrub_logs enables removing environment variables and other potentially sensitive information from logs
 	bool scrub_logs = 20;
 
-	// metric_config enables and configures the OTel metrics exporter.
-	MetricsConfig metrics_config = 21;
+	// otel_config enables and configures Open Telemetry signals (traces, metrics, and logs).
+	// Currently, only metrics are supported.
+	OpenTelemetryConfig otel_config = 21;
 }
 
 // ProcessDetails contains additional information about a process. This is the additional
@@ -126,6 +127,12 @@ message ProcessDetails {
 	string exec_id = 9;
 }
 
+message OpenTelemetryConfig {
+	// reserve 1 and 3 for traces and logs (if added in the future)
+	reserved 1, 3;
+	MetricsConfig metrics = 2;
+}
+
 message MetricsConfig {
 	// enabled enables metrics export.
 	bool enabled = 1;
@@ -134,28 +141,31 @@ message MetricsConfig {
 	// The default is 5 minutes.
 	uint32 export_interval_secs = 2;
 
-	enum ExporterType {
-		ETW = 0;
-		OTLP = 1 ;
-	}
-
 	// exporter_type is the type of exporter to use.
-	ExporterType exporter_type = 3;
+	OTelExporterType exporter_type = 3;
 
 	// otlp_config is the OTLP exporter configuration.
 	// Only valid if exporter_type is OTLP.
 	OTLPConfig otlp_config = 4;
 }
 
+enum OTelExporterType {
+	ETW = 0;
+	OTLP = 1;
+}
+
+// OTLPConfig configures an OpenTelemetry Line Protocol (OTLP) exporter.
+//
+// See the [documentation] for supported values and more information.
+//
+// [documentation]: https://opentelemetry.io/docs/specs/otel/protocol/exporter/
 message OTLPConfig {
+	// endpoint is the OTLP endpoint to send signals to.
 	string endpoint = 1;
 
-	// protocol is the OTLP protocol to use
-	//
-	// See link for possible values.
-	// https://github.com/open-telemetry/opentelemetry-specification/blob/v1.8.0/specification/protocol/exporter.md#specify-protocol
+	// protocol is the OTLP protocol to use.
 	string protocol = 2;
 
-	// insecure allows an insecure grpc OTLP connection
+	// insecure allows an insecure gRPC OTLP connection.
 	bool insecure = 3;
 }

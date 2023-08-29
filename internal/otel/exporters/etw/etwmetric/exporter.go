@@ -15,7 +15,6 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"go.opentelemetry.io/otel/sdk/resource"
 
-	hcsotel "github.com/Microsoft/hcsshim/internal/otel"
 	oteletw "github.com/Microsoft/hcsshim/internal/otel/etw"
 )
 
@@ -105,7 +104,7 @@ func New(opts ...Option) (metric.Exporter, error) {
 	}
 
 	if e.provider == nil {
-		return nil, hcsotel.ErrNoETWProvider
+		return nil, oteletw.ErrNoETWProvider
 	}
 
 	return e, nil
@@ -114,7 +113,7 @@ func New(opts ...Option) (metric.Exporter, error) {
 func (e *exporter) Export(ctx context.Context, metrics *metricdata.ResourceMetrics) error {
 	if e.provider == nil {
 		// should not happen
-		return hcsotel.ErrNoETWProvider
+		return oteletw.ErrNoETWProvider
 	}
 
 	if !e.provider.IsEnabledForLevel(e.level) {

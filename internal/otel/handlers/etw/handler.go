@@ -6,7 +6,7 @@ import (
 	"github.com/Microsoft/go-winio/pkg/etw"
 	"go.opentelemetry.io/otel"
 
-	hcsotel "github.com/Microsoft/hcsshim/internal/otel"
+	oteletw "github.com/Microsoft/hcsshim/internal/otel/etw"
 )
 
 // .NET OTel SDK sets the event name to "OpenTelemetry-Sdk".
@@ -40,7 +40,7 @@ func New(opts ...Option) (otel.ErrorHandler, error) {
 	}
 
 	if h.provider == nil {
-		return nil, hcsotel.ErrNoETWProvider
+		return nil, oteletw.ErrNoETWProvider
 	}
 	return h, nil
 }

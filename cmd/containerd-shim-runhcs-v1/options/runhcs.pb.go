@@ -21,6 +21,52 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type OTelExporterType int32
+
+const (
+	OTelExporterType_ETW  OTelExporterType = 0
+	OTelExporterType_OTLP OTelExporterType = 1
+)
+
+// Enum value maps for OTelExporterType.
+var (
+	OTelExporterType_name = map[int32]string{
+		0: "ETW",
+		1: "OTLP",
+	}
+	OTelExporterType_value = map[string]int32{
+		"ETW":  0,
+		"OTLP": 1,
+	}
+)
+
+func (x OTelExporterType) Enum() *OTelExporterType {
+	p := new(OTelExporterType)
+	*p = x
+	return p
+}
+
+func (x OTelExporterType) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (OTelExporterType) Descriptor() protoreflect.EnumDescriptor {
+	return file_github_com_Microsoft_hcsshim_cmd_containerd_shim_runhcs_v1_options_runhcs_proto_enumTypes[0].Descriptor()
+}
+
+func (OTelExporterType) Type() protoreflect.EnumType {
+	return &file_github_com_Microsoft_hcsshim_cmd_containerd_shim_runhcs_v1_options_runhcs_proto_enumTypes[0]
+}
+
+func (x OTelExporterType) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use OTelExporterType.Descriptor instead.
+func (OTelExporterType) EnumDescriptor() ([]byte, []int) {
+	return file_github_com_Microsoft_hcsshim_cmd_containerd_shim_runhcs_v1_options_runhcs_proto_rawDescGZIP(), []int{0}
+}
+
 type Options_DebugType int32
 
 const (
@@ -54,11 +100,11 @@ func (x Options_DebugType) String() string {
 }
 
 func (Options_DebugType) Descriptor() protoreflect.EnumDescriptor {
-	return file_github_com_Microsoft_hcsshim_cmd_containerd_shim_runhcs_v1_options_runhcs_proto_enumTypes[0].Descriptor()
+	return file_github_com_Microsoft_hcsshim_cmd_containerd_shim_runhcs_v1_options_runhcs_proto_enumTypes[1].Descriptor()
 }
 
 func (Options_DebugType) Type() protoreflect.EnumType {
-	return &file_github_com_Microsoft_hcsshim_cmd_containerd_shim_runhcs_v1_options_runhcs_proto_enumTypes[0]
+	return &file_github_com_Microsoft_hcsshim_cmd_containerd_shim_runhcs_v1_options_runhcs_proto_enumTypes[1]
 }
 
 func (x Options_DebugType) Number() protoreflect.EnumNumber {
@@ -100,11 +146,11 @@ func (x Options_SandboxIsolation) String() string {
 }
 
 func (Options_SandboxIsolation) Descriptor() protoreflect.EnumDescriptor {
-	return file_github_com_Microsoft_hcsshim_cmd_containerd_shim_runhcs_v1_options_runhcs_proto_enumTypes[1].Descriptor()
+	return file_github_com_Microsoft_hcsshim_cmd_containerd_shim_runhcs_v1_options_runhcs_proto_enumTypes[2].Descriptor()
 }
 
 func (Options_SandboxIsolation) Type() protoreflect.EnumType {
-	return &file_github_com_Microsoft_hcsshim_cmd_containerd_shim_runhcs_v1_options_runhcs_proto_enumTypes[1]
+	return &file_github_com_Microsoft_hcsshim_cmd_containerd_shim_runhcs_v1_options_runhcs_proto_enumTypes[2]
 }
 
 func (x Options_SandboxIsolation) Number() protoreflect.EnumNumber {
@@ -114,52 +160,6 @@ func (x Options_SandboxIsolation) Number() protoreflect.EnumNumber {
 // Deprecated: Use Options_SandboxIsolation.Descriptor instead.
 func (Options_SandboxIsolation) EnumDescriptor() ([]byte, []int) {
 	return file_github_com_Microsoft_hcsshim_cmd_containerd_shim_runhcs_v1_options_runhcs_proto_rawDescGZIP(), []int{0, 1}
-}
-
-type MetricsConfig_ExporterType int32
-
-const (
-	MetricsConfig_ETW  MetricsConfig_ExporterType = 0
-	MetricsConfig_OTLP MetricsConfig_ExporterType = 1
-)
-
-// Enum value maps for MetricsConfig_ExporterType.
-var (
-	MetricsConfig_ExporterType_name = map[int32]string{
-		0: "ETW",
-		1: "OTLP",
-	}
-	MetricsConfig_ExporterType_value = map[string]int32{
-		"ETW":  0,
-		"OTLP": 1,
-	}
-)
-
-func (x MetricsConfig_ExporterType) Enum() *MetricsConfig_ExporterType {
-	p := new(MetricsConfig_ExporterType)
-	*p = x
-	return p
-}
-
-func (x MetricsConfig_ExporterType) String() string {
-	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
-}
-
-func (MetricsConfig_ExporterType) Descriptor() protoreflect.EnumDescriptor {
-	return file_github_com_Microsoft_hcsshim_cmd_containerd_shim_runhcs_v1_options_runhcs_proto_enumTypes[2].Descriptor()
-}
-
-func (MetricsConfig_ExporterType) Type() protoreflect.EnumType {
-	return &file_github_com_Microsoft_hcsshim_cmd_containerd_shim_runhcs_v1_options_runhcs_proto_enumTypes[2]
-}
-
-func (x MetricsConfig_ExporterType) Number() protoreflect.EnumNumber {
-	return protoreflect.EnumNumber(x)
-}
-
-// Deprecated: Use MetricsConfig_ExporterType.Descriptor instead.
-func (MetricsConfig_ExporterType) EnumDescriptor() ([]byte, []int) {
-	return file_github_com_Microsoft_hcsshim_cmd_containerd_shim_runhcs_v1_options_runhcs_proto_rawDescGZIP(), []int{2, 0}
 }
 
 // Options are the set of customizations that can be passed at Create time.
@@ -237,8 +237,9 @@ type Options struct {
 	NoInheritHostTimezone bool `protobuf:"varint,19,opt,name=no_inherit_host_timezone,json=noInheritHostTimezone,proto3" json:"no_inherit_host_timezone,omitempty"`
 	// scrub_logs enables removing environment variables and other potentially sensitive information from logs
 	ScrubLogs bool `protobuf:"varint,20,opt,name=scrub_logs,json=scrubLogs,proto3" json:"scrub_logs,omitempty"`
-	// metric_config enables and configures the OTel metrics exporter.
-	MetricsConfig *MetricsConfig `protobuf:"bytes,21,opt,name=metrics_config,json=metricsConfig,proto3" json:"metrics_config,omitempty"`
+	// otel_config enables and configures Open Telemetry signals (traces, metrics, and logs).
+	// Currently, only metrics are supported.
+	OtelConfig *OpenTelemetryConfig `protobuf:"bytes,21,opt,name=otel_config,json=otelConfig,proto3" json:"otel_config,omitempty"`
 }
 
 func (x *Options) Reset() {
@@ -413,9 +414,9 @@ func (x *Options) GetScrubLogs() bool {
 	return false
 }
 
-func (x *Options) GetMetricsConfig() *MetricsConfig {
+func (x *Options) GetOtelConfig() *OpenTelemetryConfig {
 	if x != nil {
-		return x.MetricsConfig
+		return x.OtelConfig
 	}
 	return nil
 }
@@ -533,6 +534,53 @@ func (x *ProcessDetails) GetExecID() string {
 	return ""
 }
 
+type OpenTelemetryConfig struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Metrics *MetricsConfig `protobuf:"bytes,2,opt,name=metrics,proto3" json:"metrics,omitempty"`
+}
+
+func (x *OpenTelemetryConfig) Reset() {
+	*x = OpenTelemetryConfig{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_github_com_Microsoft_hcsshim_cmd_containerd_shim_runhcs_v1_options_runhcs_proto_msgTypes[2]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *OpenTelemetryConfig) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OpenTelemetryConfig) ProtoMessage() {}
+
+func (x *OpenTelemetryConfig) ProtoReflect() protoreflect.Message {
+	mi := &file_github_com_Microsoft_hcsshim_cmd_containerd_shim_runhcs_v1_options_runhcs_proto_msgTypes[2]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OpenTelemetryConfig.ProtoReflect.Descriptor instead.
+func (*OpenTelemetryConfig) Descriptor() ([]byte, []int) {
+	return file_github_com_Microsoft_hcsshim_cmd_containerd_shim_runhcs_v1_options_runhcs_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *OpenTelemetryConfig) GetMetrics() *MetricsConfig {
+	if x != nil {
+		return x.Metrics
+	}
+	return nil
+}
+
 type MetricsConfig struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -544,7 +592,7 @@ type MetricsConfig struct {
 	// The default is 5 minutes.
 	ExportIntervalSecs uint32 `protobuf:"varint,2,opt,name=export_interval_secs,json=exportIntervalSecs,proto3" json:"export_interval_secs,omitempty"`
 	// exporter_type is the type of exporter to use.
-	ExporterType MetricsConfig_ExporterType `protobuf:"varint,3,opt,name=exporter_type,json=exporterType,proto3,enum=containerd.runhcs.v1.MetricsConfig_ExporterType" json:"exporter_type,omitempty"`
+	ExporterType OTelExporterType `protobuf:"varint,3,opt,name=exporter_type,json=exporterType,proto3,enum=containerd.runhcs.v1.OTelExporterType" json:"exporter_type,omitempty"`
 	// otlp_config is the OTLP exporter configuration.
 	// Only valid if exporter_type is OTLP.
 	OtlpConfig *OTLPConfig `protobuf:"bytes,4,opt,name=otlp_config,json=otlpConfig,proto3" json:"otlp_config,omitempty"`
@@ -553,7 +601,7 @@ type MetricsConfig struct {
 func (x *MetricsConfig) Reset() {
 	*x = MetricsConfig{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_github_com_Microsoft_hcsshim_cmd_containerd_shim_runhcs_v1_options_runhcs_proto_msgTypes[2]
+		mi := &file_github_com_Microsoft_hcsshim_cmd_containerd_shim_runhcs_v1_options_runhcs_proto_msgTypes[3]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -566,7 +614,7 @@ func (x *MetricsConfig) String() string {
 func (*MetricsConfig) ProtoMessage() {}
 
 func (x *MetricsConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_github_com_Microsoft_hcsshim_cmd_containerd_shim_runhcs_v1_options_runhcs_proto_msgTypes[2]
+	mi := &file_github_com_Microsoft_hcsshim_cmd_containerd_shim_runhcs_v1_options_runhcs_proto_msgTypes[3]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -579,7 +627,7 @@ func (x *MetricsConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MetricsConfig.ProtoReflect.Descriptor instead.
 func (*MetricsConfig) Descriptor() ([]byte, []int) {
-	return file_github_com_Microsoft_hcsshim_cmd_containerd_shim_runhcs_v1_options_runhcs_proto_rawDescGZIP(), []int{2}
+	return file_github_com_Microsoft_hcsshim_cmd_containerd_shim_runhcs_v1_options_runhcs_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *MetricsConfig) GetEnabled() bool {
@@ -596,11 +644,11 @@ func (x *MetricsConfig) GetExportIntervalSecs() uint32 {
 	return 0
 }
 
-func (x *MetricsConfig) GetExporterType() MetricsConfig_ExporterType {
+func (x *MetricsConfig) GetExporterType() OTelExporterType {
 	if x != nil {
 		return x.ExporterType
 	}
-	return MetricsConfig_ETW
+	return OTelExporterType_ETW
 }
 
 func (x *MetricsConfig) GetOtlpConfig() *OTLPConfig {
@@ -610,25 +658,28 @@ func (x *MetricsConfig) GetOtlpConfig() *OTLPConfig {
 	return nil
 }
 
+// OTLPConfig configures an OpenTelemetry Line Protocol (OTLP) exporter.
+//
+// See the [documentation] for supported values and more information.
+//
+// [documentation]: https://opentelemetry.io/docs/specs/otel/protocol/exporter/
 type OTLPConfig struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
+	// endpoint is the OTLP endpoint to send signals to.
 	Endpoint string `protobuf:"bytes,1,opt,name=endpoint,proto3" json:"endpoint,omitempty"`
-	// protocol is the OTLP protocol to use
-	//
-	// See link for possible values.
-	// https://github.com/open-telemetry/opentelemetry-specification/blob/v1.8.0/specification/protocol/exporter.md#specify-protocol
+	// protocol is the OTLP protocol to use.
 	Protocol string `protobuf:"bytes,2,opt,name=protocol,proto3" json:"protocol,omitempty"`
-	// insecure allows an insecure grpc OTLP connection
+	// insecure allows an insecure gRPC OTLP connection.
 	Insecure bool `protobuf:"varint,3,opt,name=insecure,proto3" json:"insecure,omitempty"`
 }
 
 func (x *OTLPConfig) Reset() {
 	*x = OTLPConfig{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_github_com_Microsoft_hcsshim_cmd_containerd_shim_runhcs_v1_options_runhcs_proto_msgTypes[3]
+		mi := &file_github_com_Microsoft_hcsshim_cmd_containerd_shim_runhcs_v1_options_runhcs_proto_msgTypes[4]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -641,7 +692,7 @@ func (x *OTLPConfig) String() string {
 func (*OTLPConfig) ProtoMessage() {}
 
 func (x *OTLPConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_github_com_Microsoft_hcsshim_cmd_containerd_shim_runhcs_v1_options_runhcs_proto_msgTypes[3]
+	mi := &file_github_com_Microsoft_hcsshim_cmd_containerd_shim_runhcs_v1_options_runhcs_proto_msgTypes[4]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -654,7 +705,7 @@ func (x *OTLPConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OTLPConfig.ProtoReflect.Descriptor instead.
 func (*OTLPConfig) Descriptor() ([]byte, []int) {
-	return file_github_com_Microsoft_hcsshim_cmd_containerd_shim_runhcs_v1_options_runhcs_proto_rawDescGZIP(), []int{3}
+	return file_github_com_Microsoft_hcsshim_cmd_containerd_shim_runhcs_v1_options_runhcs_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *OTLPConfig) GetEndpoint() string {
@@ -756,11 +807,11 @@ var file_github_com_Microsoft_hcsshim_cmd_containerd_shim_runhcs_v1_options_runh
 	0x28, 0x08, 0x52, 0x15, 0x6e, 0x6f, 0x49, 0x6e, 0x68, 0x65, 0x72, 0x69, 0x74, 0x48, 0x6f, 0x73,
 	0x74, 0x54, 0x69, 0x6d, 0x65, 0x7a, 0x6f, 0x6e, 0x65, 0x12, 0x1d, 0x0a, 0x0a, 0x73, 0x63, 0x72,
 	0x75, 0x62, 0x5f, 0x6c, 0x6f, 0x67, 0x73, 0x18, 0x14, 0x20, 0x01, 0x28, 0x08, 0x52, 0x09, 0x73,
-	0x63, 0x72, 0x75, 0x62, 0x4c, 0x6f, 0x67, 0x73, 0x12, 0x4a, 0x0a, 0x0e, 0x6d, 0x65, 0x74, 0x72,
-	0x69, 0x63, 0x73, 0x5f, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x18, 0x15, 0x20, 0x01, 0x28, 0x0b,
-	0x32, 0x23, 0x2e, 0x63, 0x6f, 0x6e, 0x74, 0x61, 0x69, 0x6e, 0x65, 0x72, 0x64, 0x2e, 0x72, 0x75,
-	0x6e, 0x68, 0x63, 0x73, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x73, 0x43,
-	0x6f, 0x6e, 0x66, 0x69, 0x67, 0x52, 0x0d, 0x6d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x73, 0x43, 0x6f,
+	0x63, 0x72, 0x75, 0x62, 0x4c, 0x6f, 0x67, 0x73, 0x12, 0x4a, 0x0a, 0x0b, 0x6f, 0x74, 0x65, 0x6c,
+	0x5f, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x18, 0x15, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x29, 0x2e,
+	0x63, 0x6f, 0x6e, 0x74, 0x61, 0x69, 0x6e, 0x65, 0x72, 0x64, 0x2e, 0x72, 0x75, 0x6e, 0x68, 0x63,
+	0x73, 0x2e, 0x76, 0x31, 0x2e, 0x4f, 0x70, 0x65, 0x6e, 0x54, 0x65, 0x6c, 0x65, 0x6d, 0x65, 0x74,
+	0x72, 0x79, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x52, 0x0a, 0x6f, 0x74, 0x65, 0x6c, 0x43, 0x6f,
 	0x6e, 0x66, 0x69, 0x67, 0x1a, 0x4e, 0x0a, 0x20, 0x44, 0x65, 0x66, 0x61, 0x75, 0x6c, 0x74, 0x43,
 	0x6f, 0x6e, 0x74, 0x61, 0x69, 0x6e, 0x65, 0x72, 0x41, 0x6e, 0x6e, 0x6f, 0x74, 0x61, 0x74, 0x69,
 	0x6f, 0x6e, 0x73, 0x45, 0x6e, 0x74, 0x72, 0x79, 0x12, 0x10, 0x0a, 0x03, 0x6b, 0x65, 0x79, 0x18,
@@ -799,36 +850,41 @@ var file_github_com_Microsoft_hcsshim_cmd_containerd_shim_runhcs_v1_options_runh
 	0x74, 0x69, 0x6d, 0x65, 0x5f, 0x31, 0x30, 0x30, 0x5f, 0x6e, 0x73, 0x18, 0x08, 0x20, 0x01, 0x28,
 	0x04, 0x52, 0x0d, 0x75, 0x73, 0x65, 0x72, 0x54, 0x69, 0x6d, 0x65, 0x31, 0x30, 0x30, 0x4e, 0x73,
 	0x12, 0x17, 0x0a, 0x07, 0x65, 0x78, 0x65, 0x63, 0x5f, 0x69, 0x64, 0x18, 0x09, 0x20, 0x01, 0x28,
-	0x09, 0x52, 0x06, 0x65, 0x78, 0x65, 0x63, 0x49, 0x64, 0x22, 0x98, 0x02, 0x0a, 0x0d, 0x4d, 0x65,
-	0x74, 0x72, 0x69, 0x63, 0x73, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x12, 0x18, 0x0a, 0x07, 0x65,
-	0x6e, 0x61, 0x62, 0x6c, 0x65, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x08, 0x52, 0x07, 0x65, 0x6e,
-	0x61, 0x62, 0x6c, 0x65, 0x64, 0x12, 0x30, 0x0a, 0x14, 0x65, 0x78, 0x70, 0x6f, 0x72, 0x74, 0x5f,
-	0x69, 0x6e, 0x74, 0x65, 0x72, 0x76, 0x61, 0x6c, 0x5f, 0x73, 0x65, 0x63, 0x73, 0x18, 0x02, 0x20,
-	0x01, 0x28, 0x0d, 0x52, 0x12, 0x65, 0x78, 0x70, 0x6f, 0x72, 0x74, 0x49, 0x6e, 0x74, 0x65, 0x72,
-	0x76, 0x61, 0x6c, 0x53, 0x65, 0x63, 0x73, 0x12, 0x55, 0x0a, 0x0d, 0x65, 0x78, 0x70, 0x6f, 0x72,
-	0x74, 0x65, 0x72, 0x5f, 0x74, 0x79, 0x70, 0x65, 0x18, 0x03, 0x20, 0x01, 0x28, 0x0e, 0x32, 0x30,
-	0x2e, 0x63, 0x6f, 0x6e, 0x74, 0x61, 0x69, 0x6e, 0x65, 0x72, 0x64, 0x2e, 0x72, 0x75, 0x6e, 0x68,
-	0x63, 0x73, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x73, 0x43, 0x6f, 0x6e,
-	0x66, 0x69, 0x67, 0x2e, 0x45, 0x78, 0x70, 0x6f, 0x72, 0x74, 0x65, 0x72, 0x54, 0x79, 0x70, 0x65,
-	0x52, 0x0c, 0x65, 0x78, 0x70, 0x6f, 0x72, 0x74, 0x65, 0x72, 0x54, 0x79, 0x70, 0x65, 0x12, 0x41,
-	0x0a, 0x0b, 0x6f, 0x74, 0x6c, 0x70, 0x5f, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x18, 0x04, 0x20,
-	0x01, 0x28, 0x0b, 0x32, 0x20, 0x2e, 0x63, 0x6f, 0x6e, 0x74, 0x61, 0x69, 0x6e, 0x65, 0x72, 0x64,
-	0x2e, 0x72, 0x75, 0x6e, 0x68, 0x63, 0x73, 0x2e, 0x76, 0x31, 0x2e, 0x4f, 0x54, 0x4c, 0x50, 0x43,
-	0x6f, 0x6e, 0x66, 0x69, 0x67, 0x52, 0x0a, 0x6f, 0x74, 0x6c, 0x70, 0x43, 0x6f, 0x6e, 0x66, 0x69,
-	0x67, 0x22, 0x21, 0x0a, 0x0c, 0x45, 0x78, 0x70, 0x6f, 0x72, 0x74, 0x65, 0x72, 0x54, 0x79, 0x70,
-	0x65, 0x12, 0x07, 0x0a, 0x03, 0x45, 0x54, 0x57, 0x10, 0x00, 0x12, 0x08, 0x0a, 0x04, 0x4f, 0x54,
-	0x4c, 0x50, 0x10, 0x01, 0x22, 0x60, 0x0a, 0x0a, 0x4f, 0x54, 0x4c, 0x50, 0x43, 0x6f, 0x6e, 0x66,
-	0x69, 0x67, 0x12, 0x1a, 0x0a, 0x08, 0x65, 0x6e, 0x64, 0x70, 0x6f, 0x69, 0x6e, 0x74, 0x18, 0x01,
-	0x20, 0x01, 0x28, 0x09, 0x52, 0x08, 0x65, 0x6e, 0x64, 0x70, 0x6f, 0x69, 0x6e, 0x74, 0x12, 0x1a,
-	0x0a, 0x08, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x63, 0x6f, 0x6c, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09,
-	0x52, 0x08, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x63, 0x6f, 0x6c, 0x12, 0x1a, 0x0a, 0x08, 0x69, 0x6e,
-	0x73, 0x65, 0x63, 0x75, 0x72, 0x65, 0x18, 0x03, 0x20, 0x01, 0x28, 0x08, 0x52, 0x08, 0x69, 0x6e,
-	0x73, 0x65, 0x63, 0x75, 0x72, 0x65, 0x42, 0x44, 0x5a, 0x42, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62,
-	0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x4d, 0x69, 0x63, 0x72, 0x6f, 0x73, 0x6f, 0x66, 0x74, 0x2f, 0x68,
-	0x63, 0x73, 0x73, 0x68, 0x69, 0x6d, 0x2f, 0x63, 0x6d, 0x64, 0x2f, 0x63, 0x6f, 0x6e, 0x74, 0x61,
-	0x69, 0x6e, 0x65, 0x72, 0x64, 0x2d, 0x73, 0x68, 0x69, 0x6d, 0x2d, 0x72, 0x75, 0x6e, 0x68, 0x63,
-	0x73, 0x2d, 0x76, 0x31, 0x2f, 0x6f, 0x70, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x62, 0x06, 0x70, 0x72,
-	0x6f, 0x74, 0x6f, 0x33,
+	0x09, 0x52, 0x06, 0x65, 0x78, 0x65, 0x63, 0x49, 0x64, 0x22, 0x60, 0x0a, 0x13, 0x4f, 0x70, 0x65,
+	0x6e, 0x54, 0x65, 0x6c, 0x65, 0x6d, 0x65, 0x74, 0x72, 0x79, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67,
+	0x12, 0x3d, 0x0a, 0x07, 0x6d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x73, 0x18, 0x02, 0x20, 0x01, 0x28,
+	0x0b, 0x32, 0x23, 0x2e, 0x63, 0x6f, 0x6e, 0x74, 0x61, 0x69, 0x6e, 0x65, 0x72, 0x64, 0x2e, 0x72,
+	0x75, 0x6e, 0x68, 0x63, 0x73, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x73,
+	0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x52, 0x07, 0x6d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x73, 0x4a,
+	0x04, 0x08, 0x01, 0x10, 0x02, 0x4a, 0x04, 0x08, 0x03, 0x10, 0x04, 0x22, 0xeb, 0x01, 0x0a, 0x0d,
+	0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x73, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x12, 0x18, 0x0a,
+	0x07, 0x65, 0x6e, 0x61, 0x62, 0x6c, 0x65, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x08, 0x52, 0x07,
+	0x65, 0x6e, 0x61, 0x62, 0x6c, 0x65, 0x64, 0x12, 0x30, 0x0a, 0x14, 0x65, 0x78, 0x70, 0x6f, 0x72,
+	0x74, 0x5f, 0x69, 0x6e, 0x74, 0x65, 0x72, 0x76, 0x61, 0x6c, 0x5f, 0x73, 0x65, 0x63, 0x73, 0x18,
+	0x02, 0x20, 0x01, 0x28, 0x0d, 0x52, 0x12, 0x65, 0x78, 0x70, 0x6f, 0x72, 0x74, 0x49, 0x6e, 0x74,
+	0x65, 0x72, 0x76, 0x61, 0x6c, 0x53, 0x65, 0x63, 0x73, 0x12, 0x4b, 0x0a, 0x0d, 0x65, 0x78, 0x70,
+	0x6f, 0x72, 0x74, 0x65, 0x72, 0x5f, 0x74, 0x79, 0x70, 0x65, 0x18, 0x03, 0x20, 0x01, 0x28, 0x0e,
+	0x32, 0x26, 0x2e, 0x63, 0x6f, 0x6e, 0x74, 0x61, 0x69, 0x6e, 0x65, 0x72, 0x64, 0x2e, 0x72, 0x75,
+	0x6e, 0x68, 0x63, 0x73, 0x2e, 0x76, 0x31, 0x2e, 0x4f, 0x54, 0x65, 0x6c, 0x45, 0x78, 0x70, 0x6f,
+	0x72, 0x74, 0x65, 0x72, 0x54, 0x79, 0x70, 0x65, 0x52, 0x0c, 0x65, 0x78, 0x70, 0x6f, 0x72, 0x74,
+	0x65, 0x72, 0x54, 0x79, 0x70, 0x65, 0x12, 0x41, 0x0a, 0x0b, 0x6f, 0x74, 0x6c, 0x70, 0x5f, 0x63,
+	0x6f, 0x6e, 0x66, 0x69, 0x67, 0x18, 0x04, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x20, 0x2e, 0x63, 0x6f,
+	0x6e, 0x74, 0x61, 0x69, 0x6e, 0x65, 0x72, 0x64, 0x2e, 0x72, 0x75, 0x6e, 0x68, 0x63, 0x73, 0x2e,
+	0x76, 0x31, 0x2e, 0x4f, 0x54, 0x4c, 0x50, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x52, 0x0a, 0x6f,
+	0x74, 0x6c, 0x70, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x22, 0x60, 0x0a, 0x0a, 0x4f, 0x54, 0x4c,
+	0x50, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x12, 0x1a, 0x0a, 0x08, 0x65, 0x6e, 0x64, 0x70, 0x6f,
+	0x69, 0x6e, 0x74, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x08, 0x65, 0x6e, 0x64, 0x70, 0x6f,
+	0x69, 0x6e, 0x74, 0x12, 0x1a, 0x0a, 0x08, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x63, 0x6f, 0x6c, 0x18,
+	0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x08, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x63, 0x6f, 0x6c, 0x12,
+	0x1a, 0x0a, 0x08, 0x69, 0x6e, 0x73, 0x65, 0x63, 0x75, 0x72, 0x65, 0x18, 0x03, 0x20, 0x01, 0x28,
+	0x08, 0x52, 0x08, 0x69, 0x6e, 0x73, 0x65, 0x63, 0x75, 0x72, 0x65, 0x2a, 0x25, 0x0a, 0x10, 0x4f,
+	0x54, 0x65, 0x6c, 0x45, 0x78, 0x70, 0x6f, 0x72, 0x74, 0x65, 0x72, 0x54, 0x79, 0x70, 0x65, 0x12,
+	0x07, 0x0a, 0x03, 0x45, 0x54, 0x57, 0x10, 0x00, 0x12, 0x08, 0x0a, 0x04, 0x4f, 0x54, 0x4c, 0x50,
+	0x10, 0x01, 0x42, 0x44, 0x5a, 0x42, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d,
+	0x2f, 0x4d, 0x69, 0x63, 0x72, 0x6f, 0x73, 0x6f, 0x66, 0x74, 0x2f, 0x68, 0x63, 0x73, 0x73, 0x68,
+	0x69, 0x6d, 0x2f, 0x63, 0x6d, 0x64, 0x2f, 0x63, 0x6f, 0x6e, 0x74, 0x61, 0x69, 0x6e, 0x65, 0x72,
+	0x64, 0x2d, 0x73, 0x68, 0x69, 0x6d, 0x2d, 0x72, 0x75, 0x6e, 0x68, 0x63, 0x73, 0x2d, 0x76, 0x31,
+	0x2f, 0x6f, 0x70, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -844,31 +900,33 @@ func file_github_com_Microsoft_hcsshim_cmd_containerd_shim_runhcs_v1_options_run
 }
 
 var file_github_com_Microsoft_hcsshim_cmd_containerd_shim_runhcs_v1_options_runhcs_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_github_com_Microsoft_hcsshim_cmd_containerd_shim_runhcs_v1_options_runhcs_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_github_com_Microsoft_hcsshim_cmd_containerd_shim_runhcs_v1_options_runhcs_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_github_com_Microsoft_hcsshim_cmd_containerd_shim_runhcs_v1_options_runhcs_proto_goTypes = []interface{}{
-	(Options_DebugType)(0),          // 0: containerd.runhcs.v1.Options.DebugType
-	(Options_SandboxIsolation)(0),   // 1: containerd.runhcs.v1.Options.SandboxIsolation
-	(MetricsConfig_ExporterType)(0), // 2: containerd.runhcs.v1.MetricsConfig.ExporterType
-	(*Options)(nil),                 // 3: containerd.runhcs.v1.Options
-	(*ProcessDetails)(nil),          // 4: containerd.runhcs.v1.ProcessDetails
-	(*MetricsConfig)(nil),           // 5: containerd.runhcs.v1.MetricsConfig
-	(*OTLPConfig)(nil),              // 6: containerd.runhcs.v1.OTLPConfig
-	nil,                             // 7: containerd.runhcs.v1.Options.DefaultContainerAnnotationsEntry
-	(*timestamppb.Timestamp)(nil),   // 8: google.protobuf.Timestamp
+	(OTelExporterType)(0),         // 0: containerd.runhcs.v1.OTelExporterType
+	(Options_DebugType)(0),        // 1: containerd.runhcs.v1.Options.DebugType
+	(Options_SandboxIsolation)(0), // 2: containerd.runhcs.v1.Options.SandboxIsolation
+	(*Options)(nil),               // 3: containerd.runhcs.v1.Options
+	(*ProcessDetails)(nil),        // 4: containerd.runhcs.v1.ProcessDetails
+	(*OpenTelemetryConfig)(nil),   // 5: containerd.runhcs.v1.OpenTelemetryConfig
+	(*MetricsConfig)(nil),         // 6: containerd.runhcs.v1.MetricsConfig
+	(*OTLPConfig)(nil),            // 7: containerd.runhcs.v1.OTLPConfig
+	nil,                           // 8: containerd.runhcs.v1.Options.DefaultContainerAnnotationsEntry
+	(*timestamppb.Timestamp)(nil), // 9: google.protobuf.Timestamp
 }
 var file_github_com_Microsoft_hcsshim_cmd_containerd_shim_runhcs_v1_options_runhcs_proto_depIdxs = []int32{
-	0, // 0: containerd.runhcs.v1.Options.debug_type:type_name -> containerd.runhcs.v1.Options.DebugType
-	1, // 1: containerd.runhcs.v1.Options.sandbox_isolation:type_name -> containerd.runhcs.v1.Options.SandboxIsolation
-	7, // 2: containerd.runhcs.v1.Options.default_container_annotations:type_name -> containerd.runhcs.v1.Options.DefaultContainerAnnotationsEntry
-	5, // 3: containerd.runhcs.v1.Options.metrics_config:type_name -> containerd.runhcs.v1.MetricsConfig
-	8, // 4: containerd.runhcs.v1.ProcessDetails.created_at:type_name -> google.protobuf.Timestamp
-	2, // 5: containerd.runhcs.v1.MetricsConfig.exporter_type:type_name -> containerd.runhcs.v1.MetricsConfig.ExporterType
-	6, // 6: containerd.runhcs.v1.MetricsConfig.otlp_config:type_name -> containerd.runhcs.v1.OTLPConfig
-	7, // [7:7] is the sub-list for method output_type
-	7, // [7:7] is the sub-list for method input_type
-	7, // [7:7] is the sub-list for extension type_name
-	7, // [7:7] is the sub-list for extension extendee
-	0, // [0:7] is the sub-list for field type_name
+	1, // 0: containerd.runhcs.v1.Options.debug_type:type_name -> containerd.runhcs.v1.Options.DebugType
+	2, // 1: containerd.runhcs.v1.Options.sandbox_isolation:type_name -> containerd.runhcs.v1.Options.SandboxIsolation
+	8, // 2: containerd.runhcs.v1.Options.default_container_annotations:type_name -> containerd.runhcs.v1.Options.DefaultContainerAnnotationsEntry
+	5, // 3: containerd.runhcs.v1.Options.otel_config:type_name -> containerd.runhcs.v1.OpenTelemetryConfig
+	9, // 4: containerd.runhcs.v1.ProcessDetails.created_at:type_name -> google.protobuf.Timestamp
+	6, // 5: containerd.runhcs.v1.OpenTelemetryConfig.metrics:type_name -> containerd.runhcs.v1.MetricsConfig
+	0, // 6: containerd.runhcs.v1.MetricsConfig.exporter_type:type_name -> containerd.runhcs.v1.OTelExporterType
+	7, // 7: containerd.runhcs.v1.MetricsConfig.otlp_config:type_name -> containerd.runhcs.v1.OTLPConfig
+	8, // [8:8] is the sub-list for method output_type
+	8, // [8:8] is the sub-list for method input_type
+	8, // [8:8] is the sub-list for extension type_name
+	8, // [8:8] is the sub-list for extension extendee
+	0, // [0:8] is the sub-list for field type_name
 }
 
 func init() {
@@ -904,7 +962,7 @@ func file_github_com_Microsoft_hcsshim_cmd_containerd_shim_runhcs_v1_options_run
 			}
 		}
 		file_github_com_Microsoft_hcsshim_cmd_containerd_shim_runhcs_v1_options_runhcs_proto_msgTypes[2].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*MetricsConfig); i {
+			switch v := v.(*OpenTelemetryConfig); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -916,6 +974,18 @@ func file_github_com_Microsoft_hcsshim_cmd_containerd_shim_runhcs_v1_options_run
 			}
 		}
 		file_github_com_Microsoft_hcsshim_cmd_containerd_shim_runhcs_v1_options_runhcs_proto_msgTypes[3].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*MetricsConfig); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_github_com_Microsoft_hcsshim_cmd_containerd_shim_runhcs_v1_options_runhcs_proto_msgTypes[4].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*OTLPConfig); i {
 			case 0:
 				return &v.state
@@ -934,7 +1004,7 @@ func file_github_com_Microsoft_hcsshim_cmd_containerd_shim_runhcs_v1_options_run
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_github_com_Microsoft_hcsshim_cmd_containerd_shim_runhcs_v1_options_runhcs_proto_rawDesc,
 			NumEnums:      3,
-			NumMessages:   5,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
