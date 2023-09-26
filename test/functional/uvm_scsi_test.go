@@ -32,7 +32,7 @@ func TestSCSIAddRemoveLCOW(t *testing.T) {
 	t.Skip("not yet updated")
 
 	require.Build(t, osversion.RS5)
-	requireFeatures(t, featureLCOW, featureSCSI)
+	requireFeatures(t, featureLCOW, featureUVM, featureSCSI)
 
 	u := tuvm.CreateAndStartLCOWFromOpts(context.Background(), t, defaultLCOWOptions(t))
 	defer u.Close()
@@ -46,9 +46,10 @@ func TestSCSIAddRemoveWCOW(t *testing.T) {
 	t.Skip("not yet updated")
 
 	require.Build(t, osversion.RS5)
-	requireFeatures(t, featureWCOW, featureSCSI)
+	requireFeatures(t, featureWCOW, featureUVM, featureSCSI)
 
 	// TODO make the image configurable to the build we're testing on
+	//nolint:staticcheck // SA1019: deprecated; will be replaced when test is updated
 	u, layers, _ := tuvm.CreateWCOWUVM(context.Background(), t, t.Name(), "mcr.microsoft.com/windows/nanoserver:1903")
 	defer u.Close()
 
@@ -221,7 +222,7 @@ func TestParallelScsiOps(t *testing.T) {
 	t.Skip("not yet updated")
 
 	require.Build(t, osversion.RS5)
-	requireFeatures(t, featureLCOW, featureSCSI)
+	requireFeatures(t, featureLCOW, featureUVM, featureSCSI)
 
 	u := tuvm.CreateAndStartLCOWFromOpts(context.Background(), t, defaultLCOWOptions(t))
 	defer u.Close()

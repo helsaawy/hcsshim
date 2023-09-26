@@ -136,9 +136,17 @@ func CommandContext(ctx context.Context, host cow.ProcessHost, name string, arg 
 // Start starts a command. The caller must ensure that if Start succeeds,
 // Wait is eventually called to clean up resources.
 func (c *Cmd) Start() error {
+	if c.Host == nil {
+		return fmt.Errorf("empty ProcessHost")
+	}
+
 	c.allDoneCh = make(chan struct{})
 	var x interface{}
 	if !c.Host.IsOCI() {
+		if c.Spec == nil {
+			return fmt.Errorf("empty process spec for non-OCI ProcessHost")
+		}
+
 		wpp := &hcsschema.ProcessParameters{
 			CommandLine:      c.Spec.CommandLine,
 			User:             c.Spec.User.Username,

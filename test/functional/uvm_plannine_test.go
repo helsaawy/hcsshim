@@ -26,7 +26,7 @@ func TestPlan9(t *testing.T) {
 	t.Skip("not yet updated")
 
 	require.Build(t, osversion.RS5)
-	requireFeatures(t, featureLCOW, featurePlan9)
+	requireFeatures(t, featureLCOW, featureUVM, featurePlan9)
 	ctx := context.Background()
 
 	vm := testuvm.CreateAndStartLCOWFromOpts(ctx, t, defaultLCOWOptions(t))
@@ -52,10 +52,8 @@ func TestPlan9(t *testing.T) {
 }
 
 func TestPlan9_Writable(t *testing.T) {
-	// t.Skip("not yet updated")
-
 	require.Build(t, osversion.RS5)
-	requireFeatures(t, featureLCOW, featurePlan9)
+	requireFeatures(t, featureLCOW, featureUVM, featurePlan9)
 	ctx := context.Background()
 
 	opts := defaultLCOWOptions(t)

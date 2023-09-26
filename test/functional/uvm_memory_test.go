@@ -19,7 +19,7 @@ func TestUVMMemoryUpdateLCOW(t *testing.T) {
 	t.Skip("not yet updated")
 
 	require.Build(t, osversion.RS5)
-	requireFeatures(t, featureLCOW)
+	requireFeatures(t, featureLCOW, featureUVM)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
 	defer cancel()
@@ -47,7 +47,7 @@ func TestUVMMemoryUpdateWCOW(t *testing.T) {
 	t.Skip("not yet updated")
 
 	require.Build(t, osversion.RS5)
-	requireFeatures(t, featureWCOW)
+	requireFeatures(t, featureWCOW, featureUVM)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
 	defer cancel()
@@ -55,6 +55,7 @@ func TestUVMMemoryUpdateWCOW(t *testing.T) {
 	opts := uvm.NewDefaultOptionsWCOW(t.Name(), "")
 	opts.MemorySizeInMB = 1024 * 2
 
+	//nolint:staticcheck // SA1019: deprecated; will be replaced when test is updated
 	u, _, _ := tuvm.CreateWCOWUVMFromOptsWithImage(ctx, t, opts, "mcr.microsoft.com/windows/nanoserver:1909")
 	defer u.Close()
 

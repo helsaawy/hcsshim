@@ -429,7 +429,7 @@ func TestWCOWArgonShim(t *testing.T) {
 func TestWCOWXenonShim(t *testing.T) {
 	t.Skip("not yet updated")
 
-	requireFeatures(t, featureWCOW)
+	requireFeatures(t, featureWCOW, featureUVM)
 
 	imageLayers := windowsServercoreImageLayers(context.Background(), t)
 
@@ -548,7 +548,7 @@ func TestWCOWArgonOciV1(t *testing.T) {
 func TestWCOWXenonOciV1(t *testing.T) {
 	t.Skip("not yet updated")
 
-	requireFeatures(t, featureWCOW)
+	requireFeatures(t, featureWCOW, featureUVM)
 
 	imageLayers := windowsServercoreImageLayers(context.Background(), t)
 	xenonOci1Mounted := false
@@ -655,7 +655,7 @@ func TestWCOWXenonOciV2(t *testing.T) {
 	t.Skip("not yet updated")
 
 	require.Build(t, osversion.RS5)
-	requireFeatures(t, featureWCOW)
+	requireFeatures(t, featureWCOW, featureUVM)
 
 	imageLayers := windowsServercoreImageLayers(context.Background(), t)
 	xenonOci2Mounted := false

@@ -17,7 +17,7 @@ func TestPropertiesGuestConnection_LCOW(t *testing.T) {
 	t.Skip("not yet updated")
 
 	require.Build(t, osversion.RS5)
-	requireFeatures(t, featureLCOW)
+	requireFeatures(t, featureLCOW, featureUVM)
 
 	uvm := tuvm.CreateAndStartLCOWFromOpts(context.Background(), t, defaultLCOWOptions(t))
 	defer uvm.Close()
@@ -34,8 +34,9 @@ func TestPropertiesGuestConnection_WCOW(t *testing.T) {
 	t.Skip("not yet updated")
 
 	require.Build(t, osversion.RS5)
-	requireFeatures(t, featureWCOW)
+	requireFeatures(t, featureWCOW, featureUVM)
 
+	//nolint:staticcheck // SA1019: deprecated; will be replaced when test is updated
 	uvm, _, _ := tuvm.CreateWCOWUVM(context.Background(), t, t.Name(), "microsoft/nanoserver")
 	defer uvm.Close()
 

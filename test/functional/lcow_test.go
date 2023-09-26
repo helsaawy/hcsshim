@@ -17,7 +17,6 @@ import (
 
 	"github.com/Microsoft/hcsshim/internal/cmd"
 	"github.com/Microsoft/hcsshim/internal/cow"
-	"github.com/Microsoft/hcsshim/internal/hcsoci"
 	"github.com/Microsoft/hcsshim/internal/lcow"
 	"github.com/Microsoft/hcsshim/internal/resources"
 	"github.com/Microsoft/hcsshim/internal/uvm"
@@ -26,13 +25,14 @@ import (
 
 	testutilities "github.com/Microsoft/hcsshim/test/internal"
 	testcmd "github.com/Microsoft/hcsshim/test/internal/cmd"
+	"github.com/Microsoft/hcsshim/test/internal/container"
 	"github.com/Microsoft/hcsshim/test/pkg/require"
 	testuvm "github.com/Microsoft/hcsshim/test/pkg/uvm"
 )
 
 // test if closing a waiting (but not starting) uVM succeeds
 func TestLCOW_UVMCreateClose(t *testing.T) {
-	requireFeatures(t, featureLCOW)
+	requireFeatures(t, featureLCOW, featureUVM)
 	require.Build(t, osversion.RS5)
 
 	ctx := context.Background()
@@ -68,7 +68,7 @@ func TestLCOW_UVMCreateWait(t *testing.T) {
 // TestLCOW_UVMNoSCSINoVPMemInitrd starts an LCOW utility VM without a SCSI controller and
 // no VPMem device. Uses initrd.
 func TestLCOW_UVMNoSCSINoVPMemInitrd(t *testing.T) {
-	requireFeatures(t, featureLCOW)
+	requireFeatures(t, featureLCOW, featureUVM)
 
 	opts := defaultLCOWOptions(t)
 	opts.SCSIControllerCount = 0
@@ -83,7 +83,7 @@ func TestLCOW_UVMNoSCSINoVPMemInitrd(t *testing.T) {
 // TestLCOW_UVMNoSCSISingleVPMemVHD starts an LCOW utility VM without a SCSI controller and
 // only a single VPMem device. Uses VPMEM VHD
 func TestLCOW_UVMNoSCSISingleVPMemVHD(t *testing.T) {
-	requireFeatures(t, featureLCOW)
+	requireFeatures(t, featureLCOW, featureUVM)
 
 	opts := defaultLCOWOptions(t)
 	opts.SCSIControllerCount = 0
@@ -97,7 +97,7 @@ func TestLCOW_UVMNoSCSISingleVPMemVHD(t *testing.T) {
 func testLCOWUVMNoSCSISingleVPMem(t *testing.T, opts *uvm.OptionsLCOW, expected ...string) {
 	t.Helper()
 	require.Build(t, osversion.RS5)
-	requireFeatures(t, featureLCOW)
+	requireFeatures(t, featureLCOW, featureUVM)
 	ctx := context.Background()
 
 	lcowUVM := testuvm.CreateAndStartLCOWFromOpts(ctx, t, opts)
@@ -127,7 +127,7 @@ func testLCOWUVMNoSCSISingleVPMem(t *testing.T, opts *uvm.OptionsLCOW, expected 
 // attached root filesystem a number of times.
 func TestLCOW_TimeUVMStartVHD(t *testing.T) {
 	require.Build(t, osversion.RS5)
-	requireFeatures(t, featureLCOW)
+	requireFeatures(t, featureLCOW, featureUVM)
 
 	testLCOWTimeUVMStart(t, false, uvm.PreferredRootFSTypeVHD)
 }
@@ -137,7 +137,7 @@ func TestLCOW_TimeUVMStartVHD(t *testing.T) {
 // Kernel directly and skipping EFI.
 func TestLCOW_UVMStart_KernelDirect_VHD(t *testing.T) {
 	require.Build(t, 18286)
-	requireFeatures(t, featureLCOW)
+	requireFeatures(t, featureLCOW, featureUVM)
 
 	testLCOWTimeUVMStart(t, true, uvm.PreferredRootFSTypeVHD)
 }
@@ -146,7 +146,7 @@ func TestLCOW_UVMStart_KernelDirect_VHD(t *testing.T) {
 // attached root file system a number of times.
 func TestLCOW_TimeUVMStartInitRD(t *testing.T) {
 	require.Build(t, osversion.RS5)
-	requireFeatures(t, featureLCOW)
+	requireFeatures(t, featureLCOW, featureUVM)
 
 	testLCOWTimeUVMStart(t, false, uvm.PreferredRootFSTypeInitRd)
 }
@@ -156,14 +156,14 @@ func TestLCOW_TimeUVMStartInitRD(t *testing.T) {
 // Linux Kernel directly and skipping EFI.
 func TestLCOW_UVMStart_KernelDirect_InitRd(t *testing.T) {
 	require.Build(t, 18286)
-	requireFeatures(t, featureLCOW)
+	requireFeatures(t, featureLCOW, featureUVM)
 
 	testLCOWTimeUVMStart(t, true, uvm.PreferredRootFSTypeInitRd)
 }
 
 func testLCOWTimeUVMStart(t *testing.T, kernelDirect bool, rfsType uvm.PreferredRootFSType) {
 	t.Helper()
-	requireFeatures(t, featureLCOW)
+	requireFeatures(t, featureLCOW, featureUVM)
 
 	for i := 0; i < 3; i++ {
 		opts := defaultLCOWOptions(t)
@@ -188,7 +188,9 @@ func TestLCOWSimplePodScenario(t *testing.T) {
 	require.Build(t, osversion.RS5)
 	requireFeatures(t, featureLCOW, featureContainer)
 
-	layers := linuxImageLayers(context.Background(), t)
+	ctx := namespacedContext()
+
+	layers := linuxImageLayers(ctx, t)
 
 	cacheDir := t.TempDir()
 	cacheFile := filepath.Join(cacheDir, "cache.vhdx")
@@ -205,54 +207,43 @@ func TestLCOWSimplePodScenario(t *testing.T) {
 	c2ScratchDir := t.TempDir()
 	c2ScratchFile := filepath.Join(c2ScratchDir, "sandbox.vhdx")
 
-	lcowUVM := testuvm.CreateAndStartLCOW(context.Background(), t, "uvm")
+	lcowUVM := testuvm.CreateAndStartLCOW(ctx, t, "uvm")
 	defer lcowUVM.Close()
 
 	// Populate the cache and generate the scratch file
-	if err := lcow.CreateScratch(context.Background(), lcowUVM, uvmScratchFile, lcow.DefaultScratchSizeGB, cacheFile); err != nil {
+	if err := lcow.CreateScratch(ctx, lcowUVM, uvmScratchFile, lcow.DefaultScratchSizeGB, cacheFile); err != nil {
 		t.Fatal(err)
 	}
 
-	_, err := lcowUVM.SCSIManager.AddVirtualDisk(context.Background(), uvmScratchFile, false, lcowUVM.ID(), &scsi.MountConfig{})
+	_, err := lcowUVM.SCSIManager.AddVirtualDisk(ctx, uvmScratchFile, false, lcowUVM.ID(), &scsi.MountConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Now create the first containers sandbox, populate a spec
-	if err := lcow.CreateScratch(context.Background(), lcowUVM, c1ScratchFile, lcow.DefaultScratchSizeGB, cacheFile); err != nil {
+	if err := lcow.CreateScratch(ctx, lcowUVM, c1ScratchFile, lcow.DefaultScratchSizeGB, cacheFile); err != nil {
 		t.Fatal(err)
 	}
 	c1Spec := testutilities.GetDefaultLinuxSpec(t)
 	c1Folders := append(layers, c1ScratchDir)
 	c1Spec.Windows.LayerFolders = c1Folders
 	c1Spec.Process.Args = []string{"echo", "hello", "lcow", "container", "one"}
-	c1Opts := &hcsoci.CreateOptions{
-		Spec:          c1Spec,
-		HostingSystem: lcowUVM,
-	}
 
 	// Now create the second containers sandbox, populate a spec
-	if err := lcow.CreateScratch(context.Background(), lcowUVM, c2ScratchFile, lcow.DefaultScratchSizeGB, cacheFile); err != nil {
+	if err := lcow.CreateScratch(ctx, lcowUVM, c2ScratchFile, lcow.DefaultScratchSizeGB, cacheFile); err != nil {
 		t.Fatal(err)
 	}
 	c2Spec := testutilities.GetDefaultLinuxSpec(t)
 	c2Folders := append(layers, c2ScratchDir)
 	c2Spec.Windows.LayerFolders = c2Folders
 	c2Spec.Process.Args = []string{"echo", "hello", "lcow", "container", "two"}
-	c2Opts := &hcsoci.CreateOptions{
-		Spec:          c2Spec,
-		HostingSystem: lcowUVM,
-	}
 
 	// Create the two containers
-	c1hcsSystem, c1Resources, err := CreateContainerTestWrapper(context.Background(), c1Opts)
-	if err != nil {
-		t.Fatal(err)
-	}
-	c2hcsSystem, c2Resources, err := CreateContainerTestWrapper(context.Background(), c2Opts)
-	if err != nil {
-		t.Fatal(err)
-	}
+
+	c1hcsSystem, c1Resources, cleanup1 := container.Create(ctx, t, lcowUVM, c1Spec, t.Name(), hcsOwner)
+	defer cleanup1()
+	c2hcsSystem, c2Resources, cleanup2 := container.Create(ctx, t, lcowUVM, c2Spec, t.Name(), hcsOwner)
+	defer cleanup2()
 
 	// Start them. In the UVM, they'll be in the created state from runc's perspective after this.eg
 	/// # runc list

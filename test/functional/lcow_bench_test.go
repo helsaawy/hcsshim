@@ -15,7 +15,7 @@ import (
 )
 
 func BenchmarkLCOW_UVM(b *testing.B) {
-	requireFeatures(b, featureLCOW)
+	requireFeatures(b, featureLCOW, featureUVM)
 	require.Build(b, osversion.RS5)
 
 	pCtx := context.Background()

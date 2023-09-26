@@ -32,7 +32,7 @@ func TestVirtualDevice(t *testing.T) {
 	t.Skip("not yet updated")
 
 	require.Build(t, osversion.V20H1)
-	requireFeatures(t, featureLCOW)
+	requireFeatures(t, featureLCOW, featureUVM)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()

@@ -12,17 +12,27 @@ import (
 	"github.com/Microsoft/hcsshim/test/pkg/images"
 )
 
-// TODO: add cleanup return to CreateWCOWUVM*(), and have it remove layer and scratch dirs
+// DefaultWCOWOptions returns default options for a bootable WCOW uVM.
+//
+// See [uvm.NewDefaultOptionsWCOW] for more information.
+func DefaultWCOWOptions(tb testing.TB, id, owner string) *uvm.OptionsWCOW { // TODO: add ctx here
+	// mostly here to match [DefaultLCOWOptions]
+	tb.Helper()
+	opts := uvm.NewDefaultOptionsWCOW(id, owner)
+	return opts
+}
 
 // CreateWCOWUVM creates a WCOW utility VM with all default options. Returns the
 // UtilityVM object; folder used as its scratch.
+//
+// Deprecated: use [CreateWCOW] and [layers.WCOWScratchDir].
 func CreateWCOWUVM(ctx context.Context, tb testing.TB, id, image string) (*uvm.UtilityVM, []string, string) {
 	tb.Helper()
 	return CreateWCOWUVMFromOptsWithImage(ctx, tb, uvm.NewDefaultOptionsWCOW(id, ""), image)
 }
 
-// CreateWCOWUVMFromOpts creates a WCOW utility VM with the passed opts.
-func CreateWCOWUVMFromOpts(ctx context.Context, tb testing.TB, opts *uvm.OptionsWCOW) *uvm.UtilityVM {
+// CreateWCOW creates a WCOW utility VM with the passed opts.
+func CreateWCOW(ctx context.Context, tb testing.TB, opts *uvm.OptionsWCOW) (*uvm.UtilityVM, CleanupFn) {
 	tb.Helper()
 
 	if opts == nil || len(opts.LayerFolders) < 2 {
@@ -31,19 +41,22 @@ func CreateWCOWUVMFromOpts(ctx context.Context, tb testing.TB, opts *uvm.Options
 
 	vm, err := uvm.CreateWCOW(ctx, opts)
 	if err != nil {
-		tb.Fatal(err)
-	}
-	if err := vm.Start(ctx); err != nil {
-		_ = vm.CloseCtx(ctx)
-		tb.Fatal(err)
+		tb.Fatalf("could not create WCOW UVM: %v", err)
 	}
 
-	return vm
+	f := func(ctx context.Context) {
+		if err := vm.CloseCtx(ctx); err != nil {
+			tb.Logf("could not close vm %q: %v", vm.ID(), err)
+		}
+	}
+	return vm, f
 }
 
 // CreateWCOWUVMFromOptsWithImage creates a WCOW utility VM with the passed opts
 // builds the LayerFolders based on `image`. Returns the UtilityVM object;
 // folder used as its scratch.
+//
+// Deprecated: use [CreateWCOW] and [layers.WCOWScratchDir].
 //
 //nolint:staticcheck // SA5011: staticcheck thinks `opts` may be nil, even though we fail if it is
 func CreateWCOWUVMFromOptsWithImage(
@@ -69,5 +82,25 @@ func CreateWCOWUVMFromOptsWithImage(
 	opts.LayerFolders = append(opts.LayerFolders, uvmLayers...)
 	opts.LayerFolders = append(opts.LayerFolders, scratchDir)
 
-	return CreateWCOWUVMFromOpts(ctx, tb, opts), uvmLayers, scratchDir
+	vm, cleanup := CreateWCOW(ctx, tb, opts)
+	tb.Cleanup(func() { cleanup(ctx) })
+
+	return vm, uvmLayers, scratchDir
+}
+
+// CreateAndStartWCOWFromOpts creates a WCOW utility VM with the specified options.
+//
+// The cleanup function will be added to `tb.Cleanup`.
+func CreateAndStartWCOWFromOpts(ctx context.Context, tb testing.TB, opts *uvm.OptionsWCOW) *uvm.UtilityVM {
+	tb.Helper()
+
+	if opts == nil {
+		tb.Fatal("opts must be set")
+	}
+
+	vm, cleanup := CreateWCOW(ctx, tb, opts)
+	Start(ctx, tb, vm)
+	tb.Cleanup(func() { cleanup(ctx) })
+
+	return vm
 }

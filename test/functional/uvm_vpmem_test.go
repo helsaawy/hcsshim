@@ -21,7 +21,7 @@ func TestVPMEM(t *testing.T) {
 	t.Skip("not yet updated")
 
 	require.Build(t, osversion.RS5)
-	requireFeatures(t, featureLCOW, featureVPMEM)
+	requireFeatures(t, featureLCOW, featureUVM, featureVPMEM)
 
 	ctx := context.Background()
 	layers := linuxImageLayers(ctx, t)

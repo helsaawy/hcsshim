@@ -20,7 +20,7 @@ func TestScratchCreateLCOW(t *testing.T) {
 	t.Skip("not yet updated")
 
 	require.Build(t, osversion.RS5)
-	requireFeatures(t, featureLCOW, featureScratch)
+	requireFeatures(t, featureLCOW, featureUVM, featureScratch)
 
 	tempDir := t.TempDir()
 	firstUVM := tuvm.CreateAndStartLCOW(context.Background(), t, "TestCreateLCOWScratch")

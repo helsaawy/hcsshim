@@ -19,7 +19,7 @@ import (
 )
 
 func Test_LCOW_Update_Resources(t *testing.T) {
-	requireFeatures(t, featureLCOW)
+	requireFeatures(t, featureLCOW, featureUVM)
 	require.Build(t, osversion.RS5)
 
 	for _, config := range []struct {

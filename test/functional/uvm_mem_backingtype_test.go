@@ -23,6 +23,8 @@ func runMemStartLCOWTest(t *testing.T, opts *uvm.OptionsLCOW) {
 
 func runMemStartWCOWTest(t *testing.T, opts *uvm.OptionsWCOW) {
 	t.Helper()
+
+	//nolint:staticcheck // SA1019: deprecated; will be replaced when test is updated
 	u, _, _ := testuvm.CreateWCOWUVMFromOptsWithImage(context.Background(), t, opts, "microsoft/nanoserver")
 	u.Close()
 }
@@ -61,7 +63,7 @@ func TestMemBackingTypeWCOW(t *testing.T) {
 	t.Skip("not yet updated")
 
 	require.Build(t, osversion.RS5)
-	requireFeatures(t, featureWCOW)
+	requireFeatures(t, featureWCOW, featureUVM)
 	runMemTests(t, "windows")
 }
 
@@ -69,7 +71,7 @@ func TestMemBackingTypeLCOW(t *testing.T) {
 	t.Skip("not yet updated")
 
 	require.Build(t, osversion.RS5)
-	requireFeatures(t, featureLCOW)
+	requireFeatures(t, featureLCOW, featureUVM)
 	runMemTests(t, "linux")
 }
 
@@ -101,7 +103,7 @@ func BenchmarkMemBackingTypeVirtualLCOW(b *testing.B) {
 	b.Skip("not yet updated")
 
 	require.Build(b, osversion.RS5)
-	requireFeatures(b, featureLCOW)
+	requireFeatures(b, featureLCOW, featureUVM)
 
 	runBenchMemStartLcowTest(b, true, false)
 }
@@ -110,7 +112,7 @@ func BenchmarkMemBackingTypeVirtualDeferredLCOW(b *testing.B) {
 	b.Skip("not yet updated")
 
 	require.Build(b, osversion.RS5)
-	requireFeatures(b, featureLCOW)
+	requireFeatures(b, featureLCOW, featureUVM)
 
 	runBenchMemStartLcowTest(b, true, true)
 }
@@ -119,7 +121,7 @@ func BenchmarkMemBackingTypePhyscialLCOW(b *testing.B) {
 	b.Skip("not yet updated")
 
 	require.Build(b, osversion.RS5)
-	requireFeatures(b, featureLCOW)
+	requireFeatures(b, featureLCOW, featureUVM)
 
 	runBenchMemStartLcowTest(b, false, false)
 }

@@ -4,11 +4,13 @@ package layers
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/Microsoft/hcsshim/internal/lcow"
 	"github.com/Microsoft/hcsshim/internal/uvm"
+	"github.com/Microsoft/hcsshim/internal/wclayer"
 
 	"github.com/Microsoft/hcsshim/test/internal/util"
 )
@@ -22,10 +24,7 @@ const (
 func CacheFile(_ context.Context, tb testing.TB, dir string) string {
 	tb.Helper()
 	if dir == "" {
-		dir = tb.TempDir()
-		tb.Cleanup(func() {
-			_ = util.RemoveAll(dir)
-		})
+		dir = filepath.Join(dir, util.CleanName(tb.Name()))
 	}
 	cache := filepath.Join(dir, CacheFileName)
 	return cache
@@ -37,11 +36,9 @@ func CacheFile(_ context.Context, tb testing.TB, dir string) string {
 func ScratchSpace(ctx context.Context, tb testing.TB, vm *uvm.UtilityVM, name, dir, cache string) (string, string) {
 	tb.Helper()
 	if dir == "" {
-		dir = tb.TempDir()
-		tb.Cleanup(func() {
-			_ = util.RemoveAll(dir)
-		})
+		dir = newTestTempDir(ctx, tb)
 	}
+
 	if cache == "" {
 		cache = CacheFile(ctx, tb, dir)
 	}
@@ -55,4 +52,38 @@ func ScratchSpace(ctx context.Context, tb testing.TB, vm *uvm.UtilityVM, name, d
 	}
 
 	return dir, scratch
+}
+
+func WCOWScratchDir(ctx context.Context, tb testing.TB, dir string) string {
+	tb.Helper()
+	if dir == "" {
+		dir = newTestTempDir(ctx, tb)
+	}
+
+	tb.Cleanup(func() {
+		if err := wclayer.DestroyLayer(ctx, dir); err != nil {
+			tb.Errorf("failed to destroy %q: %v", dir, err)
+		}
+	})
+
+	return dir
+}
+
+func newTestTempDir(ctx context.Context, tb testing.TB) string {
+	tb.Helper()
+	dir, err := tempDir.Do(ctx)
+	if err != nil {
+		tb.Fatal(err)
+	}
+
+	dir, err = os.MkdirTemp(dir, util.CleanName(tb.Name()))
+	if err != nil {
+		tb.Fatalf("create test temp directory: %v", err)
+	}
+
+	tb.Cleanup(func() {
+		os.RemoveAll(dir)
+	})
+
+	return dir
 }

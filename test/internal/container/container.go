@@ -42,6 +42,10 @@ func Create(
 	}
 
 	if co.Spec.Linux != nil {
+		if vm == nil {
+			tb.Fatalf("LCOW requires a uVM")
+		}
+
 		var layerFolders []string
 		if co.Spec.Windows != nil {
 			layerFolders = co.Spec.Windows.LayerFolders
@@ -79,14 +83,27 @@ func Create(
 	return c, r, f
 }
 
+// todo: unify Start and StartWithSpec and add logic to check for WCOW
+
+// for starting an LCOW container, where no process spec is passed
+//
+// see:
+//   - github.com/Microsoft/hcsshim/cmd/containerd-shim-runhcs-v1/exec_hcs.go: (*hcsExec).startInternal
+//   - github.com/Microsoft/hcsshim/cmd/internal/cmd/cmd.go: (*Cmd).Start
 func Start(ctx context.Context, tb testing.TB, c cow.Container, io *testcmd.BufferedIO) *cmd.Cmd {
+	tb.Helper()
+
+	// OCI spec is nil to tell bridge to start container's init process
+	return StartWithSpec(ctx, tb, c, nil, io)
+}
+
+func StartWithSpec(ctx context.Context, tb testing.TB, c cow.Container, p *specs.Process, io *testcmd.BufferedIO) *cmd.Cmd {
 	tb.Helper()
 	if err := c.Start(ctx); err != nil {
 		tb.Fatalf("could not start %q: %v", c.ID(), err)
 	}
 
-	// OCI spec is nil to tell bridge to start container's init process
-	init := testcmd.Create(ctx, tb, c, nil, io)
+	init := testcmd.Create(ctx, tb, c, p, io)
 	testcmd.Start(ctx, tb, init)
 
 	return init

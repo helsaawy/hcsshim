@@ -22,8 +22,9 @@ func TestVSMB(t *testing.T) {
 	t.Skip("not yet updated")
 
 	require.Build(t, osversion.RS5)
-	requireFeatures(t, featureWCOW, featureVSMB)
+	requireFeatures(t, featureWCOW, featureUVM, featureVSMB)
 
+	//nolint:staticcheck // SA1019: deprecated; will be replaced when test is updated
 	uvm, _, _ := tuvm.CreateWCOWUVM(context.Background(), t, t.Name(), "microsoft/nanoserver")
 	defer uvm.Close()
 
@@ -51,10 +52,11 @@ func TestVSMB_Writable(t *testing.T) {
 	t.Skip("not yet updated")
 
 	require.Build(t, osversion.RS5)
-	requireFeatures(t, featureWCOW, featureVSMB)
+	requireFeatures(t, featureWCOW, featureUVM, featureVSMB)
 
 	opts := uvm.NewDefaultOptionsWCOW(t.Name(), "")
 	opts.NoWritableFileShares = true
+	//nolint:staticcheck // SA1019: deprecated; will be replaced when test is updated
 	vm, _, _ := tuvm.CreateWCOWUVMFromOptsWithImage(context.Background(), t, opts, "microsoft/nanoserver")
 	defer vm.Close()
 
