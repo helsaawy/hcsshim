@@ -51,7 +51,7 @@ func TestContainerLifecycle(t *testing.T) {
 
 		cmd.Kill(ctx, t, init)
 		cmd.WaitExitCode(ctx, t, init, cmd.ForcedKilledExitCode)
-	})
+	}) // LCOW
 
 	t.Run("WCOW_HyperV", func(t *testing.T) {
 		requireFeatures(t, featureWCOW, featureUVM)
@@ -78,7 +78,7 @@ func TestContainerLifecycle(t *testing.T) {
 
 		cmd.Kill(ctx, t, init)
 		cmd.WaitExitCode(ctx, t, init, int(windows.ERROR_PROCESS_ABORTED))
-	})
+	}) // WCOW_HyperV
 
 	t.Run("WCOW_Process", func(t *testing.T) {
 		requireFeatures(t, featureWCOW)
@@ -102,7 +102,7 @@ func TestContainerLifecycle(t *testing.T) {
 
 		cmd.Kill(ctx, t, init)
 		cmd.WaitExitCode(ctx, t, init, int(windows.ERROR_PROCESS_ABORTED))
-	})
+	}) // WCOW_Process
 
 	t.Run("WCOW_HostProcess", func(t *testing.T) {
 		requireFeatures(t, featureWCOW, featureHostProcess)
@@ -132,7 +132,7 @@ func TestContainerLifecycle(t *testing.T) {
 
 		cmd.Kill(ctx, t, init)
 		cmd.WaitExitCode(ctx, t, init, 1)
-	})
+	}) // WCOW_HostProcess
 }
 
 var ioTests = []struct {
@@ -207,14 +207,12 @@ func TestContainerIO(t *testing.T) {
 					container.Wait(ctx, t, c)
 				})
 
-				if e := cmd.Wait(ctx, t, init); e != 0 {
-					t.Fatalf("got exit code %d, wanted %d", e, 0)
-				}
+				cmd.WaitExitCode(ctx, t, init, 0)
 
 				io.TestOutput(t, tt.want, nil, true)
 			})
 		}
-	})
+	}) // LCOW
 
 	t.Run("WCOW_HyperV", func(t *testing.T) {
 		requireFeatures(t, featureWCOW, featureUVM)
@@ -250,14 +248,12 @@ func TestContainerIO(t *testing.T) {
 					container.Wait(ctx, t, c)
 				})
 
-				if e := cmd.Wait(ctx, t, init); e != 0 {
-					t.Fatalf("got exit code %d, wanted %d", e, 0)
-				}
+				cmd.WaitExitCode(ctx, t, init, 0)
 
 				io.TestOutput(t, tt.want, nil, true)
 			})
 		}
-	})
+	}) // WCOW_HyperV
 
 	t.Run("WCOW_Process", func(t *testing.T) {
 		requireFeatures(t, featureWCOW)
@@ -291,14 +287,12 @@ func TestContainerIO(t *testing.T) {
 					container.Wait(ctx, t, c)
 				})
 
-				if e := cmd.Wait(ctx, t, init); e != 0 {
-					t.Fatalf("got exit code %d, wanted %d", e, 0)
-				}
+				cmd.WaitExitCode(ctx, t, init, 0)
 
 				io.TestOutput(t, tt.want, nil, true)
 			})
 		}
-	})
+	}) // WCOW_Process
 
 	t.Run("WCOW_HostProcess", func(t *testing.T) {
 		requireFeatures(t, featureWCOW, featureHostProcess)
@@ -334,14 +328,12 @@ func TestContainerIO(t *testing.T) {
 					container.Wait(ctx, t, c)
 				})
 
-				if e := cmd.Wait(ctx, t, init); e != 0 {
-					t.Fatalf("got exit code %d, wanted %d", e, 0)
-				}
+				cmd.WaitExitCode(ctx, t, init, 0)
 
 				io.TestOutput(t, tt.want, nil, true)
 			})
 		}
-	})
+	}) // WCOW_HostProcess
 }
 
 func TestContainerExec(t *testing.T) {

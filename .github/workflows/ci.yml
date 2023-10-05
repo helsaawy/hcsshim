@@ -308,6 +308,24 @@ jobs:
       - name: Install gotestsum
         run: go install gotest.tools/gotestsum@${{ env.GOTESTSUM_VERSION }}
 
+      # Download PsExec so we can run functional tests as 'NT Authority\System'
+      - name: Install systools
+        run: |
+          New-Item -ItemType Directory -Force '${{ github.workspace }}\bin' > $null
+          '${{ github.workspace }}\bin' | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+          curl.exe -L --no-progress-meter --fail-with-body -o 'C:\PsTools.zip' `
+            'https://download.sysinternals.com/files/PsTools.zip' 2>&1
+
+          tar.exe xf 'C:\PsTools.zip' -C '${{ github.workspace }}\bin' 'PsExec*' 2>&1
+
+          if ( $LASTEXITCODE ) {
+            Write-Output '::error::Could not install PsExec.exe'
+            exit $LASTEXITCODE
+          }
+
+          dir '${{ github.workspace }}/bin'
+
       # run tests
       - name: Test repo
         run: ${{ env.GOTESTCMD }} -gcflags=all=-d=checkptr -tags admin ./...
@@ -326,13 +344,16 @@ jobs:
           ${{ env.GOTESTCMD }} -mod=mod -tags functional -gcflags=all=-d=checkptr ./...
         working-directory: test/containerd-shim-runhcs-v1
 
-      # download systools for  for psexec
-      # https://download.sysinternals.com/files/PSTools.zip
+      - name: Build and run functional testing binary
+        run: |
+          go test -mod=mod -gcflags=all=-d=checkptr -c -tags functional ./functional
 
-      # run non-uVM tests as system
+          $cmd = (Get-Command gotestsum)[0].Source + ' --format standard-verbose -debug --raw-command -- ' + `
+            'go.exe tool test2json -t ' + `
+            'functional.test.exe -exclude="LCOW,LCOWIntegrity,uVM" -test.timeout=1h -test.v'
+          Write-Host "Test command: $cmd"
 
-      - name: Build functional Testing Binary
-        run: go test -mod=mod -gcflags=all=-d=checkptr -c -tags functional ./functional
+          PsExec.exe -accepteula -nobanner -w (Get-Location) -s cmd /c $cmd
         working-directory: test
 
       # build testing binaries
@@ -356,7 +377,6 @@ jobs:
             test/functional.test.exe
             test/runhcs.test.exe
             test/sample-logging-driver.exe
-
 
       # if: ${{ github.event_name == 'pull_request' }}, run benchmarks in OS matrix
 

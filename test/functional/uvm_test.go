@@ -27,11 +27,13 @@ func TestUVM(t *testing.T) {
 		createOpts func(context.Context, testing.TB) any
 	}{
 		{
-			feature:    featureLCOW,
+			feature: featureLCOW,
+			//nolint: thelper
 			createOpts: func(_ context.Context, tb testing.TB) any { return defaultLCOWOptions(tb) },
 		},
 		{
-			feature:    featureWCOW,
+			feature: featureWCOW,
+			//nolint: thelper
 			createOpts: func(ctx context.Context, tb testing.TB) any { return defaultWCOWOptions(ctx, tb) },
 		},
 	} {

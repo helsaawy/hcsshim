@@ -12,6 +12,8 @@ import (
 type CleanupFn = func(context.Context)
 
 func newCleanupFn(_ context.Context, tb testing.TB, vm *uvm.UtilityVM) CleanupFn {
+	tb.Helper()
+
 	return func(ctx context.Context) {
 		if vm == nil {
 			return

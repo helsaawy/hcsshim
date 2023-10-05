@@ -85,6 +85,8 @@ func CreateWCOWUVMFromOptsWithImage(
 }
 
 func AddVSMB(ctx context.Context, tb testing.TB, vm *uvm.UtilityVM, path string, options *hcsschema.VirtualSmbShareOptions) *uvm.VSMBShare {
+	tb.Helper()
+
 	s, err := vm.AddVSMB(ctx, path, options)
 	if err != nil {
 		tb.Fatalf("failed to add vSMB share: %v", err)

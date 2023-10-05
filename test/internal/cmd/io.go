@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
+
 	"github.com/Microsoft/hcsshim/internal/cmd"
 )
 
@@ -39,18 +41,18 @@ func (b *BufferedIO) Output() (_ string, err error) {
 func (b *BufferedIO) TestOutput(tb testing.TB, out string, err error, trim bool) {
 	tb.Helper()
 
-	outGive, errGive := b.Output()
-	if !errors.Is(errGive, err) {
-		tb.Fatalf("got stderr: %v; wanted: %v", errGive, err)
+	outGot, errGot := b.Output()
+	if !errors.Is(errGot, err) {
+		tb.Fatalf("got stderr: %v; wanted: %v", errGot, err)
 	}
 	if trim {
 		out = strings.TrimSpace(out)
-		outGive = strings.TrimSpace(outGive)
+		outGot = strings.TrimSpace(outGot)
 	}
-	out = strings.ToLower(outGive)
-	outGive = strings.ToLower(outGive)
-	if outGive != out {
-		tb.Fatalf("got stdout %q; wanted %q", outGive, out)
+	out = strings.ToLower(out)
+	outGot = strings.ToLower(outGot)
+	if diff := cmp.Diff(out, outGot); diff != "" {
+		tb.Fatalf("stdout mismatch (-want +got):\n%s", diff)
 	}
 }
 

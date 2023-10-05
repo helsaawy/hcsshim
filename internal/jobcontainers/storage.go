@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/Microsoft/hcsshim/internal/layers"
 	"github.com/Microsoft/hcsshim/internal/log"
@@ -71,4 +72,23 @@ func (c *JobContainer) setupRootfsBinding(root, target string) error {
 		return fmt.Errorf("failed to bind rootfs to %s: %w", root, err)
 	}
 	return nil
+}
+
+var (
+	fileBindingSupported     bool
+	fileBindingSupportedOnce sync.Once
+)
+
+func FileBindingSupported() bool {
+	fileBindingSupportedOnce.Do(func() {
+		root := os.Getenv("SystemRoot")
+		if root == "" {
+			root = `C:\windows` // shouldn't really need this fall back, but ...
+		}
+		bindDLL := root + `\system32\bindfltapi.dll`
+		if _, err := os.Stat(bindDLL); err == nil {
+			fileBindingSupported = true
+		}
+	})
+	return fileBindingSupported
 }

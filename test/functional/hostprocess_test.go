@@ -8,11 +8,14 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	ctrdoci "github.com/containerd/containerd/oci"
+	"github.com/opencontainers/runtime-spec/specs-go"
 
+	"github.com/Microsoft/hcsshim/internal/jobcontainers"
 	"github.com/Microsoft/hcsshim/internal/winapi"
 	"github.com/Microsoft/hcsshim/osversion"
 
@@ -20,6 +23,7 @@ import (
 	"github.com/Microsoft/hcsshim/test/internal/container"
 	"github.com/Microsoft/hcsshim/test/internal/layers"
 	testoci "github.com/Microsoft/hcsshim/test/internal/oci"
+	"github.com/Microsoft/hcsshim/test/internal/sync"
 	"github.com/Microsoft/hcsshim/test/pkg/require"
 )
 
@@ -31,10 +35,10 @@ func TestHostProcess(t *testing.T) {
 	ls := windowsImageLayers(ctx, t)
 
 	system := `NT AUTHORITY\System`
-	localService := `NT AUTHORITY\LocalService`
+	localService := `NT AUTHORITY\Local Service`
 
 	t.Run("whoami", func(t *testing.T) {
-		username := currentUsername(ctx, t)
+		username := getCurrentUsername(ctx, t)
 		t.Logf("current username: %s", username)
 
 		// theres probably a better way to test for this *shrug*
@@ -74,7 +78,7 @@ func TestHostProcess(t *testing.T) {
 				scratch := layers.WCOWScratchDir(ctx, t, "")
 				spec := testoci.CreateWindowsSpec(ctx, t, cID,
 					testoci.DefaultWindowsSpecOpts(cID,
-						ctrdoci.WithProcessCommandLine("cmd /c whoami"),
+						ctrdoci.WithProcessCommandLine("whoami.exe"),
 						testoci.WithWindowsLayerFolders(append(ls, scratch)),
 						testoci.AsHostProcessContainer(),
 						tt.user,
@@ -90,9 +94,7 @@ func TestHostProcess(t *testing.T) {
 					container.Wait(ctx, t, c)
 				})
 
-				if e := cmd.Wait(ctx, t, init); e != 0 {
-					t.Fatalf("got exit code %d, wanted %d", e, 0)
-				}
+				cmd.WaitExitCode(ctx, t, init, 0)
 
 				io.TestOutput(t, tt.whoiam, nil, true)
 			})
@@ -116,7 +118,7 @@ func TestHostProcess(t *testing.T) {
 			scratch := layers.WCOWScratchDir(ctx, t, "")
 			spec := testoci.CreateWindowsSpec(ctx, t, cID,
 				testoci.DefaultWindowsSpecOpts(cID,
-					ctrdoci.WithProcessCommandLine("cmd /c whoami"),
+					ctrdoci.WithProcessCommandLine("whoami.exe"),
 					testoci.WithWindowsLayerFolders(append(ls, scratch)),
 					testoci.AsHostProcessContainer(),
 					ctrdoci.WithUser(groupName),
@@ -132,22 +134,19 @@ func TestHostProcess(t *testing.T) {
 				container.Wait(ctx, t, c)
 			})
 
-			if e := cmd.Wait(ctx, t, init); e != 0 {
-				t.Fatalf("got exit code %d, wanted %d", e, 0)
-			}
+			cmd.WaitExitCode(ctx, t, init, 0)
 
+			hostname := getHostname(ctx, t)
 			expectedUser := cID[:winapi.UserNameCharLimit]
-			io.TestOutput(t, expectedUser, nil, true)
+			// whoami returns domain\username
+			io.TestOutput(t, hostname+`\`+expectedUser, nil, true)
 
 			checkLocalGroupMember(ctx, t, groupName, expectedUser)
-		})
-	})
+		}) //newgroup
+	}) // whoami
 
 	t.Run("hostname", func(t *testing.T) {
-		hostname, err := os.Hostname()
-		if err != nil {
-			t.Fatalf("could not get hostname: %v", err)
-		}
+		hostname := getHostname(ctx, t)
 		t.Logf("current hostname: %s", hostname)
 
 		cID := testName(t, "container")
@@ -155,7 +154,7 @@ func TestHostProcess(t *testing.T) {
 		scratch := layers.WCOWScratchDir(ctx, t, "")
 		spec := testoci.CreateWindowsSpec(ctx, t, cID,
 			testoci.DefaultWindowsSpecOpts(cID,
-				ctrdoci.WithProcessCommandLine("cmd /c whoami"),
+				ctrdoci.WithProcessCommandLine("hostname.exe"),
 				testoci.WithWindowsLayerFolders(append(ls, scratch)),
 				testoci.AsHostProcessContainer(),
 				testoci.HostProcessInheritUser(),
@@ -171,18 +170,140 @@ func TestHostProcess(t *testing.T) {
 			container.Wait(ctx, t, c)
 		})
 
-		if e := cmd.Wait(ctx, t, init); e != 0 {
-			t.Fatalf("got exit code %d, wanted %d", e, 0)
-		}
+		cmd.WaitExitCode(ctx, t, init, 0)
 
 		io.TestOutput(t, hostname, nil, true)
-	})
+	}) // hostname
+
+	// validate if we see the same volumes on the host as in the container
+	t.Run("mountvol", func(t *testing.T) {
+		cID := testName(t, "container")
+
+		scratch := layers.WCOWScratchDir(ctx, t, "")
+		spec := testoci.CreateWindowsSpec(ctx, t, cID,
+			testoci.DefaultWindowsSpecOpts(cID,
+				ctrdoci.WithProcessCommandLine("mountvol.exe"),
+				testoci.WithWindowsLayerFolders(append(ls, scratch)),
+				testoci.AsHostProcessContainer(),
+				testoci.HostProcessInheritUser(),
+			)...)
+
+		c, _, cleanup := container.Create(ctx, t, nil, spec, cID, hcsOwner)
+		t.Cleanup(cleanup)
+
+		io := cmd.NewBufferedIO()
+		init := container.StartWithSpec(ctx, t, c, spec.Process, io)
+		t.Cleanup(func() {
+			container.Kill(ctx, t, c)
+			container.Wait(ctx, t, c)
+		})
+
+		cmd.WaitExitCode(ctx, t, init, 0)
+
+		// container has been launched as the containers scratch space is a new volume
+		volumes, err := exec.CommandContext(ctx, "mountvol.exe").Output()
+		t.Logf("host mountvol.exe output:\n%s", string(volumes))
+		if err != nil {
+			t.Fatalf("failed to exec mountvol: %v", err)
+		}
+
+		io.TestOutput(t, string(volumes), nil, true)
+	}) // mountvol
+
+	t.Run("volume mount", func(t *testing.T) {
+		dir := t.TempDir()
+
+		tmpfile := filepath.Join(dir, "tmpfile")
+		if err := os.WriteFile(tmpfile, []byte("test"), 0600); err != nil {
+			t.Fatalf("could not create temp file: %v", err)
+		}
+
+		for _, tt := range []struct {
+			name            string
+			hostPath        string
+			containerPath   string
+			cmd             string
+			needsBindFilter bool
+		}{
+			// CRI is responsible for adding `C:` to the start, and converting `/` to `\`,
+			// so here we make everything how Windows wants it
+			{
+				name:            "dir absolute",
+				hostPath:        dir,
+				containerPath:   `C:\path\in\container`,
+				cmd:             `dir.exe C:\path\in\container\tmpfile`,
+				needsBindFilter: true,
+			},
+			{
+				name:          "dir relative",
+				hostPath:      dir,
+				containerPath: `C:\path\in\container`,
+				cmd:           `dir.exe %CONTAINER_SANDBOX_MOUNT_POINT%\path\in\container\tmpfile`,
+			},
+			{
+				name:            "file absolute",
+				hostPath:        tmpfile,
+				containerPath:   `C:\path\in\container\testfile`,
+				cmd:             `type.exe C:\path\in\container\testfile`,
+				needsBindFilter: true,
+			},
+			{
+				name:          "file relative",
+				hostPath:      tmpfile,
+				containerPath: `C:\path\in\container\testfile`,
+				cmd:           `type.exe %CONTAINER_SANDBOX_MOUNT_POINT%\path\in\container\testfile`,
+			},
+		} {
+			t.Run(tt.name, func(t *testing.T) {
+				if tt.needsBindFilter && !jobcontainers.FileBindingSupported() {
+					t.Skip("bind filter support is required")
+				}
+
+				cID := testName(t, "container")
+
+				scratch := layers.WCOWScratchDir(ctx, t, "")
+				spec := testoci.CreateWindowsSpec(ctx, t, cID,
+					testoci.DefaultWindowsSpecOpts(cID,
+						ctrdoci.WithProcessCommandLine(tt.cmd),
+						ctrdoci.WithMounts([]specs.Mount{
+							{
+								Source:      tt.hostPath,
+								Destination: tt.containerPath,
+							},
+						}),
+						testoci.WithWindowsLayerFolders(append(ls, scratch)),
+						testoci.AsHostProcessContainer(),
+						testoci.HostProcessInheritUser(),
+					)...)
+
+				c, _, cleanup := container.Create(ctx, t, nil, spec, cID, hcsOwner)
+				t.Cleanup(cleanup)
+
+				io := cmd.NewBufferedIO() // dir.exe and type.exe will error if theres stdout/err to write to
+				init := container.StartWithSpec(ctx, t, c, spec.Process, io)
+				t.Cleanup(func() {
+					container.Kill(ctx, t, c)
+					container.Wait(ctx, t, c)
+				})
+
+				cmd.WaitExitCode(ctx, t, init, 0)
+			})
+		}
+	}) // VolumeMount
+
+	// TODO:
+	// - Environment
+	// - working directory
+	// - "microsoft.com/hostprocess-rootfs-location" and check that rootfs location exists
+	//- bind suppport?
 }
 
 func newLocalGroup(ctx context.Context, tb testing.TB, name string) {
+	tb.Helper()
+
 	c := exec.CommandContext(ctx, "net", "localgroup", name, "/add")
 	if output, err := c.CombinedOutput(); err != nil {
-		tb.Logf("command %q output: %s", c.String(), strings.TrimSpace(string(output)))
+		tb.Logf("command %q output:\n%s", c.String(), strings.TrimSpace(string(output)))
 		tb.Fatalf("failed to create localgroup %q with: %v", name, err)
 	}
 	tb.Logf("created localgroup: %s", name)
@@ -193,9 +314,11 @@ func newLocalGroup(ctx context.Context, tb testing.TB, name string) {
 }
 
 func deleteLocalGroup(ctx context.Context, tb testing.TB, name string) {
+	tb.Helper()
+
 	c := exec.CommandContext(ctx, "net", "localgroup", name, "/delete")
 	if output, err := c.CombinedOutput(); err != nil {
-		tb.Logf("command %q output: %s", c.String(), strings.TrimSpace(string(output)))
+		tb.Logf("command %q output:\n%s", c.String(), strings.TrimSpace(string(output)))
 		tb.Fatalf("failed to delete localgroup %q: %v", name, err)
 	}
 	tb.Logf("deleted localgroup: %s", name)
@@ -203,20 +326,21 @@ func deleteLocalGroup(ctx context.Context, tb testing.TB, name string) {
 
 // Checks if userName is present in the group `groupName`.
 func checkLocalGroupMember(ctx context.Context, tb testing.TB, groupName, userName string) {
+	tb.Helper()
+
 	c := exec.CommandContext(ctx, "net", "localgroup", groupName)
 	b, err := c.CombinedOutput()
 	output := strings.TrimSpace(string(b))
+	tb.Logf("command %q output:\n%s", c.String(), output)
 	if err != nil {
-		tb.Logf("command %q output: %s", c.String(), output)
 		tb.Fatalf("failed to check members for localgroup %q: %v", groupName, err)
 	}
 	if !strings.Contains(strings.ToLower(output), strings.ToLower(userName)) {
-		tb.Logf("command %q output: %s", c.String(), output)
 		tb.Fatalf("user %s not present in the local group %s", userName, groupName)
 	}
 }
 
-func currentUsername(_ context.Context, tb testing.TB) string {
+func getCurrentUsername(_ context.Context, tb testing.TB) string {
 	tb.Helper()
 
 	u, err := user.Current() // cached, so no need to save on lookup
@@ -224,4 +348,18 @@ func currentUsername(_ context.Context, tb testing.TB) string {
 		tb.Fatalf("could not lookup current user: %v", err)
 	}
 	return u.Username
+}
+
+var hostnameOnce = sync.NewOnce(func(context.Context) (string, error) {
+	return os.Hostname()
+})
+
+func getHostname(ctx context.Context, tb testing.TB) string {
+	tb.Helper()
+
+	n, err := hostnameOnce.Do(ctx)
+	if err != nil {
+		tb.Fatalf("could not get hostname: %v", err)
+	}
+	return n
 }
