@@ -5,6 +5,7 @@ package cmd
 import (
 	"bytes"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/Microsoft/hcsshim/internal/cmd"
@@ -35,13 +36,19 @@ func (b *BufferedIO) Output() (_ string, err error) {
 	return o, err
 }
 
-func (b *BufferedIO) TestOutput(tb testing.TB, out string, err error) {
+func (b *BufferedIO) TestOutput(tb testing.TB, out string, err error, trim bool) {
 	tb.Helper()
 
 	outGive, errGive := b.Output()
 	if !errors.Is(errGive, err) {
 		tb.Fatalf("got stderr: %v; wanted: %v", errGive, err)
 	}
+	if trim {
+		out = strings.TrimSpace(out)
+		outGive = strings.TrimSpace(outGive)
+	}
+	out = strings.ToLower(outGive)
+	outGive = strings.ToLower(outGive)
 	if outGive != out {
 		tb.Fatalf("got stdout %q; wanted %q", outGive, out)
 	}

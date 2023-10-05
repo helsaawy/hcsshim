@@ -21,22 +21,23 @@ const (
 	UVMScratchSpaceName = "uvmscratch.vhdx"
 )
 
-func CacheFile(_ context.Context, tb testing.TB, dir string) string {
+func CacheFile(ctx context.Context, tb testing.TB, dir string) string {
 	tb.Helper()
 	if dir == "" {
-		dir = filepath.Join(dir, util.CleanName(tb.Name()))
+		dir = newTestTempDir(ctx, tb, "")
 	}
 	cache := filepath.Join(dir, CacheFileName)
 	return cache
 }
 
-// ScratchSpace creates an LCOW scratch space VHD at `dir\name`, and returns the dir and name.
-// If name, (dir, or cache) are empty, ScratchSpace uses [ScratchSpace] (creates a temporary
+// ScratchSpace creates an LCOW scratch space VHD at `dir/name`, and returns the directory and
+// scratch space file path.
+// If name (or dir or cache) is empty, ScratchSpace uses [ScratchSpaceName] (creates a temporary
 // directory), respectively.
 func ScratchSpace(ctx context.Context, tb testing.TB, vm *uvm.UtilityVM, name, dir, cache string) (string, string) {
 	tb.Helper()
 	if dir == "" {
-		dir = newTestTempDir(ctx, tb)
+		dir = newTestTempDir(ctx, tb, vm.ID())
 	}
 
 	if cache == "" {
@@ -57,7 +58,7 @@ func ScratchSpace(ctx context.Context, tb testing.TB, vm *uvm.UtilityVM, name, d
 func WCOWScratchDir(ctx context.Context, tb testing.TB, dir string) string {
 	tb.Helper()
 	if dir == "" {
-		dir = newTestTempDir(ctx, tb)
+		dir = newTestTempDir(ctx, tb, "")
 	}
 
 	tb.Cleanup(func() {
@@ -69,14 +70,17 @@ func WCOWScratchDir(ctx context.Context, tb testing.TB, dir string) string {
 	return dir
 }
 
-func newTestTempDir(ctx context.Context, tb testing.TB) string {
+func newTestTempDir(ctx context.Context, tb testing.TB, name string) string {
 	tb.Helper()
 	dir, err := tempDir.Do(ctx)
 	if err != nil {
 		tb.Fatal(err)
 	}
 
-	dir, err = os.MkdirTemp(dir, util.CleanName(tb.Name()))
+	if name == "" {
+		name = util.CleanName(tb.Name())
+	}
+	dir, err = os.MkdirTemp(dir, name)
 	if err != nil {
 		tb.Fatalf("create test temp directory: %v", err)
 	}

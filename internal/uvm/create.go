@@ -266,6 +266,8 @@ func (uvm *UtilityVM) CloseCtx(ctx context.Context) (err error) {
 		return uvm.hcsSystem.CloseCtx(ctx)
 	}
 
+	// TODO: delete internal state (eg, vsmbDirShares, SCSIManager, vpciDevices)
+
 	return nil
 }
 

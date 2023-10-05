@@ -42,6 +42,8 @@ import (
 
 // todo: add hostprocess (container) tests
 // todo: common cmd.Cmd tests on different hosts: start, exec, double start, exit code, etc
+// todo: remove directmapped vsmb share, then re-add it to see if theres issues
+// todo: add vsmb to not-started uVM (or closed)
 
 // owner field for uVMs.
 const hcsOwner = "hcsshim-functional-tests"
@@ -63,7 +65,6 @@ var alpineImagePaths = &layers.LazyImageLayers{
 // want to avoid erroring if WCOW tests are not selected, and also prevet accidentally accessing values without checking
 // error value first.
 type wcowImages struct {
-	// todo: un-pointer these?
 	nanoserver *layers.LazyImageLayers
 
 	// wcow tests originally used busyboxw; cannot find image on docker or mcr.
@@ -91,16 +92,21 @@ var wcowImagePaths = sync.NewOnce(func(context.Context) (*wcowImages, error) {
 })
 
 const (
-	featureLCOW          = "LCOW"          // tests that use a Linux container image
+	// container and uVM types
+
+	featureLCOW          = "LCOW"          // Linux containers or uVM tests; requires [featureUVM]
 	featureLCOWIntegrity = "LCOWIntegrity" // Linux confidential/policy tests
-	featureWCOW          = "WCOW"          // tests that use a Windows container image
-	featureUVM           = "uVM"           // tests that create a utility VM; should always be included for LCOW tests
+	featureWCOW          = "WCOW"          // Windows containers or uVM tests
+	featureUVM           = "uVM"           // tests that create a utility VM
 	featureContainer     = "container"     // tests that create a container (either process or hyper-v isolated)
-	featurePlan9         = "Plan9"
-	featureSCSI          = "SCSI"
-	featureScratch       = "Scratch"
-	featureVSMB          = "vSMB"
-	featureVPMEM         = "vPMEM"
+	featureHostProcess   = "HostProcess"   // tests that create a Windows HostProcess container; requires [featureWCOW]
+
+	// different resources
+
+	featurePlan9 = "Plan9"
+	featureSCSI  = "SCSI"
+	featureVSMB  = "vSMB"
+	featureVPMEM = "vPMEM"
 )
 
 var allFeatures = []string{
@@ -109,9 +115,9 @@ var allFeatures = []string{
 	featureWCOW,
 	featureUVM,
 	featureContainer,
+	featureHostProcess,
 	featurePlan9,
 	featureSCSI,
-	featureScratch,
 	featureVSMB,
 	featureVPMEM,
 }
@@ -142,7 +148,7 @@ func TestMain(m *testing.M) {
 		// if `m.Run()` returns an exit code, use that
 		// otherwise, use exit code `1`
 		c := 1
-		if ec, ok := err.(cli.ExitCoder); ok { //nolint:errlint
+		if ec, ok := err.(cli.ExitCoder); ok { //nolint:errorlint
 			c = ec.ExitCode()
 		}
 		os.Exit(c)
@@ -263,8 +269,10 @@ func requireAnyFeature(tb testing.TB, features ...string) {
 }
 
 func defaultLCOWOptions(tb testing.TB) *uvm.OptionsLCOW {
+	// TODO: add context parameter (same as defaultWCOWOptions)
 	tb.Helper()
-	opts := testuvm.DefaultLCOWOptions(context.TODO(), tb, util.CleanName(tb.Name()), hcsOwner)
+
+	opts := testuvm.DefaultLCOWOptions(context.TODO(), tb, testName(tb), hcsOwner)
 	if p := *flagLinuxBootFilesPath; p != "" {
 		opts.UpdateBootFilesPath(context.TODO(), p)
 	}
@@ -274,13 +282,17 @@ func defaultLCOWOptions(tb testing.TB) *uvm.OptionsLCOW {
 func defaultWCOWOptions(ctx context.Context, tb testing.TB) *uvm.OptionsWCOW {
 	tb.Helper()
 
-	opts := testuvm.DefaultWCOWOptions(tb, util.CleanName(tb.Name()), hcsOwner)
+	opts := testuvm.DefaultWCOWOptions(tb, testName(tb), hcsOwner)
 	uvmLayers := windowsImageLayers(ctx, tb)
 	scratchDir := layers.WCOWScratchDir(ctx, tb, "")
 	opts.LayerFolders = append(opts.LayerFolders, uvmLayers...)
 	opts.LayerFolders = append(opts.LayerFolders, scratchDir)
 
 	return opts
+}
+
+func testName(tb testing.TB, xs ...any) string {
+	return util.CleanName(tb.Name()) + util.RandNameSuffix(xs...)
 }
 
 // linuxImageLayers returns image layer paths appropriate for use as a container rootfs.

@@ -6,6 +6,7 @@ import (
 	"context"
 	"testing"
 
+	hcsschema "github.com/Microsoft/hcsshim/internal/hcs/schema2"
 	"github.com/Microsoft/hcsshim/internal/uvm"
 
 	"github.com/Microsoft/hcsshim/test/internal/layers"
@@ -44,12 +45,7 @@ func CreateWCOW(ctx context.Context, tb testing.TB, opts *uvm.OptionsWCOW) (*uvm
 		tb.Fatalf("could not create WCOW UVM: %v", err)
 	}
 
-	f := func(ctx context.Context) {
-		if err := vm.CloseCtx(ctx); err != nil {
-			tb.Logf("could not close vm %q: %v", vm.ID(), err)
-		}
-	}
-	return vm, f
+	return vm, newCleanupFn(ctx, tb, vm)
 }
 
 // CreateWCOWUVMFromOptsWithImage creates a WCOW utility VM with the passed opts
@@ -88,19 +84,18 @@ func CreateWCOWUVMFromOptsWithImage(
 	return vm, uvmLayers, scratchDir
 }
 
-// CreateAndStartWCOWFromOpts creates a WCOW utility VM with the specified options.
-//
-// The cleanup function will be added to `tb.Cleanup`.
-func CreateAndStartWCOWFromOpts(ctx context.Context, tb testing.TB, opts *uvm.OptionsWCOW) *uvm.UtilityVM {
-	tb.Helper()
-
-	if opts == nil {
-		tb.Fatal("opts must be set")
+func AddVSMB(ctx context.Context, tb testing.TB, vm *uvm.UtilityVM, path string, options *hcsschema.VirtualSmbShareOptions) *uvm.VSMBShare {
+	s, err := vm.AddVSMB(ctx, path, options)
+	if err != nil {
+		tb.Fatalf("failed to add vSMB share: %v", err)
 	}
 
-	vm, cleanup := CreateWCOW(ctx, tb, opts)
-	Start(ctx, tb, vm)
-	tb.Cleanup(func() { cleanup(ctx) })
+	ro := options.ReadOnly
+	tb.Cleanup(func() {
+		if err := vm.RemoveVSMB(ctx, s.HostPath, ro); err != nil {
+			tb.Fatalf("failed to remove vSMB share: %v", err)
+		}
+	})
 
-	return vm
+	return s
 }

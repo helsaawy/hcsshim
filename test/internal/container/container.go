@@ -12,65 +12,80 @@ import (
 	"github.com/Microsoft/hcsshim/internal/cmd"
 	"github.com/Microsoft/hcsshim/internal/cow"
 	"github.com/Microsoft/hcsshim/internal/hcsoci"
+	"github.com/Microsoft/hcsshim/internal/jobcontainers"
 	"github.com/Microsoft/hcsshim/internal/layers"
+	"github.com/Microsoft/hcsshim/internal/oci"
 	"github.com/Microsoft/hcsshim/internal/resources"
 	"github.com/Microsoft/hcsshim/internal/uvm"
 
 	testcmd "github.com/Microsoft/hcsshim/test/internal/cmd"
 )
 
+// TODO: update cleanup func to accept context, same as uVM cleanup
+
+// a test version of the container creation logic in: cmd\containerd-shim-runhcs-v1\task_hcs.go:createContainer
 func Create(
 	ctx context.Context,
 	tb testing.TB,
 	vm *uvm.UtilityVM,
 	spec *specs.Spec,
 	name, owner string,
-) (cow.Container, *resources.Resources, func()) {
+) (c cow.Container, r *resources.Resources, _ func()) {
 	tb.Helper()
 
 	if spec.Windows == nil || spec.Windows.Network == nil || spec.Windows.LayerFolders == nil {
 		tb.Fatalf("improperly configured windows spec for container %q: %#+v", name, spec.Windows)
 	}
 
-	co := &hcsoci.CreateOptions{
-		ID:            name,
-		HostingSystem: vm,
-		Owner:         owner,
-		Spec:          spec,
-		// dont create a network namespace on the host side
-		NetworkNamespace: "", //spec.Windows.Network.NetworkNamespace,
+	var err error
+	if oci.IsJobContainer(spec) {
+		c, r, err = jobcontainers.Create(ctx, name, spec)
+	} else {
+		co := &hcsoci.CreateOptions{
+			ID:            name,
+			HostingSystem: vm,
+			Owner:         owner,
+			Spec:          spec,
+			// Don't create a network namespace on the host side:
+			// If one is needed, it'll be created manually during testing.
+			// Additionally, these are "standalone" containers, and not CRI pod/workload containers,
+			// so leave end-to-end testing with namespaces for CRI tests
+			NetworkNamespace: "",
+		}
+
+		if co.Spec.Linux != nil {
+			if vm == nil {
+				tb.Fatalf("LCOW requires a uVM")
+			}
+
+			var layerFolders []string
+			if co.Spec.Windows != nil {
+				layerFolders = co.Spec.Windows.LayerFolders
+			}
+			if len(layerFolders) <= 1 {
+				tb.Fatalf("LCOW requires at least 2 layers (including scratch): %v", layerFolders)
+			}
+			scratch := layerFolders[len(layerFolders)-1]
+			parents := layerFolders[:len(layerFolders)-1]
+
+			// todo: support partitioned layers
+			co.LCOWLayers = &layers.LCOWLayers{
+				Layers:         make([]*layers.LCOWLayer, 0, len(parents)),
+				ScratchVHDPath: filepath.Join(scratch, "sandbox.vhdx"),
+			}
+
+			for _, p := range parents {
+				co.LCOWLayers.Layers = append(co.LCOWLayers.Layers, &layers.LCOWLayer{VHDPath: filepath.Join(p, "layer.vhd")})
+			}
+		}
+
+		c, r, err = hcsoci.CreateContainer(ctx, co)
 	}
 
-	if co.Spec.Linux != nil {
-		if vm == nil {
-			tb.Fatalf("LCOW requires a uVM")
-		}
-
-		var layerFolders []string
-		if co.Spec.Windows != nil {
-			layerFolders = co.Spec.Windows.LayerFolders
-		}
-		if len(layerFolders) <= 1 {
-			tb.Fatalf("LCOW requires at least 2 layers (including scratch): %v", layerFolders)
-		}
-		scratch := layerFolders[len(layerFolders)-1]
-		parents := layerFolders[:len(layerFolders)-1]
-
-		// todo: support partitioned layers
-		co.LCOWLayers = &layers.LCOWLayers{
-			Layers:         make([]*layers.LCOWLayer, 0, len(parents)),
-			ScratchVHDPath: filepath.Join(scratch, "sandbox.vhdx"),
-		}
-
-		for _, p := range parents {
-			co.LCOWLayers.Layers = append(co.LCOWLayers.Layers, &layers.LCOWLayer{VHDPath: filepath.Join(p, "layer.vhd")})
-		}
-	}
-
-	c, r, err := hcsoci.CreateContainer(ctx, co)
 	if err != nil {
-		tb.Fatalf("could not create container %q: %v", co.ID, err)
+		tb.Fatalf("could not create container %q: %v", name, err)
 	}
+
 	f := func() {
 		if err := resources.ReleaseResources(ctx, r, vm, true); err != nil {
 			tb.Errorf("failed to release container resources: %v", err)
@@ -79,7 +94,6 @@ func Create(
 			tb.Errorf("could not close container %q: %v", c.ID(), err)
 		}
 	}
-
 	return c, r, f
 }
 

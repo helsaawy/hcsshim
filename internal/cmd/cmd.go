@@ -140,7 +140,9 @@ func (c *Cmd) Start() error {
 		return fmt.Errorf("empty ProcessHost")
 	}
 
+	// closed in (*Cmd).Wait; signals command execution is done
 	c.allDoneCh = make(chan struct{})
+
 	var x interface{}
 	if !c.Host.IsOCI() {
 		if c.Spec == nil {
@@ -228,8 +230,8 @@ func (c *Cmd) Start() error {
 	if c.Stdout != nil {
 		c.iogrp.Go(func() error {
 			_, err := relayIO(c.Stdout, stdout, c.Log, "stdout")
-			if err := p.CloseStdout(context.TODO()); err != nil {
-				c.Log.WithError(err).Warn("failed to close Cmd stdout")
+			if cErr := p.CloseStdout(context.TODO()); cErr != nil && !isClosedIOErr(cErr) && c.Log != nil {
+				c.Log.WithError(cErr).Warn("failed to close Cmd stdout")
 			}
 			return err
 		})
@@ -238,8 +240,8 @@ func (c *Cmd) Start() error {
 	if c.Stderr != nil {
 		c.iogrp.Go(func() error {
 			_, err := relayIO(c.Stderr, stderr, c.Log, "stderr")
-			if err := p.CloseStderr(context.TODO()); err != nil {
-				c.Log.WithError(err).Warn("failed to close Cmd stderr")
+			if cErr := p.CloseStderr(context.TODO()); cErr != nil && !isClosedIOErr(cErr) && c.Log != nil {
+				c.Log.WithError(cErr).Warn("failed to close Cmd stderr")
 			}
 			return err
 		})

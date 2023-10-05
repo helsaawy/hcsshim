@@ -12,6 +12,8 @@ import (
 	criopts "github.com/containerd/containerd/pkg/cri/opts"
 	"github.com/opencontainers/runtime-spec/specs-go"
 
+	"github.com/Microsoft/hcsshim/pkg/annotations"
+
 	"github.com/Microsoft/hcsshim/test/pkg/images"
 )
 
@@ -104,9 +106,32 @@ func WithWindowsLayerFolders(layers []string) ctrdoci.SpecOpts {
 	}
 }
 
+// AsHostProcessContainer updates the spec to create a HostProcess container.
+func AsHostProcessContainer() ctrdoci.SpecOpts {
+	return func(_ context.Context, _ ctrdoci.Client, _ *containers.Container, s *specs.Spec) error {
+		if s.Annotations == nil {
+			s.Annotations = make(map[string]string)
+		}
+		s.Annotations[annotations.HostProcessContainer] = "true"
+		return nil
+	}
+}
+
+// HostProcessInheritUser updates the spec to allow the HostProcess container to inherit the current
+// user's token.
+func HostProcessInheritUser() ctrdoci.SpecOpts {
+	return func(_ context.Context, _ ctrdoci.Client, _ *containers.Container, s *specs.Spec) error {
+		if s.Annotations == nil {
+			s.Annotations = make(map[string]string)
+		}
+		s.Annotations[annotations.HostProcessInheritUser] = "true"
+		return nil
+	}
+}
+
 // defined in containerd/oci/spec_opts_windows.go
 
-// WithProcessCommandLine replaces the command line on the generated spec
+// WithProcessCommandLine replaces the command line on the generated spec.
 func WithProcessCommandLine(cmd string) ctrdoci.SpecOpts {
 	return func(_ context.Context, _ ctrdoci.Client, _ *containers.Container, s *specs.Spec) error {
 		if s.Process == nil {

@@ -326,12 +326,18 @@ jobs:
           ${{ env.GOTESTCMD }} -mod=mod -tags functional -gcflags=all=-d=checkptr ./...
         working-directory: test/containerd-shim-runhcs-v1
 
+      # download systools for  for psexec
+      # https://download.sysinternals.com/files/PSTools.zip
+
+      # run non-uVM tests as system
+
+      - name: Build functional Testing Binary
+        run: go test -mod=mod -gcflags=all=-d=checkptr -c -tags functional ./functional
+        working-directory: test
+
       # build testing binaries
       - name: Build cri-containerd Testing Binary
         run: go test -mod=mod -gcflags=all=-d=checkptr -c -tags functional ./cri-containerd
-        working-directory: test
-      - name: Build functional Testing Binary
-        run: go test -mod=mod -gcflags=all=-d=checkptr -c -tags functional ./functional
         working-directory: test
       - name: Build runhcs Testing Binary
         run: go test -mod=mod -gcflags=all=-d=checkptr -c -tags functional ./runhcs
@@ -350,6 +356,9 @@ jobs:
             test/functional.test.exe
             test/runhcs.test.exe
             test/sample-logging-driver.exe
+
+
+      # if: ${{ github.event_name == 'pull_request' }}, run benchmarks in OS matrix
 
   integration-tests:
     needs: [lint, protos, verify-vendor, go-gen]

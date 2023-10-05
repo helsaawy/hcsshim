@@ -254,7 +254,7 @@ func fetchProcessor(ctx context.Context, opts *OptionsLCOW, uvm *UtilityVM) (*hc
 }
 
 /*
-Example JSON document produced once the hcsschema.ComputeSytem returned by makeLCOWSecurityDoc is serialised:
+Example JSON document produced once the hcsschema.ComputeSystem returned by makeLCOWSecurityDoc is serialized:
 {
     "Owner": "containerd-shim-runhcs-v1.exe",
     "SchemaVersion": {
@@ -419,10 +419,10 @@ func makeLCOWVMGSDoc(ctx context.Context, opts *OptionsLCOW, uvm *UtilityVM) (_ 
 	// Set permissions for the VSock ports:
 	//		entropyVsockPort - 1 is the entropy port,
 	//		linuxLogVsockPort - 109 used by vsockexec to log stdout/stderr logging,
-	//		0x40000000 + 1 (LinuxGcsVsockPort + 1) is the bridge (see guestconnectiuon.go)
+	//		0x40000000 + 1 (LinuxGcsVsockPort + 1) is the bridge (see guestconnection.go)
 	hvSockets := [...]uint32{entropyVsockPort, linuxLogVsockPort, gcs.LinuxGcsVsockPort, gcs.LinuxGcsVsockPort + 1}
 	for _, whichSocket := range hvSockets {
-		key := fmt.Sprintf("%08x-facb-11e6-bd58-64006a7986d3", whichSocket) // format of a linux hvsock GUID is port#-facb-11e6-bd58-64006a7986d3
+		key := winio.VsockServiceID(whichSocket).String()
 		doc.VirtualMachine.Devices.HvSocket.HvSocketConfig.ServiceTable[key] = hcsschema.HvSocketServiceConfig{
 			AllowWildcardBinds:        true,
 			BindSecurityDescriptor:    "D:P(A;;FA;;;WD)",

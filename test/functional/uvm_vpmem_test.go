@@ -16,7 +16,7 @@ import (
 	tuvm "github.com/Microsoft/hcsshim/test/pkg/uvm"
 )
 
-// TestVPMEM tests adding/removing VPMem Read-Only layers from a v2 Linux utility VM
+// TestVPMEM tests adding/removing VPMem Read-Only layers from a v2 Linux utility VM.
 func TestVPMEM(t *testing.T) {
 	t.Skip("not yet updated")
 

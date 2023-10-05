@@ -267,9 +267,10 @@ func windowsImage(ctx context.Context, rc io.ReadCloser, dir string, parents []s
 //
 // It allows grouping together image layers and excluding them from MS Defender wholesale.
 var tempDir = testsync.NewOnce(func(ctx context.Context) (string, error) {
-	// ! DO NOT DELETE THIS FOLDER: we want a "stable" (relative to OS restart) directory for
+	// ! DO NOT DELETE THIS FOLDER
+	// we want a "stable" (relative to OS restart) directory for image layers and
+	// scratch files that we can avoid needing to recreate and re-adding defender exclusions to
 
-	// image layers and scratch files that we can avoid needing to recreate and re-adding defender exclusions to
 	dir := filepath.Join(os.TempDir(), "hcsshim-test")
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return "", fmt.Errorf("create hcsshim testing temp directory: %w", err)
