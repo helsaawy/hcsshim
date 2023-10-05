@@ -1,6 +1,5 @@
-//go:build windows && (functional || uvmmem)
-// +build windows
-// +build functional uvmmem
+//go:build windows && functional
+// +build windows,functional
 
 package functional
 

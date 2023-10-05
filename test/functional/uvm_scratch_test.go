@@ -1,6 +1,5 @@
-//go:build windows && (functional || uvmscratch)
-// +build windows
-// +build functional uvmscratch
+//go:build windows && functional
+// +build windows,functional
 
 package functional
 

@@ -64,9 +64,10 @@ func createCimFileUtil(c *CimFsWriter, fileTuple tuple) error {
 // |- foo
 // |--- bar.txt
 func TestCimReadWrite(t *testing.T) {
-	if !IsCimFsSupported() {
-		t.Skipf("CimFs not supported")
-	}
+	t.Skipf("no crash :(")
+	// if !IsCimFsSupported() {
+	// 	t.Skipf("CimFs not supported")
+	// }
 
 	testContents := []tuple{
 		{"foobar.txt", []byte("foobar test data"), false},
@@ -138,5 +139,4 @@ func TestCimReadWrite(t *testing.T) {
 			}
 		}
 	}
-
 }

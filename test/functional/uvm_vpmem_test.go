@@ -1,6 +1,5 @@
-//go:build windows && (functional || uvmvpmem)
-// +build windows
-// +build functional uvmvpmem
+//go:build windows && functional
+// +build windows,functional
 
 package functional
 

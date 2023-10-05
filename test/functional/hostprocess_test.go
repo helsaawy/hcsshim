@@ -142,7 +142,7 @@ func TestHostProcess(t *testing.T) {
 			io.TestOutput(t, hostname+`\`+expectedUser, nil, true)
 
 			checkLocalGroupMember(ctx, t, groupName, expectedUser)
-		}) //newgroup
+		}) // newgroup
 	}) // whoami
 
 	t.Run("hostname", func(t *testing.T) {
@@ -244,14 +244,14 @@ func TestHostProcess(t *testing.T) {
 				name:            "file absolute",
 				hostPath:        tmpfile,
 				containerPath:   `C:\path\in\container\testfile`,
-				cmd:             `type.exe C:\path\in\container\testfile`,
+				cmd:             `cmd.exe /c type C:\path\in\container\testfile`,
 				needsBindFilter: true,
 			},
 			{
 				name:          "file relative",
 				hostPath:      tmpfile,
 				containerPath: `C:\path\in\container\testfile`,
-				cmd:           `type.exe %CONTAINER_SANDBOX_MOUNT_POINT%\path\in\container\testfile`,
+				cmd:           `cmd.exe /c type %CONTAINER_SANDBOX_MOUNT_POINT%\path\in\container\testfile`,
 			},
 		} {
 			t.Run(tt.name, func(t *testing.T) {
@@ -286,7 +286,16 @@ func TestHostProcess(t *testing.T) {
 					container.Wait(ctx, t, c)
 				})
 
-				cmd.WaitExitCode(ctx, t, init, 0)
+				if ee := cmd.Wait(ctx, t, init); ee != 0 {
+					out, err := io.Output()
+					if out != "" {
+						t.Logf("stdout:\n%s", out)
+					}
+					if err != nil {
+						t.Logf("stderr:\n%v", err)
+					}
+					t.Errorf("got exit code %d, wanted %d", ee, 0)
+				}
 			})
 		}
 	}) // VolumeMount

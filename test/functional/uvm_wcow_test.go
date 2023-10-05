@@ -1,6 +1,5 @@
-//go:build windows && (functional || wcow)
-// +build windows
-// +build functional wcow
+//go:build windows && functional
+// +build windows,functional
 
 package functional
 

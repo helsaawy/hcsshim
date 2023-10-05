@@ -1,6 +1,5 @@
-//go:build windows && (functional || uvmscsi)
-// +build windows
-// +build functional uvmscsi
+//go:build windows && functional
+// +build windows,functional
 
 package functional
 

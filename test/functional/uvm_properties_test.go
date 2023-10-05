@@ -1,6 +1,5 @@
-//go:build windows && (functional || uvmproperties)
-// +build windows
-// +build functional uvmproperties
+//go:build windows && functional
+// +build windows,functional
 
 package functional
 
