@@ -45,12 +45,23 @@ import (
 // a lot of difference between the two paths, for example the regular path has options about the type of kernel and initrd binary whereas the AMD SEV-SNP
 // path has only one file but there are many other detail differences, so the code is split for clarity.
 //
-// makeLCOW*Doc returns an instance of hcsschema.ComputeSystem. That is then serialised to the json string provided to the flat C api. A similar scheme is used
-// for later adjustments, for example adding a newtwork adpator.
+// makeLCOW*Doc returns an instance of hcsschema.ComputeSystem. That is then serialized to the json string provided to the flat C api. A similar scheme is used
+// for later adjustments, for example adding a newtwork adapator.
 //
 // Examples of the eventual json are inline as comments by these two functions to show the eventual effect of the code.
 //
 // Note that the schema files, ie the Go objects that represent the json, are generated outside of the local build process.
+
+// KernelFilename is the name of the kernel file to use
+type KernelFilename string
+
+const (
+	// KernelFile is the default file name for a kernel used to boot LCOW.
+	KernelFile = KernelFilename("kernel")
+	// UncompressedKernelFile is the default file name for an uncompressed
+	// kernel used to boot LCOW with KernelDirect.
+	UncompressedKernelFile = KernelFilename("vmlinux")
+)
 
 type PreferredRootFSType int
 
@@ -58,21 +69,28 @@ const (
 	PreferredRootFSTypeInitRd PreferredRootFSType = iota
 	PreferredRootFSTypeVHD
 	PreferredRootFSTypeNA
-
-	entropyVsockPort  = 1
-	linuxLogVsockPort = 109
 )
+
+// RootFSFilename is the name of file containing the UVM's root file system.
+type RootFSFilename string
 
 const (
 	// InitrdFile is the default file name for an initrd.img used to boot LCOW.
-	InitrdFile = "initrd.img"
+	InitrdFile = RootFSFilename("initrd.img")
 	// VhdFile is the default file name for a rootfs.vhd used to boot LCOW.
-	VhdFile = "rootfs.vhd"
-	// KernelFile is the default file name for a kernel used to boot LCOW.
-	KernelFile = "kernel"
-	// UncompressedKernelFile is the default file name for an uncompressed
-	// kernel used to boot LCOW with KernelDirect.
-	UncompressedKernelFile = "vmlinux"
+	VhdFile = RootFSFilename("rootfs.vhd")
+)
+
+// vsock ports.
+const (
+	// vsock port used to provide entropy to the Linux Kernel.
+	entropyVsockPort = 1
+	// vsock port used by vsockexec to log stdout and stderr.
+	linuxLogVsockPort = 109
+)
+
+// confidential boot related constants.
+const (
 	// GuestStateFile is the default file name for a vmgs (VM Guest State) file
 	// which combines kernel and initrd and is used to boot from in the SNP case.
 	GuestStateFile = "kernelinitrd.vmgs"
@@ -101,10 +119,11 @@ type OptionsLCOW struct {
 	//
 	// It is preferred to use [UpdateBootFilesPath] to change this value and update associated fields.
 	BootFilesPath           string
-	KernelFile              string               // Filename under `BootFilesPath` for the kernel. Defaults to `kernel`
+	KernelFile              KernelFilename       // Filename under `BootFilesPath` for the kernel. Defaults to `kernel`
 	KernelDirect            bool                 // Skip UEFI and boot directly to `kernel`
-	RootFSFile              string               // Filename under `BootFilesPath` for the UVMs root file system. Defaults to `InitrdFile`
 	KernelBootOptions       string               // Additional boot options for the kernel
+	RootFSFile              RootFSFilename       // Filename under `BootFilesPath` for the UVMs root file system. Defaults to `InitrdFile`
+	PreferredRootFSType     PreferredRootFSType  // If [RootFSFile] is [InitrdFile] use [PreferredRootFSTypeInitRd]. If [RootFSFile] is [VhdFile] use [PreferredRootFSTypeVHD].
 	EnableGraphicsConsole   bool                 // If true, enable a graphics console for the utility VM
 	ConsolePipe             string               // The named pipe path to use for the serial console.  eg \\.\pipe\vmpipe
 	UseGuestConnection      bool                 // Whether the HCS should connect to the UVM's GCS. Defaults to true
@@ -115,7 +134,6 @@ type OptionsLCOW struct {
 	VPMemDeviceCount        uint32               // Number of VPMem devices. Defaults to `DefaultVPMEMCount`. Limit at 128. If booting UVM from VHD, device 0 is taken.
 	VPMemSizeBytes          uint64               // Size of the VPMem devices. Defaults to `DefaultVPMemSizeBytes`.
 	VPMemNoMultiMapping     bool                 // Disables LCOW layer multi mapping
-	PreferredRootFSType     PreferredRootFSType  // If `KernelFile` is `InitrdFile` use `PreferredRootFSTypeInitRd`. If `KernelFile` is `VhdFile` use `PreferredRootFSTypeVHD`
 	EnableColdDiscardHint   bool                 // Whether the HCS should use cold discard hints. Defaults to false
 	VPCIEnabled             bool                 // Whether the kernel should enable pci
 	EnableScratchEncryption bool                 // Whether the scratch should be encrypted
@@ -200,14 +218,14 @@ func (opts *OptionsLCOW) UpdateBootFilesPath(ctx context.Context, path string) {
 
 	opts.BootFilesPath = path
 
-	if _, err := os.Stat(filepath.Join(opts.BootFilesPath, VhdFile)); err == nil {
+	if _, err := os.Stat(filepath.Join(opts.BootFilesPath, string(VhdFile))); err == nil {
 		// We have a rootfs.vhd in the boot files path. Use it over an initrd.img
 		opts.RootFSFile = VhdFile
 		opts.PreferredRootFSType = PreferredRootFSTypeVHD
 
 		log.G(ctx).WithFields(logrus.Fields{
 			logfields.UVMID: opts.ID,
-			VhdFile:         filepath.Join(opts.BootFilesPath, VhdFile),
+			string(VhdFile): filepath.Join(opts.BootFilesPath, string(VhdFile)),
 		}).Debug("updated LCOW root filesystem to " + VhdFile)
 	}
 
@@ -216,12 +234,12 @@ func (opts *OptionsLCOW) UpdateBootFilesPath(ctx context.Context, path string) {
 		// Default to uncompressed if on box. NOTE: If `kernel` is already
 		// uncompressed and simply named 'kernel' it will still be used
 		// uncompressed automatically.
-		if _, err := os.Stat(filepath.Join(opts.BootFilesPath, UncompressedKernelFile)); err == nil {
+		if _, err := os.Stat(filepath.Join(opts.BootFilesPath, string(UncompressedKernelFile))); err == nil {
 			opts.KernelFile = UncompressedKernelFile
 
 			log.G(ctx).WithFields(logrus.Fields{
-				logfields.UVMID:        opts.ID,
-				UncompressedKernelFile: filepath.Join(opts.BootFilesPath, UncompressedKernelFile),
+				logfields.UVMID:                opts.ID,
+				string(UncompressedKernelFile): filepath.Join(opts.BootFilesPath, string(UncompressedKernelFile)),
 			}).Debug("updated LCOW kernel file to " + UncompressedKernelFile)
 		}
 	}
@@ -551,11 +569,11 @@ Example JSON document produced once the hcsschema.ComputeSytem returned by makeL
 func makeLCOWDoc(ctx context.Context, opts *OptionsLCOW, uvm *UtilityVM) (_ *hcsschema.ComputeSystem, err error) {
 	logrus.Tracef("makeLCOWDoc %v\n", opts)
 
-	kernelFullPath := filepath.Join(opts.BootFilesPath, opts.KernelFile)
+	kernelFullPath := filepath.Join(opts.BootFilesPath, string(opts.KernelFile))
 	if _, err := os.Stat(kernelFullPath); os.IsNotExist(err) {
 		return nil, fmt.Errorf("kernel: '%s' not found", kernelFullPath)
 	}
-	rootfsFullPath := filepath.Join(opts.BootFilesPath, opts.RootFSFile)
+	rootfsFullPath := filepath.Join(opts.BootFilesPath, string(opts.RootFSFile))
 	if _, err := os.Stat(rootfsFullPath); os.IsNotExist(err) {
 		return nil, fmt.Errorf("boot file: '%s' not found", rootfsFullPath)
 	}
@@ -629,14 +647,14 @@ func makeLCOWDoc(ctx context.Context, opts *OptionsLCOW, uvm *UtilityVM) (_ *hcs
 	switch opts.PreferredRootFSType {
 	case PreferredRootFSTypeInitRd:
 		if !opts.KernelDirect {
-			kernelArgs = "initrd=/" + opts.RootFSFile
+			kernelArgs = "initrd=/" + string(opts.RootFSFile)
 		}
 	case PreferredRootFSTypeVHD:
 		if uvm.vpmemMaxCount > 0 {
 			// Support for VPMem VHD(X) booting rather than initrd..
 			kernelArgs = "root=/dev/pmem0 ro rootwait init=/init"
 			imageFormat := "Vhd1"
-			if strings.ToLower(filepath.Ext(opts.RootFSFile)) == "vhdx" {
+			if strings.ToLower(filepath.Ext(string(opts.RootFSFile))) == "vhdx" {
 				imageFormat = "Vhdx"
 			}
 			doc.VirtualMachine.Devices.VirtualPMem.Devices = map[string]hcsschema.VirtualPMemDevice{
@@ -667,13 +685,13 @@ func makeLCOWDoc(ctx context.Context, opts *OptionsLCOW, uvm *UtilityVM) (_ *hcs
 					}
 				}()
 
-				dev := newVPMemMappedDevice(opts.RootFSFile, "/", devSize, memReg)
+				dev := newVPMemMappedDevice(string(opts.RootFSFile), "/", devSize, memReg)
 				if err := pmem.mapVHDLayer(ctx, dev); err != nil {
 					return nil, errors.Wrapf(err, "failed to save internal state for a multi-mapped rootfs device")
 				}
 				uvm.vpmemDevicesMultiMapped[0] = pmem
 			} else {
-				dev := newDefaultVPMemInfo(opts.RootFSFile, "/")
+				dev := newDefaultVPMemInfo(string(opts.RootFSFile), "/")
 				uvm.vpmemDevicesDefault[0] = dev
 			}
 		} else {
@@ -763,7 +781,7 @@ func makeLCOWDoc(ctx context.Context, opts *OptionsLCOW, uvm *UtilityVM) (_ *hcs
 	if !opts.KernelDirect {
 		doc.VirtualMachine.Chipset.Uefi = &hcsschema.Uefi{
 			BootThis: &hcsschema.UefiBootEntry{
-				DevicePath:    `\` + opts.KernelFile,
+				DevicePath:    `\` + string(opts.KernelFile),
 				DeviceType:    "VmbFs",
 				VmbFsRootPath: opts.BootFilesPath,
 				OptionalData:  kernelArgs,

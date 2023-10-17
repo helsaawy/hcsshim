@@ -5,6 +5,7 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -19,6 +20,8 @@ import (
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sys/windows"
 )
+
+var errIOTimeOut = errors.New("timed out waiting for stdio relay")
 
 // CmdProcessRequest stores information on command requests made through this package.
 type CmdProcessRequest struct {
@@ -221,7 +224,7 @@ func (c *Cmd) Start() error {
 				c.stdinErr.Store(err)
 			}
 			// Notify the process that there is no more input.
-			if err := p.CloseStdin(context.TODO()); err != nil && c.Log != nil {
+			if err := p.CloseStdin(context.TODO()); err != nil && !isClosedIOErr(err) && c.Log != nil {
 				c.Log.WithError(err).Warn("failed to close Cmd stdin")
 			}
 		}()
@@ -280,9 +283,12 @@ func (c *Cmd) Wait() error {
 		state.exited = true
 		state.code = code
 	}
+
 	// Terminate the IO if the copy does not complete in the requested time.
+	timeoutErrCh := make(chan error)
 	if c.CopyAfterExitTimeout != 0 {
 		go func() {
+			defer close(timeoutErrCh)
 			t := time.NewTimer(c.CopyAfterExitTimeout)
 			defer t.Stop()
 			select {
@@ -290,17 +296,25 @@ func (c *Cmd) Wait() error {
 			case <-t.C:
 				// Close the process to cancel any reads to stdout or stderr.
 				c.Process.Close()
+				err := errIOTimeOut
 				if c.Log != nil {
-					c.Log.Warn("timed out waiting for stdio relay")
+					c.Log.WithField("timeout", c.CopyAfterExitTimeout).Warn(err.Error())
 				}
+				timeoutErrCh <- err
 			}
 		}()
+	} else {
+		close(timeoutErrCh)
 	}
+
 	ioErr := c.iogrp.Wait()
 	if ioErr == nil {
 		ioErr, _ = c.stdinErr.Load().(error)
 	}
 	close(c.allDoneCh)
+	if tErr := <-timeoutErrCh; ioErr == nil {
+		ioErr = tErr
+	}
 	c.Process.Close()
 	c.ExitState = state
 	if exitErr != nil {

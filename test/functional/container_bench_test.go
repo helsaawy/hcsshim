@@ -28,11 +28,13 @@ import (
 	testuvm "github.com/Microsoft/hcsshim/test/pkg/uvm"
 )
 
-func BenchmarkLCOW_Container(b *testing.B) {
+// TODO: WCOW benchmarks (hyper-v, process, and hostprocess)
+
+func BenchmarkContainer_LCOW(b *testing.B) {
 	requireFeatures(b, featureLCOW, featureContainer)
 	require.Build(b, osversion.RS5)
 
-	pCtx := namespacedContext()
+	pCtx := namespacedContext(context.Background())
 	ls := linuxImageLayers(pCtx, b)
 
 	// Create a new uVM per benchmark in case any left over state lingers
@@ -64,7 +66,7 @@ func BenchmarkLCOW_Container(b *testing.B) {
 					vmCleanup(ctx)
 				}
 				// recreate the uVM
-				opts := defaultLCOWOptions(b)
+				opts := defaultLCOWOptions(ctx, b)
 				vm, vmCleanup = testuvm.CreateLCOW(ctx, b, opts)
 				testuvm.Start(ctx, b, vm)
 				cache = testlayers.CacheFile(ctx, b, "")
@@ -143,7 +145,7 @@ func BenchmarkLCOW_Container(b *testing.B) {
 					vmCleanup(ctx)
 				}
 				// recreate the uVM
-				opts := defaultLCOWOptions(b)
+				opts := defaultLCOWOptions(ctx, b)
 				vm, vmCleanup = testuvm.CreateLCOW(ctx, b, opts)
 				testuvm.Start(ctx, b, vm)
 				cache = testlayers.CacheFile(ctx, b, "")
@@ -197,7 +199,7 @@ func BenchmarkLCOW_Container(b *testing.B) {
 					vmCleanup(ctx)
 				}
 				// recreate the uVM
-				opts := defaultLCOWOptions(b)
+				opts := defaultLCOWOptions(ctx, b)
 				vm, vmCleanup = testuvm.CreateLCOW(ctx, b, opts)
 				testuvm.Start(ctx, b, vm)
 				cache = testlayers.CacheFile(ctx, b, "")
@@ -254,7 +256,7 @@ func BenchmarkLCOW_Container(b *testing.B) {
 					vmCleanup(ctx)
 				}
 				// recreate the uVM
-				opts := defaultLCOWOptions(b)
+				opts := defaultLCOWOptions(ctx, b)
 				vm, vmCleanup = testuvm.CreateLCOW(ctx, b, opts)
 				testuvm.Start(ctx, b, vm)
 				cache = testlayers.CacheFile(ctx, b, "")
@@ -317,7 +319,7 @@ func BenchmarkLCOW_Container(b *testing.B) {
 					vmCleanup(ctx)
 				}
 				// recreate the uVM
-				opts := defaultLCOWOptions(b)
+				opts := defaultLCOWOptions(ctx, b)
 				vm, vmCleanup = testuvm.CreateLCOW(ctx, b, opts)
 				testuvm.Start(ctx, b, vm)
 				cache = testlayers.CacheFile(ctx, b, "")
@@ -381,7 +383,7 @@ func BenchmarkLCOW_Container(b *testing.B) {
 					vmCleanup(ctx)
 				}
 				// recreate the uVM
-				opts := defaultLCOWOptions(b)
+				opts := defaultLCOWOptions(ctx, b)
 				vm, vmCleanup = testuvm.CreateLCOW(ctx, b, opts)
 				testuvm.Start(ctx, b, vm)
 				cache = testlayers.CacheFile(ctx, b, "")
@@ -445,7 +447,7 @@ func BenchmarkLCOW_Container(b *testing.B) {
 					vmCleanup(ctx)
 				}
 				// recreate the uVM
-				opts := defaultLCOWOptions(b)
+				opts := defaultLCOWOptions(ctx, b)
 				vm, vmCleanup = testuvm.CreateLCOW(ctx, b, opts)
 				testuvm.Start(ctx, b, vm)
 				cache = testlayers.CacheFile(ctx, b, "")

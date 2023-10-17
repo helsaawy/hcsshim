@@ -56,6 +56,36 @@ func (b *BufferedIO) TestOutput(tb testing.TB, out string, err error, trim bool)
 	}
 }
 
+func (b *BufferedIO) TestStdOutContains(tb testing.TB, want, notWant []string) {
+	tb.Helper()
+
+	outGot, err := b.Output()
+	if err != nil {
+		tb.Fatalf("got stderr: %v", err)
+	}
+
+	tb.Logf("searching stdout for substrings\nstdout:\n%s\nwanted substrings:\n%q\nunwanted substrings:\n%q", outGot, want, notWant)
+
+	outGot = strings.ToLower(outGot)
+
+	for _, s := range want {
+		if !strings.Contains(outGot, strings.ToLower(s)) {
+			tb.Errorf("stdout does not contain substring:\n%s", s)
+		}
+	}
+
+	for _, s := range notWant {
+		if strings.Contains(outGot, strings.ToLower(s)) {
+			tb.Errorf("stdout contains substring:\n%s", s)
+		}
+	}
+
+	// FailNow() to match behavior of [TestOutput]
+	if tb.Failed() {
+		tb.FailNow()
+	}
+}
+
 func (b *BufferedIO) AddToCmd(c *cmd.Cmd) {
 	if b == nil {
 		return

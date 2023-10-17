@@ -27,7 +27,7 @@ func BenchmarkUVM(b *testing.B) {
 		{
 			feature: featureLCOW,
 			//nolint: thelper
-			createOpts: func(_ context.Context, tb testing.TB) any { return defaultLCOWOptions(tb) },
+			createOpts: func(ctx context.Context, tb testing.TB) any { return defaultLCOWOptions(ctx, tb) },
 		},
 		{
 			feature: featureWCOW,

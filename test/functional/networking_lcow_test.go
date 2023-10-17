@@ -4,6 +4,7 @@
 package functional
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -121,9 +122,9 @@ func TestLCOW_IPv6_Assignment(t *testing.T) {
 		t.Fatalf("network attachment: %v", err)
 	}
 
-	ctx := namespacedContext()
+	ctx := namespacedContext(context.Background())
 	ls := linuxImageLayers(ctx, t)
-	opts := defaultLCOWOptions(t)
+	opts := defaultLCOWOptions(ctx, t)
 	vm := uvm.CreateAndStartLCOWFromOpts(ctx, t, opts)
 
 	if err := vm.CreateAndAssignNetworkSetup(ctx, "", ""); err != nil {

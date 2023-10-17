@@ -23,6 +23,7 @@ import (
 
 const (
 	TailNullArgs = "tail -f /dev/null"
+	PingSelfCmd  = "cmd.exe /c ping -t 127.0.0.1"
 
 	DefaultNamespace = namespaces.Default
 	CRINamespace     = criconstants.K8sContainerdNamespace

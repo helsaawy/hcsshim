@@ -176,9 +176,9 @@ func createLCOWOptions(ctx context.Context, c *cli.Context, id string) (*uvm.Opt
 	}
 	if c.IsSet(kernelFileArgName) {
 		switch strings.ToLower(c.String(kernelFileArgName)) {
-		case uvm.KernelFile:
+		case string(uvm.KernelFile):
 			options.KernelFile = uvm.KernelFile
-		case uvm.UncompressedKernelFile:
+		case string(uvm.UncompressedKernelFile):
 			options.KernelFile = uvm.UncompressedKernelFile
 		default:
 			return nil, unrecognizedError(c.String(kernelFileArgName), kernelFileArgName)

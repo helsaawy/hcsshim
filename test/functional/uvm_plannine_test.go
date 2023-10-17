@@ -29,7 +29,7 @@ func TestPlan9(t *testing.T) {
 	requireFeatures(t, featureLCOW, featureUVM, featurePlan9)
 	ctx := context.Background()
 
-	vm := testuvm.CreateAndStartLCOWFromOpts(ctx, t, defaultLCOWOptions(t))
+	vm := testuvm.CreateAndStartLCOWFromOpts(ctx, t, defaultLCOWOptions(ctx, t))
 	defer vm.Close()
 
 	dir := t.TempDir()
@@ -56,7 +56,7 @@ func TestPlan9_Writable(t *testing.T) {
 	requireFeatures(t, featureLCOW, featureUVM, featurePlan9)
 	ctx := context.Background()
 
-	opts := defaultLCOWOptions(t)
+	opts := defaultLCOWOptions(ctx, t)
 	opts.NoWritableFileShares = true
 	vm := testuvm.CreateAndStartLCOWFromOpts(ctx, t, opts)
 	defer vm.Close()

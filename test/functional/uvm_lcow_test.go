@@ -4,249 +4,255 @@
 package functional
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"path/filepath"
-	"strings"
 	"testing"
-	"time"
 
 	"github.com/opencontainers/runtime-spec/specs-go"
 
-	"github.com/Microsoft/hcsshim/internal/cmd"
-	"github.com/Microsoft/hcsshim/internal/cow"
-	"github.com/Microsoft/hcsshim/internal/lcow"
-	"github.com/Microsoft/hcsshim/internal/resources"
 	"github.com/Microsoft/hcsshim/internal/uvm"
-	"github.com/Microsoft/hcsshim/internal/uvm/scsi"
 	"github.com/Microsoft/hcsshim/osversion"
 
-	testutilities "github.com/Microsoft/hcsshim/test/internal"
 	testcmd "github.com/Microsoft/hcsshim/test/internal/cmd"
-	"github.com/Microsoft/hcsshim/test/internal/container"
 	"github.com/Microsoft/hcsshim/test/pkg/require"
 	testuvm "github.com/Microsoft/hcsshim/test/pkg/uvm"
 )
 
-// TestLCOW_UVMNoSCSINoVPMemInitrd starts an LCOW utility VM without a SCSI controller and
-// no VPMem device. Uses initrd.
-func TestLCOW_UVMNoSCSINoVPMemInitrd(t *testing.T) {
-	requireFeatures(t, featureLCOW, featureUVM)
-
-	opts := defaultLCOWOptions(t)
-	opts.SCSIControllerCount = 0
-	opts.VPMemDeviceCount = 0
-	opts.PreferredRootFSType = uvm.PreferredRootFSTypeInitRd
-	opts.RootFSFile = uvm.InitrdFile
-	opts.KernelDirect = false
-
-	testLCOWUVMNoSCSISingleVPMem(t, opts, fmt.Sprintf("Command line: initrd=/%s", opts.RootFSFile))
-}
-
-// TestLCOW_UVMNoSCSISingleVPMemVHD starts an LCOW utility VM without a SCSI controller and
-// only a single VPMem device. Uses VPMEM VHD
-func TestLCOW_UVMNoSCSISingleVPMemVHD(t *testing.T) {
-	requireFeatures(t, featureLCOW, featureUVM)
-
-	opts := defaultLCOWOptions(t)
-	opts.SCSIControllerCount = 0
-	opts.VPMemDeviceCount = 1
-	opts.PreferredRootFSType = uvm.PreferredRootFSTypeVHD
-	opts.RootFSFile = uvm.VhdFile
-
-	testLCOWUVMNoSCSISingleVPMem(t, opts, `Command line: root=/dev/pmem0`, `init=/init`)
-}
-
-func testLCOWUVMNoSCSISingleVPMem(t *testing.T, opts *uvm.OptionsLCOW, expected ...string) {
-	t.Helper()
+// TestLCOWUVM_KernelArgs starts an LCOW utility VM and validates the kernel args contain the expected parameters.
+func TestLCOWUVM_KernelArgs(t *testing.T) {
 	require.Build(t, osversion.RS5)
 	requireFeatures(t, featureLCOW, featureUVM)
+
+	// TODO:
+	// - opts.VPCIEnabled and `pci=off`
+	// - opts.ProcessDumpLocation and `-core-dump-location`
+	// - opts.ConsolePipe/opts.EnableGraphicsConsole and `console=`
+
+	ctx := context.Background()
+	numCPU := int32(2)
+
+	for _, tc := range []struct {
+		name         string
+		optsFn       func(*uvm.OptionsLCOW)
+		wantArgs     []string
+		notWantArgs  []string
+		wantDmesg    []string
+		notWantDmesg []string
+	}{
+		//
+		// initrd test cases
+		//
+		// don't test initrd with SCSI or vPMEM, since it won't use either and appear in kernel args or dmesg
+		//
+
+		{
+			name: "initrd kernel",
+			optsFn: func(opts *uvm.OptionsLCOW) {
+				opts.SCSIControllerCount = 0
+				opts.VPMemDeviceCount = 0
+				opts.PreferredRootFSType = uvm.PreferredRootFSTypeInitRd
+				opts.RootFSFile = uvm.InitrdFile
+				// kernel command line only contains `initrd=/initrd.img` if KernelDirect is disabled, which
+				// implies booting from a compressed kernel.
+				opts.KernelDirect = false
+				opts.KernelFile = uvm.KernelFile
+			},
+			wantArgs: []string{fmt.Sprintf(`initrd=/%s`, uvm.InitrdFile),
+				`8250_core.nr_uarts=0`, fmt.Sprintf(`nr_cpus=%d`, numCPU), `panic=-1`, `quiet`, `pci=off`},
+			notWantArgs: []string{`root=`, `rootwait`, `init=`, `/dev/pmem`, `/dev/sda`, `console=`},
+			wantDmesg:   []string{`initrd`, `initramfs`},
+		},
+		{
+			name: "initrd vmlinux",
+			optsFn: func(opts *uvm.OptionsLCOW) {
+				opts.SCSIControllerCount = 0
+				opts.VPMemDeviceCount = 0
+				opts.PreferredRootFSType = uvm.PreferredRootFSTypeInitRd
+				opts.RootFSFile = uvm.InitrdFile
+				opts.KernelDirect = true
+				opts.KernelFile = uvm.UncompressedKernelFile
+			},
+			wantArgs:    []string{`8250_core.nr_uarts=0`, fmt.Sprintf(`nr_cpus=%d`, numCPU), `panic=-1`, `quiet`, `pci=off`},
+			notWantArgs: []string{`root=`, `rootwait`, `init=`, `/dev/pmem`, `/dev/sda`, `console=`},
+			wantDmesg:   []string{`initrd`, `initramfs`},
+		},
+
+		//
+		// VHD rootfs test cases
+		//
+
+		{
+			name: "no SCSI single vPMEM VHD kernel",
+			optsFn: func(opts *uvm.OptionsLCOW) {
+				opts.SCSIControllerCount = 0
+				opts.VPMemDeviceCount = 1
+				opts.PreferredRootFSType = uvm.PreferredRootFSTypeVHD
+				opts.RootFSFile = uvm.VhdFile
+				opts.KernelDirect = false
+				opts.KernelFile = uvm.KernelFile
+			},
+			wantArgs: []string{`root=/dev/pmem0`, `rootwait`, `init=/init`,
+				`8250_core.nr_uarts=0`, fmt.Sprintf(`nr_cpus=%d`, numCPU), `panic=-1`, `quiet`, `pci=off`},
+			notWantArgs:  []string{`initrd=`, `/dev/sda`, `console=`},
+			notWantDmesg: []string{`initrd`, `initramfs`},
+		},
+		{
+			name: "SCSI no vPMEM VHD kernel",
+			optsFn: func(opts *uvm.OptionsLCOW) {
+				opts.SCSIControllerCount = 1
+				opts.VPMemDeviceCount = 0
+				opts.PreferredRootFSType = uvm.PreferredRootFSTypeVHD
+				opts.RootFSFile = uvm.VhdFile
+				opts.KernelDirect = false
+				opts.KernelFile = uvm.KernelFile
+			},
+			wantArgs: []string{`root=/dev/sda`, `rootwait`, `init=/init`,
+				`8250_core.nr_uarts=0`, fmt.Sprintf(`nr_cpus=%d`, numCPU), `panic=-1`, `quiet`, `pci=off`},
+			notWantArgs:  []string{`initrd=`, `/dev/pmem`, `console=`},
+			notWantDmesg: []string{`initrd`, `initramfs`},
+		},
+		{
+			name: "no SCSI single vPMEM VHD vmlinux",
+			optsFn: func(opts *uvm.OptionsLCOW) {
+				opts.SCSIControllerCount = 0
+				opts.VPMemDeviceCount = 1
+				opts.PreferredRootFSType = uvm.PreferredRootFSTypeVHD
+				opts.RootFSFile = uvm.VhdFile
+				opts.KernelDirect = true
+				opts.KernelFile = uvm.UncompressedKernelFile
+			},
+			wantArgs: []string{`root=/dev/pmem0`, `rootwait`, `init=/init`,
+				`8250_core.nr_uarts=0`, fmt.Sprintf(`nr_cpus=%d`, numCPU), `panic=-1`, `quiet`, `pci=off`},
+			notWantArgs:  []string{`initrd=`, `/dev/sda`, `console=`},
+			notWantDmesg: []string{`initrd`, `initramfs`},
+		},
+		{
+			name: "SCSI no vPMEM VHD vmlinux",
+			optsFn: func(opts *uvm.OptionsLCOW) {
+				opts.SCSIControllerCount = 1
+				opts.VPMemDeviceCount = 0
+				opts.PreferredRootFSType = uvm.PreferredRootFSTypeVHD
+				opts.RootFSFile = uvm.VhdFile
+				opts.KernelDirect = true
+				opts.KernelFile = uvm.UncompressedKernelFile
+			},
+			wantArgs: []string{`root=/dev/sda`, `rootwait`, `init=/init`,
+				`8250_core.nr_uarts=0`, fmt.Sprintf(`nr_cpus=%d`, numCPU), `panic=-1`, `quiet`, `pci=off`},
+			notWantArgs:  []string{`initrd=`, `/dev/pmem`, `console=`},
+			notWantDmesg: []string{`initrd`, `initramfs`},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			opts := defaultLCOWOptions(ctx, t)
+			opts.ProcessorCount = numCPU
+			tc.optsFn(opts)
+
+			if opts.KernelDirect {
+				require.Build(t, 18286)
+			}
+
+			vm := testuvm.CreateAndStartLCOWFromOpts(ctx, t, opts)
+
+			// validate the kernel args were constructed as expected
+			ioArgs := testcmd.NewBufferedIO()
+			cmdArgs := testcmd.Create(ctx, t, vm, &specs.Process{Args: []string{"cat", "/proc/cmdline"}}, ioArgs)
+			testcmd.Start(ctx, t, cmdArgs)
+			testcmd.WaitExitCode(ctx, t, cmdArgs, 0)
+
+			ioArgs.TestStdOutContains(t, tc.wantArgs, tc.notWantArgs)
+
+			// some boot options (notably using initrd) need to validated by looking at dmesg logs
+			// dmesg will output the kernel command line as
+			//
+			// 	[    0.000000] Command line: <...>
+			//
+			// but its easier/safer to read the args directly from /proc/cmdline
+
+			ioDmesg := testcmd.NewBufferedIO()
+			cmdDmesg := testcmd.Create(ctx, t, vm, &specs.Process{Args: []string{"dmesg"}}, ioDmesg)
+			testcmd.Start(ctx, t, cmdDmesg)
+			testcmd.WaitExitCode(ctx, t, cmdDmesg, 0)
+
+			ioDmesg.TestStdOutContains(t, tc.wantDmesg, tc.notWantDmesg)
+		})
+	}
+}
+
+// TestLCOWUVM_Boot starts and terminates a utility VM  multiple times using different boot options.
+func TestLCOWUVM_Boot(t *testing.T) {
+	require.Build(t, osversion.RS5)
+	requireFeatures(t, featureLCOW, featureUVM)
+
+	numIters := 3
 	ctx := context.Background()
 
-	lcowUVM := testuvm.CreateAndStartLCOWFromOpts(ctx, t, opts)
-	defer lcowUVM.Close()
+	for _, tc := range []struct {
+		name   string
+		optsFn func(*uvm.OptionsLCOW)
+	}{
+		{
+			name: "vPMEM no kernel direct initrd",
+			optsFn: func(opts *uvm.OptionsLCOW) {
+				opts.KernelDirect = false
+				opts.KernelFile = uvm.KernelFile
 
-	io := testcmd.NewBufferedIO()
-	// c := cmd.Command(lcowUVM, "dmesg")
-	c := testcmd.Create(ctx, t, lcowUVM, &specs.Process{Args: []string{"dmesg"}}, io)
-	testcmd.Run(ctx, t, c)
+				opts.RootFSFile = uvm.InitrdFile
+				opts.PreferredRootFSType = uvm.PreferredRootFSTypeInitRd
 
-	out, err := io.Output()
+				opts.VPMemDeviceCount = 32
+			},
+		},
+		{
+			name: "vPMEM kernel direct initrd",
+			optsFn: func(opts *uvm.OptionsLCOW) {
+				opts.KernelDirect = true
+				opts.KernelFile = uvm.UncompressedKernelFile
 
-	if err != nil {
-		t.Helper()
-		t.Fatalf("uvm exec failed with: %s", err)
-	}
+				opts.RootFSFile = uvm.InitrdFile
+				opts.PreferredRootFSType = uvm.PreferredRootFSTypeInitRd
 
-	for _, s := range expected {
-		if !strings.Contains(out, s) {
-			t.Helper()
-			t.Fatalf("Expected dmesg output to have %q: %s", s, out)
-		}
-	}
-}
+				opts.VPMemDeviceCount = 32
+			},
+		},
+		{
+			name: "vPMEM no kernel direct VHD",
+			optsFn: func(opts *uvm.OptionsLCOW) {
+				opts.KernelDirect = false
+				opts.KernelFile = uvm.KernelFile
 
-// TestLCOW_TimeUVMStartVHD starts/terminates a utility VM booting from VPMem-
-// attached root filesystem a number of times.
-func TestLCOW_TimeUVMStartVHD(t *testing.T) {
-	require.Build(t, osversion.RS5)
-	requireFeatures(t, featureLCOW, featureUVM)
+				opts.RootFSFile = uvm.VhdFile
+				opts.PreferredRootFSType = uvm.PreferredRootFSTypeVHD
 
-	testLCOWTimeUVMStart(t, false, uvm.PreferredRootFSTypeVHD)
-}
+				opts.VPMemDeviceCount = 32
+			},
+		},
+		{
+			name: "vPMEM kernel direct VHD",
+			optsFn: func(opts *uvm.OptionsLCOW) {
+				opts.KernelDirect = true
+				opts.KernelFile = uvm.UncompressedKernelFile
 
-// TestLCOWUVMStart_KernelDirect_VHD starts/terminates a utility VM booting from
-// VPMem- attached root filesystem a number of times starting from the Linux
-// Kernel directly and skipping EFI.
-func TestLCOW_UVMStart_KernelDirect_VHD(t *testing.T) {
-	require.Build(t, 18286)
-	requireFeatures(t, featureLCOW, featureUVM)
+				opts.PreferredRootFSType = uvm.PreferredRootFSTypeVHD
+				opts.RootFSFile = uvm.VhdFile
 
-	testLCOWTimeUVMStart(t, true, uvm.PreferredRootFSTypeVHD)
-}
+				opts.VPMemDeviceCount = 32
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for i := 0; i < numIters; i++ {
+				// create new options every time, in case they are modified during uVM creation
+				opts := defaultLCOWOptions(ctx, t)
+				tc.optsFn(opts)
 
-// TestLCOWTimeUVMStartInitRD starts/terminates a utility VM booting from initrd-
-// attached root file system a number of times.
-func TestLCOW_TimeUVMStartInitRD(t *testing.T) {
-	require.Build(t, osversion.RS5)
-	requireFeatures(t, featureLCOW, featureUVM)
+				// should probably short circuit earlied, but this will skip all subsequent iterations, which works
+				if opts.KernelDirect {
+					require.Build(t, 18286)
+				}
 
-	testLCOWTimeUVMStart(t, false, uvm.PreferredRootFSTypeInitRd)
-}
-
-// TestLCOWUVMStart_KernelDirect_InitRd starts/terminates a utility VM booting
-// from initrd- attached root file system a number of times starting from the
-// Linux Kernel directly and skipping EFI.
-func TestLCOW_UVMStart_KernelDirect_InitRd(t *testing.T) {
-	require.Build(t, 18286)
-	requireFeatures(t, featureLCOW, featureUVM)
-
-	testLCOWTimeUVMStart(t, true, uvm.PreferredRootFSTypeInitRd)
-}
-
-func testLCOWTimeUVMStart(t *testing.T, kernelDirect bool, rfsType uvm.PreferredRootFSType) {
-	t.Helper()
-	requireFeatures(t, featureLCOW, featureUVM)
-
-	for i := 0; i < 3; i++ {
-		opts := defaultLCOWOptions(t)
-		opts.KernelDirect = kernelDirect
-		opts.VPMemDeviceCount = 32
-		opts.PreferredRootFSType = rfsType
-		switch opts.PreferredRootFSType {
-		case uvm.PreferredRootFSTypeInitRd:
-			opts.RootFSFile = uvm.InitrdFile
-		case uvm.PreferredRootFSTypeVHD:
-			opts.RootFSFile = uvm.VhdFile
-		}
-
-		lcowUVM := testuvm.CreateAndStartLCOWFromOpts(context.Background(), t, opts)
-		lcowUVM.Close()
-	}
-}
-
-func TestLCOWSimplePodScenario(t *testing.T) {
-	t.Skip("Doesn't work quite yet")
-
-	require.Build(t, osversion.RS5)
-	requireFeatures(t, featureLCOW, featureContainer)
-
-	ctx := namespacedContext()
-
-	layers := linuxImageLayers(ctx, t)
-
-	cacheDir := t.TempDir()
-	cacheFile := filepath.Join(cacheDir, "cache.vhdx")
-
-	// This is what gets mounted for UVM scratch
-	uvmScratchDir := t.TempDir()
-	uvmScratchFile := filepath.Join(uvmScratchDir, "uvmscratch.vhdx")
-
-	// Scratch for the first container
-	c1ScratchDir := t.TempDir()
-	c1ScratchFile := filepath.Join(c1ScratchDir, "sandbox.vhdx")
-
-	// Scratch for the second container
-	c2ScratchDir := t.TempDir()
-	c2ScratchFile := filepath.Join(c2ScratchDir, "sandbox.vhdx")
-
-	lcowUVM := testuvm.CreateAndStartLCOW(ctx, t, "uvm")
-	defer lcowUVM.Close()
-
-	// Populate the cache and generate the scratch file
-	if err := lcow.CreateScratch(ctx, lcowUVM, uvmScratchFile, lcow.DefaultScratchSizeGB, cacheFile); err != nil {
-		t.Fatal(err)
-	}
-
-	_, err := lcowUVM.SCSIManager.AddVirtualDisk(ctx, uvmScratchFile, false, lcowUVM.ID(), &scsi.MountConfig{})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Now create the first containers sandbox, populate a spec
-	if err := lcow.CreateScratch(ctx, lcowUVM, c1ScratchFile, lcow.DefaultScratchSizeGB, cacheFile); err != nil {
-		t.Fatal(err)
-	}
-	c1Spec := testutilities.GetDefaultLinuxSpec(t)
-	c1Folders := append(layers, c1ScratchDir)
-	c1Spec.Windows.LayerFolders = c1Folders
-	c1Spec.Process.Args = []string{"echo", "hello", "lcow", "container", "one"}
-
-	// Now create the second containers sandbox, populate a spec
-	if err := lcow.CreateScratch(ctx, lcowUVM, c2ScratchFile, lcow.DefaultScratchSizeGB, cacheFile); err != nil {
-		t.Fatal(err)
-	}
-	c2Spec := testutilities.GetDefaultLinuxSpec(t)
-	c2Folders := append(layers, c2ScratchDir)
-	c2Spec.Windows.LayerFolders = c2Folders
-	c2Spec.Process.Args = []string{"echo", "hello", "lcow", "container", "two"}
-
-	// Create the two containers
-
-	c1hcsSystem, c1Resources, cleanup1 := container.Create(ctx, t, lcowUVM, c1Spec, t.Name(), hcsOwner)
-	defer cleanup1()
-	c2hcsSystem, c2Resources, cleanup2 := container.Create(ctx, t, lcowUVM, c2Spec, t.Name(), hcsOwner)
-	defer cleanup2()
-
-	// Start them. In the UVM, they'll be in the created state from runc's perspective after this.eg
-	/// # runc list
-	//ID                                     PID         STATUS      BUNDLE         CREATED                        OWNER
-	//3a724c2b-f389-5c71-0555-ebc6f5379b30   138         running     /run/gcs/c/1   2018-06-04T21:23:39.1253911Z   root
-	//7a8229a0-eb60-b515-55e7-d2dd63ffae75   158         created     /run/gcs/c/2   2018-06-04T21:23:39.4249048Z   root
-	if err := c1hcsSystem.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	defer resources.ReleaseResources(context.Background(), c1Resources, lcowUVM, true) //nolint:errcheck
-
-	if err := c2hcsSystem.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	defer resources.ReleaseResources(context.Background(), c2Resources, lcowUVM, true) //nolint:errcheck
-
-	// Start the init process in each container and grab it's stdout comparing to expected
-	runInitProcess(t, c1hcsSystem, "hello lcow container one")
-	runInitProcess(t, c2hcsSystem, "hello lcow container two")
-}
-
-// Helper to run the init process in an LCOW container; verify it exits with exit
-// code 0; verify stderr is empty; check output is as expected.
-func runInitProcess(t *testing.T, s cow.Container, expected string) {
-	t.Helper()
-	var errB bytes.Buffer
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	cmd := &cmd.Cmd{
-		Host:    s,
-		Stderr:  &errB,
-		Context: ctx,
-	}
-	outb, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("stderr: %s", err)
-	}
-	out := string(outb)
-	if strings.TrimSpace(out) != expected {
-		t.Fatalf("got %q expecting %q", string(out), expected)
+				vm := testuvm.CreateAndStartLCOWFromOpts(ctx, t, opts)
+				testuvm.Close(ctx, t, vm)
+			}
+		})
 	}
 }

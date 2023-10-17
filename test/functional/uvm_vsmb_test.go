@@ -4,6 +4,7 @@
 package functional
 
 import (
+	"context"
 	"errors"
 	"os"
 	"testing"
@@ -16,6 +17,8 @@ import (
 )
 
 // TODO: vSMB benchmarks
+// TODO: re-add a removed directmapped vSMB share
+// TODO: add vSMB to created-but-not-started (or closed) uVM
 
 // TestVSMB tests adding/removing VSMB layers from a v2 Windows utility VM.
 func TestWCOW_VSMB(t *testing.T) {
@@ -23,7 +26,7 @@ func TestWCOW_VSMB(t *testing.T) {
 	requireFeatures(t, featureWCOW, featureUVM, featureVSMB)
 
 	const iterations = 64
-	ctx := namespacedContext()
+	ctx := namespacedContext(context.Background())
 
 	type testCase struct {
 		name        string
@@ -79,13 +82,13 @@ func TestWCOW_VSMB(t *testing.T) {
 				for i := 0; i < iterations; i++ {
 					if i == 0 || newDir {
 						// create a temp directory on the first iteration, or on each subsequent iteration if [testCase.newDir]
-						// don't need to remove it, since `dir` will be removed whole-sale
+						// don't need to remove it, since `dir` will be removed whole-sale during test cleanup
 						if path, err = os.MkdirTemp(dir, ""); err != nil {
 							t.Fatalf("MkdirTemp: %v", err)
 						}
 					}
 
-					opts := *options // create a copy in case one iteration attempts to modify it
+					opts := *options // create a copy in case its (accidentally) modified
 					s := testuvm.AddVSMB(ctx, t, vm, path, &opts)
 					if path != s.HostPath {
 						t.Fatalf("expected vSMB path: %q; got %q", path, s.HostPath)

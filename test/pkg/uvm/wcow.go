@@ -16,7 +16,7 @@ import (
 // DefaultWCOWOptions returns default options for a bootable WCOW uVM.
 //
 // See [uvm.NewDefaultOptionsWCOW] for more information.
-func DefaultWCOWOptions(tb testing.TB, id, owner string) *uvm.OptionsWCOW { // TODO: add ctx here
+func DefaultWCOWOptions(_ context.Context, tb testing.TB, id, owner string) *uvm.OptionsWCOW {
 	// mostly here to match [DefaultLCOWOptions]
 	tb.Helper()
 	opts := uvm.NewDefaultOptionsWCOW(id, owner)

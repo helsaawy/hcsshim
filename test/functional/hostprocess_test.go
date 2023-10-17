@@ -5,6 +5,7 @@ package functional
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"os/user"
@@ -24,104 +25,73 @@ import (
 	"github.com/Microsoft/hcsshim/test/internal/layers"
 	testoci "github.com/Microsoft/hcsshim/test/internal/oci"
 	"github.com/Microsoft/hcsshim/test/internal/sync"
+	"github.com/Microsoft/hcsshim/test/internal/util"
 	"github.com/Microsoft/hcsshim/test/pkg/require"
 )
 
-func TestHostProcess(t *testing.T) {
+// TODO:
+// - Environment
+// - working directory
+// - "microsoft.com/hostprocess-rootfs-location" and check that rootfs location exists
+// - bind suppport?
+
+const (
+	system       = `NT AUTHORITY\System`
+	localService = `NT AUTHORITY\Local Service`
+)
+
+func TestHostProcess_whoami(t *testing.T) {
 	requireFeatures(t, featureContainer, featureWCOW, featureHostProcess)
 	require.Build(t, osversion.RS5)
 
-	ctx := namespacedContext()
+	ctx := namespacedContext(context.Background())
 	ls := windowsImageLayers(ctx, t)
 
-	system := `NT AUTHORITY\System`
-	localService := `NT AUTHORITY\Local Service`
+	username := getCurrentUsername(ctx, t)
+	t.Logf("current username: %s", username)
 
-	t.Run("whoami", func(t *testing.T) {
-		username := getCurrentUsername(ctx, t)
-		t.Logf("current username: %s", username)
+	// theres probably a better way to test for this *shrug*
+	isSystem := strings.EqualFold(username, system)
 
-		// theres probably a better way to test for this *shrug*
-		isSystem := strings.EqualFold(username, system)
-
-		for _, tt := range []struct {
-			name   string
-			user   ctrdoci.SpecOpts
-			whoiam string
-		}{
-			// Logging in as the current user may require a password.
-			// No guarantee that Administrator, DefaultAccount, or Guest are enabled.
-			// Best bet is to login into a service user account, which is only possible if running
-			// from `NT AUTHORITY\System`
-			{
-				name:   "username",
-				user:   ctrdoci.WithUser(system),
-				whoiam: system,
-			},
-			{
-				name:   "username",
-				user:   ctrdoci.WithUser(localService),
-				whoiam: localService,
-			},
-			{
-				name:   "inherit",
-				user:   testoci.HostProcessInheritUser(),
-				whoiam: username,
-			},
-		} {
-			t.Run(tt.name+"_"+tt.whoiam, func(t *testing.T) {
-				if strings.HasPrefix(strings.ToLower(tt.whoiam), `nt authority\`) && !isSystem {
-					t.Skipf("starting HostProcess with account %q as requires running tests as %q", tt.whoiam, system)
-				}
-
-				cID := testName(t, "container")
-				scratch := layers.WCOWScratchDir(ctx, t, "")
-				spec := testoci.CreateWindowsSpec(ctx, t, cID,
-					testoci.DefaultWindowsSpecOpts(cID,
-						ctrdoci.WithProcessCommandLine("whoami.exe"),
-						testoci.WithWindowsLayerFolders(append(ls, scratch)),
-						testoci.AsHostProcessContainer(),
-						tt.user,
-					)...)
-
-				c, _, cleanup := container.Create(ctx, t, nil, spec, cID, hcsOwner)
-				t.Cleanup(cleanup)
-
-				io := cmd.NewBufferedIO()
-				init := container.StartWithSpec(ctx, t, c, spec.Process, io)
-				t.Cleanup(func() {
-					container.Kill(ctx, t, c)
-					container.Wait(ctx, t, c)
-				})
-
-				cmd.WaitExitCode(ctx, t, init, 0)
-
-				io.TestOutput(t, tt.whoiam, nil, true)
-			})
-		}
-
-		t.Run("newgroup", func(t *testing.T) {
-			// CreateProcessAsUser needs SE_INCREASE_QUOTA_NAME and SE_ASSIGNPRIMARYTOKEN_NAME
-			// privileges, which we is not guaranteed for Administrators to have.
-			// So, if not System or LocalService, skip.
-			//
-			// https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessasuserw
-			if !isSystem {
-				t.Skipf("starting HostProcess within a new localgroup requires running tests as %q", system)
+	for _, tt := range []struct {
+		name   string
+		user   ctrdoci.SpecOpts
+		whoiam string
+	}{
+		// Logging in as the current user may require a password.
+		// Theres noo guarantee that Administrator, DefaultAccount, or Guest are enabled, so
+		// we cannot use them.
+		// Best bet is to login into a service user account, which is only possible if we are already
+		// running from `NT AUTHORITY\System`.
+		{
+			name:   "username",
+			user:   ctrdoci.WithUser(system),
+			whoiam: system,
+		},
+		{
+			name:   "username",
+			user:   ctrdoci.WithUser(localService),
+			whoiam: localService,
+		},
+		{
+			name:   "inherit",
+			user:   testoci.HostProcessInheritUser(),
+			whoiam: username,
+		},
+	} {
+		t.Run(tt.name+" "+tt.whoiam, func(t *testing.T) {
+			if strings.HasPrefix(strings.ToLower(tt.whoiam), `nt authority\`) && !isSystem {
+				t.Skipf("starting HostProcess with account %q as requires running tests as %q", tt.whoiam, system)
 			}
 
 			cID := testName(t, "container")
-
-			groupName := testName(t)
-			newLocalGroup(ctx, t, groupName)
-
 			scratch := layers.WCOWScratchDir(ctx, t, "")
 			spec := testoci.CreateWindowsSpec(ctx, t, cID,
 				testoci.DefaultWindowsSpecOpts(cID,
 					ctrdoci.WithProcessCommandLine("whoami.exe"),
 					testoci.WithWindowsLayerFolders(append(ls, scratch)),
 					testoci.AsHostProcessContainer(),
-					ctrdoci.WithUser(groupName),
+					tt.user,
 				)...)
 
 			c, _, cleanup := container.Create(ctx, t, nil, spec, cID, hcsOwner)
@@ -136,175 +106,233 @@ func TestHostProcess(t *testing.T) {
 
 			cmd.WaitExitCode(ctx, t, init, 0)
 
-			hostname := getHostname(ctx, t)
-			expectedUser := cID[:winapi.UserNameCharLimit]
-			// whoami returns domain\username
-			io.TestOutput(t, hostname+`\`+expectedUser, nil, true)
+			io.TestOutput(t, tt.whoiam, nil, true)
+		})
+	}
 
-			checkLocalGroupMember(ctx, t, groupName, expectedUser)
-		}) // newgroup
-	}) // whoami
+	t.Run("newgroup", func(t *testing.T) {
+		// CreateProcessAsUser needs SE_INCREASE_QUOTA_NAME and SE_ASSIGNPRIMARYTOKEN_NAME
+		// privileges, which we is not guaranteed for Administrators to have.
+		// So, if not System or LocalService, skip.
+		//
+		// https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessasuserw
+		if !isSystem {
+			t.Skipf("starting HostProcess within a new localgroup requires running tests as %q", system)
+		}
 
-	t.Run("hostname", func(t *testing.T) {
+		cID := testName(t, "container")
+
+		groupName := testName(t)
+		newLocalGroup(ctx, t, groupName)
+
+		scratch := layers.WCOWScratchDir(ctx, t, "")
+		spec := testoci.CreateWindowsSpec(ctx, t, cID,
+			testoci.DefaultWindowsSpecOpts(cID,
+				ctrdoci.WithProcessCommandLine("whoami.exe"),
+				testoci.WithWindowsLayerFolders(append(ls, scratch)),
+				testoci.AsHostProcessContainer(),
+				ctrdoci.WithUser(groupName),
+			)...)
+
+		c, _, cleanup := container.Create(ctx, t, nil, spec, cID, hcsOwner)
+		t.Cleanup(cleanup)
+
+		io := cmd.NewBufferedIO()
+		init := container.StartWithSpec(ctx, t, c, spec.Process, io)
+		t.Cleanup(func() {
+			container.Kill(ctx, t, c)
+			container.Wait(ctx, t, c)
+		})
+
+		cmd.WaitExitCode(ctx, t, init, 0)
+
 		hostname := getHostname(ctx, t)
-		t.Logf("current hostname: %s", hostname)
+		expectedUser := cID[:winapi.UserNameCharLimit]
+		// whoami returns domain\username
+		io.TestOutput(t, hostname+`\`+expectedUser, nil, true)
 
-		cID := testName(t, "container")
+		checkLocalGroupMember(ctx, t, groupName, expectedUser)
+	})
+}
 
-		scratch := layers.WCOWScratchDir(ctx, t, "")
-		spec := testoci.CreateWindowsSpec(ctx, t, cID,
-			testoci.DefaultWindowsSpecOpts(cID,
-				ctrdoci.WithProcessCommandLine("hostname.exe"),
-				testoci.WithWindowsLayerFolders(append(ls, scratch)),
-				testoci.AsHostProcessContainer(),
-				testoci.HostProcessInheritUser(),
-			)...)
+func TestHostProcess_hostname(t *testing.T) {
+	requireFeatures(t, featureContainer, featureWCOW, featureHostProcess)
+	require.Build(t, osversion.RS5)
 
-		c, _, cleanup := container.Create(ctx, t, nil, spec, cID, hcsOwner)
-		t.Cleanup(cleanup)
+	ctx := namespacedContext(context.Background())
+	ls := windowsImageLayers(ctx, t)
 
-		io := cmd.NewBufferedIO()
-		init := container.StartWithSpec(ctx, t, c, spec.Process, io)
-		t.Cleanup(func() {
-			container.Kill(ctx, t, c)
-			container.Wait(ctx, t, c)
-		})
+	hostname := getHostname(ctx, t)
+	t.Logf("current hostname: %s", hostname)
 
-		cmd.WaitExitCode(ctx, t, init, 0)
+	cID := testName(t, "container")
 
-		io.TestOutput(t, hostname, nil, true)
-	}) // hostname
+	scratch := layers.WCOWScratchDir(ctx, t, "")
+	spec := testoci.CreateWindowsSpec(ctx, t, cID,
+		testoci.DefaultWindowsSpecOpts(cID,
+			ctrdoci.WithProcessCommandLine("hostname.exe"),
+			testoci.WithWindowsLayerFolders(append(ls, scratch)),
+			testoci.AsHostProcessContainer(),
+			testoci.HostProcessInheritUser(),
+		)...)
 
-	// validate if we see the same volumes on the host as in the container
-	t.Run("mountvol", func(t *testing.T) {
-		cID := testName(t, "container")
+	c, _, cleanup := container.Create(ctx, t, nil, spec, cID, hcsOwner)
+	t.Cleanup(cleanup)
 
-		scratch := layers.WCOWScratchDir(ctx, t, "")
-		spec := testoci.CreateWindowsSpec(ctx, t, cID,
-			testoci.DefaultWindowsSpecOpts(cID,
-				ctrdoci.WithProcessCommandLine("mountvol.exe"),
-				testoci.WithWindowsLayerFolders(append(ls, scratch)),
-				testoci.AsHostProcessContainer(),
-				testoci.HostProcessInheritUser(),
-			)...)
+	io := cmd.NewBufferedIO()
+	init := container.StartWithSpec(ctx, t, c, spec.Process, io)
+	t.Cleanup(func() {
+		container.Kill(ctx, t, c)
+		container.Wait(ctx, t, c)
+	})
 
-		c, _, cleanup := container.Create(ctx, t, nil, spec, cID, hcsOwner)
-		t.Cleanup(cleanup)
+	cmd.WaitExitCode(ctx, t, init, 0)
 
-		io := cmd.NewBufferedIO()
-		init := container.StartWithSpec(ctx, t, c, spec.Process, io)
-		t.Cleanup(func() {
-			container.Kill(ctx, t, c)
-			container.Wait(ctx, t, c)
-		})
+	io.TestOutput(t, hostname, nil, true)
+}
 
-		cmd.WaitExitCode(ctx, t, init, 0)
+// validate if we see the same volumes on the host as in the container.
+func TestHostProcess_mountvol(t *testing.T) {
+	requireFeatures(t, featureContainer, featureWCOW, featureHostProcess)
+	require.Build(t, osversion.RS5)
 
-		// container has been launched as the containers scratch space is a new volume
-		volumes, err := exec.CommandContext(ctx, "mountvol.exe").Output()
-		t.Logf("host mountvol.exe output:\n%s", string(volumes))
-		if err != nil {
-			t.Fatalf("failed to exec mountvol: %v", err)
-		}
+	ctx := namespacedContext(context.Background())
+	ls := windowsImageLayers(ctx, t)
 
-		io.TestOutput(t, string(volumes), nil, true)
-	}) // mountvol
+	cID := testName(t, "container")
 
-	t.Run("volume mount", func(t *testing.T) {
-		dir := t.TempDir()
+	scratch := layers.WCOWScratchDir(ctx, t, "")
+	spec := testoci.CreateWindowsSpec(ctx, t, cID,
+		testoci.DefaultWindowsSpecOpts(cID,
+			ctrdoci.WithProcessCommandLine("mountvol.exe"),
+			testoci.WithWindowsLayerFolders(append(ls, scratch)),
+			testoci.AsHostProcessContainer(),
+			testoci.HostProcessInheritUser(),
+		)...)
 
-		tmpfile := filepath.Join(dir, "tmpfile")
-		if err := os.WriteFile(tmpfile, []byte("test"), 0600); err != nil {
-			t.Fatalf("could not create temp file: %v", err)
-		}
+	c, _, cleanup := container.Create(ctx, t, nil, spec, cID, hcsOwner)
+	t.Cleanup(cleanup)
 
-		for _, tt := range []struct {
-			name            string
-			hostPath        string
-			containerPath   string
-			cmd             string
-			needsBindFilter bool
-		}{
-			// CRI is responsible for adding `C:` to the start, and converting `/` to `\`,
-			// so here we make everything how Windows wants it
-			{
-				name:            "dir absolute",
-				hostPath:        dir,
-				containerPath:   `C:\path\in\container`,
-				cmd:             `dir.exe C:\path\in\container\tmpfile`,
-				needsBindFilter: true,
-			},
-			{
-				name:          "dir relative",
-				hostPath:      dir,
-				containerPath: `C:\path\in\container`,
-				cmd:           `dir.exe %CONTAINER_SANDBOX_MOUNT_POINT%\path\in\container\tmpfile`,
-			},
-			{
-				name:            "file absolute",
-				hostPath:        tmpfile,
-				containerPath:   `C:\path\in\container\testfile`,
-				cmd:             `cmd.exe /c type C:\path\in\container\testfile`,
-				needsBindFilter: true,
-			},
-			{
-				name:          "file relative",
-				hostPath:      tmpfile,
-				containerPath: `C:\path\in\container\testfile`,
-				cmd:           `cmd.exe /c type %CONTAINER_SANDBOX_MOUNT_POINT%\path\in\container\testfile`,
-			},
-		} {
-			t.Run(tt.name, func(t *testing.T) {
-				if tt.needsBindFilter && !jobcontainers.FileBindingSupported() {
-					t.Skip("bind filter support is required")
-				}
+	io := cmd.NewBufferedIO()
+	init := container.StartWithSpec(ctx, t, c, spec.Process, io)
+	t.Cleanup(func() {
+		container.Kill(ctx, t, c)
+		container.Wait(ctx, t, c)
+	})
 
-				cID := testName(t, "container")
+	cmd.WaitExitCode(ctx, t, init, 0)
 
-				scratch := layers.WCOWScratchDir(ctx, t, "")
-				spec := testoci.CreateWindowsSpec(ctx, t, cID,
-					testoci.DefaultWindowsSpecOpts(cID,
-						ctrdoci.WithProcessCommandLine(tt.cmd),
-						ctrdoci.WithMounts([]specs.Mount{
-							{
-								Source:      tt.hostPath,
-								Destination: tt.containerPath,
-							},
-						}),
-						testoci.WithWindowsLayerFolders(append(ls, scratch)),
-						testoci.AsHostProcessContainer(),
-						testoci.HostProcessInheritUser(),
-					)...)
+	// container has been launched as the containers scratch space is a new volume
+	volumes, err := exec.CommandContext(ctx, "mountvol.exe").Output()
+	t.Logf("host mountvol.exe output:\n%s", string(volumes))
+	if err != nil {
+		t.Fatalf("failed to exec mountvol: %v", err)
+	}
 
-				c, _, cleanup := container.Create(ctx, t, nil, spec, cID, hcsOwner)
-				t.Cleanup(cleanup)
+	io.TestOutput(t, string(volumes), nil, true)
+}
 
-				io := cmd.NewBufferedIO() // dir.exe and type.exe will error if theres stdout/err to write to
-				init := container.StartWithSpec(ctx, t, c, spec.Process, io)
-				t.Cleanup(func() {
-					container.Kill(ctx, t, c)
-					container.Wait(ctx, t, c)
-				})
+func TestHostProcess_VolumeMount(t *testing.T) {
+	requireFeatures(t, featureContainer, featureWCOW, featureHostProcess)
+	require.Build(t, osversion.RS5)
 
-				if ee := cmd.Wait(ctx, t, init); ee != 0 {
-					out, err := io.Output()
-					if out != "" {
-						t.Logf("stdout:\n%s", out)
-					}
-					if err != nil {
-						t.Logf("stderr:\n%v", err)
-					}
-					t.Errorf("got exit code %d, wanted %d", ee, 0)
-				}
+	ctx := namespacedContext(context.Background())
+	ls := windowsImageLayers(ctx, t)
+
+	dir := t.TempDir()
+	containerDir := `C:\hcsshim_test\path\in\container`
+
+	tmpfileName := "tmpfile"
+	containerTmpfile := filepath.Join(containerDir, tmpfileName)
+
+	tmpfile := filepath.Join(dir, tmpfileName)
+	if err := os.WriteFile(tmpfile, []byte("test"), 0600); err != nil {
+		t.Fatalf("could not create temp file: %v", err)
+	}
+
+	for _, tt := range []struct {
+		name            string
+		hostPath        string
+		containerPath   string
+		cmd             string
+		needsBindFilter bool
+	}{
+		// CRI is responsible for adding `C:` to the start, and converting `/` to `\`,
+		// so here we make everything how Windows wants it
+		{
+			name:            "dir absolute",
+			hostPath:        dir,
+			containerPath:   containerDir,
+			cmd:             fmt.Sprintf(`dir.exe %s`, containerDir),
+			needsBindFilter: true,
+		},
+		{
+			name:          "dir relative",
+			hostPath:      dir,
+			containerPath: containerDir,
+			cmd:           fmt.Sprintf(`dir.exe %s`, strings.ReplaceAll(containerDir, `C:`, `%CONTAINER_SANDBOX_MOUNT_POINT%`)),
+		},
+		{
+			name:            "file absolute",
+			hostPath:        tmpfile,
+			containerPath:   containerTmpfile,
+			cmd:             fmt.Sprintf(`cmd.exe /c type %s`, containerTmpfile),
+			needsBindFilter: true,
+		},
+		{
+			name:          "file relative",
+			hostPath:      tmpfile,
+			containerPath: containerTmpfile,
+			cmd:           fmt.Sprintf(`cmd.exe /c type %s`, strings.ReplaceAll(containerTmpfile, `C:`, `%CONTAINER_SANDBOX_MOUNT_POINT%`)),
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.needsBindFilter && !jobcontainers.FileBindingSupported() {
+				t.Skip("bind filter support is required")
+			}
+
+			// hpc mount will create the directory on the host, so remove it after test
+			t.Cleanup(func() { _ = util.RemoveAll(containerDir) })
+
+			cID := testName(t, "container")
+
+			scratch := layers.WCOWScratchDir(ctx, t, "")
+			spec := testoci.CreateWindowsSpec(ctx, t, cID,
+				testoci.DefaultWindowsSpecOpts(cID,
+					ctrdoci.WithProcessCommandLine(tt.cmd),
+					ctrdoci.WithMounts([]specs.Mount{
+						{
+							Source:      tt.hostPath,
+							Destination: tt.containerPath,
+						},
+					}),
+					testoci.WithWindowsLayerFolders(append(ls, scratch)),
+					testoci.AsHostProcessContainer(),
+					testoci.HostProcessInheritUser(),
+				)...)
+
+			c, _, cleanup := container.Create(ctx, t, nil, spec, cID, hcsOwner)
+			t.Cleanup(cleanup)
+
+			io := cmd.NewBufferedIO() // dir.exe and type.exe will error if theres stdout/err to write to
+			init := container.StartWithSpec(ctx, t, c, spec.Process, io)
+			t.Cleanup(func() {
+				container.Kill(ctx, t, c)
+				container.Wait(ctx, t, c)
 			})
-		}
-	}) // VolumeMount
 
-	// TODO:
-	// - Environment
-	// - working directory
-	// - "microsoft.com/hostprocess-rootfs-location" and check that rootfs location exists
-	//- bind suppport?
+			if ee := cmd.Wait(ctx, t, init); ee != 0 {
+				out, err := io.Output()
+				if out != "" {
+					t.Logf("stdout:\n%s", out)
+				}
+				if err != nil {
+					t.Logf("stderr:\n%v", err)
+				}
+				t.Errorf("got exit code %d, wanted %d", ee, 0)
+			}
+		})
+	}
 }
 
 func newLocalGroup(ctx context.Context, tb testing.TB, name string) {

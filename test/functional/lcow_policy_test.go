@@ -23,7 +23,7 @@ import (
 
 func setupScratchTemplate(ctx context.Context, tb testing.TB) string {
 	tb.Helper()
-	opts := defaultLCOWOptions(tb)
+	opts := defaultLCOWOptions(ctx, tb)
 	vm, err := uvm.CreateLCOW(ctx, opts)
 	if err != nil {
 		tb.Fatalf("failed to create scratch formatting uVM: %s", err)
@@ -39,13 +39,13 @@ func setupScratchTemplate(ctx context.Context, tb testing.TB) string {
 func Test_GetProperties_WithPolicy(t *testing.T) {
 	requireFeatures(t, featureLCOWIntegrity)
 
-	ctx := namespacedContext()
+	ctx := namespacedContext(context.Background())
 	scratchPath := setupScratchTemplate(ctx, t)
 
 	ls := linuxImageLayers(ctx, t)
 	for _, allowProperties := range []bool{true, false} {
 		t.Run(fmt.Sprintf("AllowPropertiesAccess_%t", allowProperties), func(t *testing.T) {
-			opts := defaultLCOWOptions(t)
+			opts := defaultLCOWOptions(ctx, t)
 			policy := policytest.PolicyFromImageWithOpts(
 				t,
 				images.ImageLinuxAlpineLatest,

@@ -24,7 +24,6 @@ import (
 	"github.com/Microsoft/hcsshim/ext4/tar2ext4"
 	"github.com/Microsoft/hcsshim/internal/log"
 	"github.com/Microsoft/hcsshim/internal/security"
-	"github.com/Microsoft/hcsshim/internal/wclayer"
 	"github.com/Microsoft/hcsshim/pkg/ociwclayer"
 
 	testsync "github.com/Microsoft/hcsshim/test/internal/sync"

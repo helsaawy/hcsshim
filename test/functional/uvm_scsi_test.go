@@ -33,7 +33,8 @@ func TestSCSIAddRemoveLCOW(t *testing.T) {
 	require.Build(t, osversion.RS5)
 	requireFeatures(t, featureLCOW, featureUVM, featureSCSI)
 
-	u := tuvm.CreateAndStartLCOWFromOpts(context.Background(), t, defaultLCOWOptions(t))
+	ctx := context.Background()
+	u := tuvm.CreateAndStartLCOWFromOpts(ctx, t, defaultLCOWOptions(ctx, t))
 	defer u.Close()
 
 	testSCSIAddRemoveMultiple(t, u, `/run/gcs/c/0/scsi`, "linux", []string{})
@@ -223,12 +224,13 @@ func TestParallelScsiOps(t *testing.T) {
 	require.Build(t, osversion.RS5)
 	requireFeatures(t, featureLCOW, featureUVM, featureSCSI)
 
-	u := tuvm.CreateAndStartLCOWFromOpts(context.Background(), t, defaultLCOWOptions(t))
+	ctx := context.Background()
+	u := tuvm.CreateAndStartLCOWFromOpts(ctx, t, defaultLCOWOptions(ctx, t))
 	defer u.Close()
 
 	// Create a sandbox to use
 	tempDir := t.TempDir()
-	if err := lcow.CreateScratch(context.Background(), u, filepath.Join(tempDir, "sandbox.vhdx"), lcow.DefaultScratchSizeGB, ""); err != nil {
+	if err := lcow.CreateScratch(ctx, u, filepath.Join(tempDir, "sandbox.vhdx"), lcow.DefaultScratchSizeGB, ""); err != nil {
 		t.Fatalf("failed to create EXT4 scratch for LCOW test cases: %s", err)
 	}
 	copySandbox := func(dir string, workerId, iteration int) (string, error) {

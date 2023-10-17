@@ -40,15 +40,12 @@ import (
 	testuvm "github.com/Microsoft/hcsshim/test/pkg/uvm"
 )
 
-// todo: add hostprocess (container) tests
-// todo: common cmd.Cmd tests on different hosts: start, exec, double start, exit code, etc
-// todo: remove directmapped vsmb share, then re-add it to see if theres issues
-// todo: add vsmb to not-started uVM (or closed)
+// TODO: common cmd.Cmd tests on different hosts: start, exec, double start, exit code, etc
 
 // owner field for uVMs.
 const hcsOwner = "hcsshim-functional-tests"
 
-// how long to allow a benchmark iteration to run for
+// how long to allow a benchmark iteration to run for.
 const benchmarkIterationTimeout = 30 * time.Second
 
 // Linux image(s)
@@ -88,11 +85,10 @@ var wcowImagePaths = sync.NewOnce(func(context.Context) (*wcowImages, error) {
 			Platform: images.PlatformWindows,
 		},
 	}, nil
-
 })
 
 const (
-	// container and uVM types
+	// container and uVM types.
 
 	featureLCOW          = "LCOW"          // Linux containers or uVM tests; requires [featureUVM]
 	featureLCOWIntegrity = "LCOWIntegrity" // Linux confidential/policy tests
@@ -101,7 +97,7 @@ const (
 	featureContainer     = "container"     // tests that create a container (either process or hyper-v isolated)
 	featureHostProcess   = "HostProcess"   // tests that create a Windows HostProcess container; requires [featureWCOW]
 
-	// different resources
+	// different resources.
 
 	featurePlan9 = "Plan9"
 	featureSCSI  = "SCSI"
@@ -123,7 +119,7 @@ var allFeatures = []string{
 }
 
 var (
-	flagLogLevel            = testflag.NewLogrusLevel("log-level", defaultLogLevel(), "logrus logging `level`")
+	flagLogLevel            = testflag.NewLogrusLevel("log-level", logrus.WarnLevel.String(), "logrus logging `level`")
 	flagFeatures            = testflag.NewFeatureFlag(allFeatures)
 	flagContainerdNamespace = flag.String("ctr-namespace", hcsOwner,
 		"containerd `namespace` to use when creating OCI specs")
@@ -268,13 +264,12 @@ func requireAnyFeature(tb testing.TB, features ...string) {
 	require.AnyFeature(tb, flagFeatures, features...)
 }
 
-func defaultLCOWOptions(tb testing.TB) *uvm.OptionsLCOW {
-	// TODO: add context parameter (same as defaultWCOWOptions)
+func defaultLCOWOptions(ctx context.Context, tb testing.TB) *uvm.OptionsLCOW {
 	tb.Helper()
 
-	opts := testuvm.DefaultLCOWOptions(context.TODO(), tb, testName(tb), hcsOwner)
+	opts := testuvm.DefaultLCOWOptions(ctx, tb, testName(tb), hcsOwner)
 	if p := *flagLinuxBootFilesPath; p != "" {
-		opts.UpdateBootFilesPath(context.TODO(), p)
+		opts.UpdateBootFilesPath(ctx, p)
 	}
 	return opts
 }
@@ -282,7 +277,7 @@ func defaultLCOWOptions(tb testing.TB) *uvm.OptionsLCOW {
 func defaultWCOWOptions(ctx context.Context, tb testing.TB) *uvm.OptionsWCOW {
 	tb.Helper()
 
-	opts := testuvm.DefaultWCOWOptions(tb, testName(tb), hcsOwner)
+	opts := testuvm.DefaultWCOWOptions(ctx, tb, testName(tb), hcsOwner)
 	uvmLayers := windowsImageLayers(ctx, tb)
 	scratchDir := layers.WCOWScratchDir(ctx, tb, "")
 	opts.LayerFolders = append(opts.LayerFolders, uvmLayers...)
@@ -342,37 +337,34 @@ func windowsServercoreImageLayers(ctx context.Context, tb testing.TB) []string {
 
 // namespacedContext returns a [context.Context] with the provided namespace added via
 // [github.com/containerd/containerd/namespaces.WithNamespace].
-func namespacedContext() context.Context {
-	// TODO: this should take a `ctx` input parameter instead of always assuming Background
-	return namespaces.WithNamespace(context.Background(), *flagContainerdNamespace)
-}
-
-func defaultLogLevel() string {
-	if os.Getenv("HCSSHIM_FUNCTIONAL_TESTS_DEBUG") != "" {
-		return logrus.DebugLevel.String()
-	}
-	return logrus.WarnLevel.String()
+func namespacedContext(ctx context.Context) context.Context {
+	return namespaces.WithNamespace(ctx, *flagContainerdNamespace)
 }
 
 // cleanupComputeSystems close any uVMs or containers that escaped during tests.
 func cleanupComputeSystems(ctx context.Context, owner string) {
-	cmd := exec.Command("powershell.exe", "-NoLogo", "-NonInteractive", "-Command",
+	cmd := exec.Command("powershell.exe", "-NoProfile", "-NoLogo", "-NonInteractive", "-Command",
 		`foreach ( $s in Get-ComputeProcess -Owner '`+owner+`' ) { `+
-			`Write-Output $s.Id ; Stop-ComputeProcess -Force -Id $s.Id`+
+			`Write-Output $s.Id ; $null = Stop-ComputeProcess -Force -Id $s.Id`+
 			` }`,
 	)
+
+	e := log.G(ctx).WithFields(logrus.Fields{
+		"cmd":   cmd.String(),
+		"owner": owner,
+	})
+	e.Debug("removing leftover compute systems")
 
 	o, err := cmd.CombinedOutput()
 	s := strings.TrimSpace(string(o))
 	if err != nil {
-		log.G(ctx).WithFields(logrus.Fields{
-			"cmd":    cmd.String(),
-			"output": s,
-		}).WithError(err).Warning("failed to cleanup remaining compute systems")
+		e.WithFields(logrus.Fields{
+			logrus.ErrorKey: err,
+			"output":        s,
+		}).Warning("failed to cleanup leftover compute systems")
 	} else if len(o) > 0 {
-		log.G(ctx).WithFields(logrus.Fields{
-			"cmd":     cmd.String(),
-			"systems": strings.Split(s, "\r\n"), // cmd should output one ID per line
-		}).Warning("cleaned up left over compute systems")
+		e.WithField(
+			"systems", strings.Split(s, "\r\n"), // cmd should output one ID per line
+		).Warning("cleaned up leftover compute systems")
 	}
 }
