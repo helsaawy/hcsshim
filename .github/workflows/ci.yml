@@ -9,8 +9,6 @@ env:
   GO_BUILD_CMD: "go build \"-ldflags=-s -w\" -trimpath"
   GO_BUILD_TEST_CMD: "go test -mod=mod -gcflags=all=-d=checkptr -c -tags functional"
 
-  GOTESTSUM_VERSION: "latest"
-
   GOTESTSUM_CMD: "gotestsum --format standard-verbose --debug --"
   GOTESTSUM_CMD_RAW: "gotestsum --format standard-verbose --debug --raw-command -- go tool test2json -t"
 
@@ -76,7 +74,7 @@ jobs:
             ${{ github.workspace }}/go/src/github.com/Microsoft/hcsshim/test/go.sum
 
       - name: Pre-fill Module Cache
-        shell: powershell
+        shell: pwsh
         run: |
           go mod download
           cd test
@@ -84,7 +82,7 @@ jobs:
         working-directory: "${{ github.workspace }}/go/src/github.com/Microsoft/hcsshim"
 
       - name: Install protoc
-        shell: powershell
+        shell: pwsh
         run: |
           gh release download -R protocolbuffers/protobuf -p 'protoc-*-win32.zip' -O protoc.zip 'v23.2'
           if ( $LASTEXITCODE ) {
@@ -111,7 +109,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run protobuild
-        shell: powershell
+        shell: pwsh
         run: |
           Write-Output "::group::protobuild"
           .\scripts\Update-Proto.ps1
@@ -143,14 +141,14 @@ jobs:
             test/go.sum
 
       - name: Pre-fill Module Cache
-        shell: powershell
+        shell: pwsh
         run: |
           go mod download
           cd test
           go mod download
 
       - name: Validate go.mod and vendoring
-        shell: powershell
+        shell: pwsh
         run: |
           Write-Output "::group::go mod tidy"
           go mod tidy -v -e
@@ -179,7 +177,7 @@ jobs:
           }
 
       - name: Validate test/go.mod
-        shell: powershell
+        shell: pwsh
         working-directory: test
         run: |
           Write-Output "::group::go mod tidy"
@@ -218,14 +216,14 @@ jobs:
             test/go.sum
 
       - name: Pre-fill Module Cache
-        shell: powershell
+        shell: pwsh
         run: |
           go mod download
           cd test
           go mod download
 
       - name: Validate go generate
-        shell: powershell
+        shell: pwsh
         run: |
           Write-Output "::group::go generate"
           go generate -x .\...
@@ -245,7 +243,7 @@ jobs:
           }
 
       - name: Validate go generate in test
-        shell: powershell
+        shell: pwsh
         working-directory: test
         run: |
           Write-Output "::group::go generate"
@@ -283,7 +281,7 @@ jobs:
             test/go.sum
 
       - name: Install gotestsum
-        run: go install gotest.tools/gotestsum@${{ env.GOTESTSUM_VERSION }}
+        run: go install gotest.tools/gotestsum
 
       - name: Test standard security policy
         run: ${{ env.GOTESTSUM_CMD }} -timeout=30m -gcflags=all=-d=checkptr ./pkg/securitypolicy/...
@@ -323,7 +321,32 @@ jobs:
             test/go.sum
 
       - name: Install gotestsum
-        run: go install gotest.tools/gotestsum@${{ env.GOTESTSUM_VERSION }}
+        run: go install gotest.tools/gotestsum
+
+      # Download PsExec so we can run (functional) tests as 'NT Authority\System'.
+      # Needed for hostprocess tests, as well ensuring backup and restore privileges for
+      # unpacking WCOW images.
+      - name: Install PsExec.exe
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force '${{ github.workspace }}\bin' > $null
+          '${{ github.workspace }}\bin' | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+          curl.exe -L --no-progress-meter --fail-with-body -o 'C:\PSTools.zip' `
+            'https://download.sysinternals.com/files/PSTools.zip' 2>&1
+          if ( $LASTEXITCODE ) {
+            Write-Output '::error::Could not download PSTools.zip'
+            exit $LASTEXITCODE
+          }
+
+          tar.exe xf 'C:\PSTools.zip' -C '${{ github.workspace }}\bin' 'PsExec*' 2>&1
+          if ( $LASTEXITCODE ) {
+            Write-Output '::error::Could not extract PsExec.exe'
+            exit $LASTEXITCODE
+          }
+
+          # accept the eula
+          & '${{ github.workspace }}/bin/psexec' -accepteula -nobanner cmd /c "exit 0" 2>$null
 
       # Download PsExec so we can run (functional) tests as 'NT Authority\System'.
       # Needed for hostprocess tests, as well ensuring backup and restore privileges for
@@ -358,7 +381,7 @@ jobs:
         working-directory: test
 
       - name: Build and run containerd-shim-runhcs-v1 tests
-        shell: powershell
+        shell: pwsh
         run: |
           pwsh {
             cd '..'
@@ -390,7 +413,7 @@ jobs:
           # don't run uVM (ie, nested virt) or LCOW integrity tests
           $cmd = '${{ env.GOTESTSUM_CMD_RAW }} ./functional.test.exe -exclude="LCOW,LCOWIntegrity,uVM" -test.timeout=1h -test.v'
           $cmd = $cmd -replace 'gotestsum', ((Get-Command gotestsum)[0].Source)
-          Write-Host "gotestsum command: $cmd"
+          Write-Output "gotestsum command: $cmd"
 
           # it appears, that in a GH runner, PsExec always runs noninteractively (even with `-i`) and
           # doesn't capture or redirect std IO.
@@ -457,7 +480,7 @@ jobs:
           echo "${{ github.workspace }}/src/github.com/containerd/containerd/bin" >> $GITHUB_PATH
 
       - name: Get containerd ref
-        shell: powershell
+        shell: pwsh
         run: |
           $v = go list -m -f '{{ .Version }}' 'github.com/containerd/containerd' 2>&1
           if ( $LASTEXITCODE ) {
@@ -478,7 +501,7 @@ jobs:
           show-progress: false
 
       - name: Install crictl
-        shell: powershell
+        shell: pwsh
         run: |
           gh release download -R kubernetes-sigs/cri-tools -p 'crictl-*-windows-amd64.tar.gz' -O c:\crictl.tar.gz 'v1.24.2'
           tar.exe xf c:\crictl.tar.gz -C '${{ github.workspace }}/bin'
@@ -492,12 +515,12 @@ jobs:
 
       # needs to be a separate step since terminal reload is required to bring in new env variables and PATH
       - name: Upgrade Chocolaty
-        shell: powershell
+        shell: pwsh
         run: |
           choco upgrade -y chocolatey 2>&1
 
       - name: Install mingw
-        shell: powershell
+        shell: pwsh
         run: |
           $VerbosePreference = 'Continue'
           # dont set $ErrorActionPreference since we want to allow choco install to fail later on
@@ -545,12 +568,12 @@ jobs:
 
       - name: Build the shim
         working-directory: src/github.com/Microsoft/hcsshim
-        shell: powershell
+        shell: pwsh
         run: |
           ${{ env.GO_BUILD_CMD }} -mod vendor -o "${{ github.workspace }}/src/github.com/containerd/containerd/bin/containerd-shim-runhcs-v1.exe" .\cmd\containerd-shim-runhcs-v1
 
       - name: Install gotestsum
-        run: go install gotest.tools/gotestsum@${{ env.GOTESTSUM_VERSION }}
+        run: go install gotest.tools/gotestsum
 
       - name: Run containerd integration tests
         shell: bash
@@ -589,7 +612,7 @@ jobs:
   #      Enable these tests once the required JobContainer images are updated.
   #
   #      - name: Install containerd service
-  #        shell: powershell
+  #        shell: pwsh
   #        run: |
   #          mkdir C:\containerd
   #          Set-Content C:/containerd/containerd.toml @"
@@ -628,12 +651,12 @@ jobs:
   #
   #      - name: Build test binary
   #        working-directory: src/github.com/Microsoft/hcsshim/test
-  #        shell: powershell
+  #        shell: pwsh
   #        run: |
   #          go test -mod=mod -o "${{ github.workspace }}/bin/cri-containerd.test.exe" -gcflags=all=-d=checkptr -c ./cri-containerd/ -tags functional
   #
   #      - name: Run hcsshim integration tests
-  #        shell: powershell
+  #        shell: pwsh
   #        run: |
   #          cri-containerd.test.exe -cri-endpoint="npipe://./pipe/containerd-containerd" -feature="WCOWProcess" -feature="HostProcess"
 

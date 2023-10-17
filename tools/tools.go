@@ -20,4 +20,10 @@ import (
 
 	// mock gRPC client and servers
 	_ "go.uber.org/mock/mockgen"
+
+	// running tests
+	_ "gotest.tools/gotestsum"
+
+	// computing benchmark statistics
+	_ "golang.org/x/perf/cmd/benchstat"
 )

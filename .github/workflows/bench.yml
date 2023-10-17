@@ -1,0 +1,181 @@
+name: Benchmark
+on:
+  pull_request:
+    # branches: [main]
+    paths-ignore:
+      - "**/*.md"
+      - "**/*.txt"
+      - "hack/**"
+      - "scripts/**"
+      - ".github/**"
+
+
+defaults:
+  run:
+    shell: pwsh
+
+env:
+  GO_VERSION: "1.19.x"
+
+  GO_BUILD_TEST_CMD: "go test -mod=mod -gcflags=all=-d=checkptr -c -tags functional"
+
+# NOTE: Merge branch is ${{ github.ref }} (at ${{ github.sha}}), merging into ${{ github.base_ref }}
+
+jobs:
+  benchmark:
+    name: Run Benchmarks
+
+    env:
+      BENCH_FILE: "func_bench_${{ matrix.name }}.txt"
+      TEST_COUNT: "6" # need at least 6 runs per for confidence interval to be computed
+      BENCH_TIME: "10x"
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2019, windows-2022]
+        ref: ["${{ github.ref }}", "${{ github.base_ref }}"]
+        include:
+          # add names to identify the instance (mostly because branch names are potentially invalid artifact names)
+          - ref: "${{ github.ref }}"
+            name: "pr"
+          - ref: "${{ github.base_ref }}"
+            name: "base"
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout ${{ matrix.ref}}
+        uses: actions/checkout@v4
+        with:
+          ref: "${{ matrix.ref }}"
+          show-progress: false
+
+      - name: Install go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: |
+            go.sum
+            test/go.sum
+
+      - name: Install benchstat
+        run: |
+          go install golang.org/x/perf/cmd/benchstat@latest
+
+      # Download PsExec so we can run (functional) tests as 'NT Authority\System'.
+      # Needed for hostprocess tests, as well ensuring backup and restore privileges for
+      # unpacking WCOW images.
+      - name: Install PsExec.exe
+        run: |
+          New-Item -ItemType Directory -Force '${{ github.workspace }}\bin' > $null
+          '${{ github.workspace }}\bin' | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+          curl.exe -L --no-progress-meter --fail-with-body -o 'C:\PSTools.zip' `
+            'https://download.sysinternals.com/files/PSTools.zip' 2>&1
+          if ( $LASTEXITCODE ) {
+            Write-Output '::error::Could not download PSTools.zip'
+            exit $LASTEXITCODE
+          }
+
+          tar.exe xf 'C:\PSTools.zip' -C '${{ github.workspace }}\bin' 'PsExec*' 2>&1
+          if ( $LASTEXITCODE ) {
+            Write-Output '::error::Could not extract PsExec.exe'
+            exit $LASTEXITCODE
+          }
+
+          # accept the eula
+          & '${{ github.workspace }}/bin/psexec' -accepteula -nobanner cmd /c "exit 0" 2>$null
+
+      - name: Set version info
+        run: |
+          # ignore errors since they won't affect build
+          try {
+            ./scripts/Set-VersionInfo.ps1
+          } catch {
+            Write-Output "::warning::Could not set hcsshim version info: $_"
+          } finally {
+            $LASTEXITCODE = 0
+          }
+
+      - name: Build functional benchmarks
+        working-directory: test
+        run: ${{ env.GO_BUILD_TEST_CMD }} ./functional
+
+      - name: Run functional benchmarks
+        working-directory: test
+        continue-on-error: true # allow results to be processes below
+        timeout-minutes: 30 # `-test.timeout` flag doesn't apply to benchmarks
+        run: |
+          # don't run uVM (ie, nested virt) or LCOW integrity tests
+          $cmd = 'functional.test.exe -exclude="LCOW,LCOWIntegrity,uVM" ' + `
+            '-test.shuffle=on -test.run=^^# -test.bench=. -test.benchmem ' + `
+            '-test.v ' + `
+            '-test.count=${{ env.TEST_COUNT }}  -test.benchtime=${{ env.BENCH_TIME }}'
+
+          Write-Output "Benchmark command: $cmd"
+
+          # Write benchmarks to file
+          psexec -nobanner -w (Get-Location) -s cmd /c "$cmd > ${{ env.BENCH_FILE }} 2>&1"
+          if ( $LASTEXITCODE ) {
+            Write-Output '::error::Benchmarks failed'
+          }
+
+      - name: Show benchmark results
+        working-directory: test
+        run: |
+          if ( -not (Test-Path -PathType Leaf ${{ env.BENCH_FILE }}) ) {
+            Write-Output '::error::Benchmarks did not produce any output'
+            exit 1
+          }
+
+          Write-Output "::group::Benmark results (${{ env.BENCH_FILE }})"
+          Get-Content -Path "${{ env.BENCH_FILE }}"
+          Write-Output "::endgroup::"
+
+          # TODO: figure out weird encoding issues
+          Write-Output "Benmark statistics"
+          cmd /c benchstat -table="" ${{ env.BENCH_FILE }}
+
+      - uses: actions/upload-artifact@v3
+        name: Upload benchmark results
+        with:
+          name: benchmark_${{ matrix.os }}_${{ matrix.name }}
+          path: test/${{ env.BENCH_FILE }}
+          retention-days: 7 # one week, instead of the default 90 days
+
+  benchmark-perf:
+    name: Analyze Benchmarks
+    needs: [benchmark]
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2019, windows-2022]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Download ${{ github.ref }} results
+        uses: actions/download-artifact@v3
+        with:
+          name: benchmark_${{ matrix.os }}_pr
+
+      - name: Download ${{ github.base_ref }} results
+        uses: actions/download-artifact@v3
+        with:
+          name: benchmark_${{ matrix.os }}_base
+
+      - name: Install go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+
+      - name: Install benchstat
+        run: |
+          go install golang.org/x/perf/cmd/benchstat@latest
+
+      - name: Compare benchmarks
+        run: |
+          benchstat -table="" func_bench_base.txt func_bench_pr.txt
