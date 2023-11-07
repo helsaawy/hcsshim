@@ -58,7 +58,6 @@ func TestPlan9_Writable(t *testing.T) {
 	opts := defaultLCOWOptions(ctx, t)
 	opts.NoWritableFileShares = true
 	vm := testuvm.CreateAndStartLCOWFromOpts(ctx, t, opts)
-	defer vm.Close()
 
 	dir := t.TempDir()
 

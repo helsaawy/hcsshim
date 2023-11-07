@@ -167,7 +167,7 @@ func createLCOWOptions(ctx context.Context, c *cli.Context, id string) (*uvm.Opt
 
 	// boot
 	if c.IsSet(bootFilesPathArgName) {
-		options.UpdateBootFilesPath(ctx, bootFilesPathArgName)
+		options.UpdateBootFilesPath(ctx, c.String(bootFilesPathArgName))
 	}
 
 	// kernel

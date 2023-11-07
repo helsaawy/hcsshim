@@ -94,7 +94,6 @@ func Create(
 			tb.Errorf("could not close container %q: %v", c.ID(), err)
 		}
 	}
-
 	return c, r, f
 }
 

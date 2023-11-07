@@ -40,6 +40,9 @@ import (
 	testuvm "github.com/Microsoft/hcsshim/test/pkg/uvm"
 )
 
+// TODO: WCOW benchmarks (hyper-v, process, and hostprocess)
+// TODO: common cmd.Cmd tests on different hosts: start, exec, double start, exit code, etc
+
 // owner field for uVMs.
 const hcsOwner = "hcsshim-functional-tests"
 
@@ -257,6 +260,11 @@ func runTests(m *testing.M) error {
 func requireFeatures(tb testing.TB, features ...string) {
 	tb.Helper()
 	require.Features(tb, flagFeatures, features...)
+}
+
+func requireAnyFeature(tb testing.TB, features ...string) {
+	tb.Helper()
+	require.AnyFeature(tb, flagFeatures, features...)
 }
 
 func defaultLCOWOptions(ctx context.Context, tb testing.TB) *uvm.OptionsLCOW {
