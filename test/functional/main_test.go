@@ -40,6 +40,8 @@ import (
 	testuvm "github.com/Microsoft/hcsshim/test/pkg/uvm"
 )
 
+// TODO: common cmd.Cmd tests on different hosts: start, exec, double start, exit code, etc
+
 // owner field for uVMs.
 const hcsOwner = "hcsshim-functional-tests"
 
@@ -223,6 +225,8 @@ func runTests(m *testing.M) error {
 	// interfering with benchmarking output
 	if util.RunningBenchmarks() {
 		util.PrintAdditionalBenchmarkConfig()
+		// also print out the features used as part of the benchmarking config
+		fmt.Printf("features: %s\n", flagFeatures.Strings())
 
 		provider, err := etw.NewProviderWithOptions("Microsoft.Virtualization.RunHCS")
 		if err != nil {
@@ -257,6 +261,11 @@ func runTests(m *testing.M) error {
 func requireFeatures(tb testing.TB, features ...string) {
 	tb.Helper()
 	require.Features(tb, flagFeatures, features...)
+}
+
+func requireAnyFeature(tb testing.TB, features ...string) {
+	tb.Helper()
+	require.AnyFeature(tb, flagFeatures, features...)
 }
 
 func defaultLCOWOptions(ctx context.Context, tb testing.TB) *uvm.OptionsLCOW {
