@@ -1,7 +1,7 @@
 //go:build windows && functional
 // +build windows,functional
 
-// This file isn't called uvm_plan9_test.go as go test skips when a number is in it... go figure (pun intended)
+// This file isn't called uvm_plan9_test.go as go assumes that it should only run on plan9 OS's... go figure (pun intended)
 
 package functional
 
@@ -26,11 +26,10 @@ func TestPlan9(t *testing.T) {
 	t.Skip("not yet updated")
 
 	require.Build(t, osversion.RS5)
-	requireFeatures(t, featureLCOW, featurePlan9)
+	requireFeatures(t, featureLCOW, featureUVM, featurePlan9)
 	ctx := context.Background()
 
-	vm := testuvm.CreateAndStartLCOWFromOpts(ctx, t, defaultLCOWOptions(t))
-	defer vm.Close()
+	vm := testuvm.CreateAndStartLCOWFromOpts(ctx, t, defaultLCOWOptions(ctx, t))
 
 	dir := t.TempDir()
 	var iterations uint32 = 64
@@ -52,13 +51,11 @@ func TestPlan9(t *testing.T) {
 }
 
 func TestPlan9_Writable(t *testing.T) {
-	// t.Skip("not yet updated")
-
 	require.Build(t, osversion.RS5)
-	requireFeatures(t, featureLCOW, featurePlan9)
+	requireFeatures(t, featureLCOW, featureUVM, featurePlan9)
 	ctx := context.Background()
 
-	opts := defaultLCOWOptions(t)
+	opts := defaultLCOWOptions(ctx, t)
 	opts.NoWritableFileShares = true
 	vm := testuvm.CreateAndStartLCOWFromOpts(ctx, t, opts)
 	defer vm.Close()

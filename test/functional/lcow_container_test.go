@@ -4,6 +4,7 @@
 package functional
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -21,12 +22,12 @@ import (
 )
 
 func TestLCOW_ContainerLifecycle(t *testing.T) {
-	requireFeatures(t, featureLCOW, featureContainer)
+	requireFeatures(t, featureLCOW, featureUVM, featureContainer)
 	require.Build(t, osversion.RS5)
 
-	ctx := namespacedContext()
+	ctx := namespacedContext(context.Background())
 	ls := linuxImageLayers(ctx, t)
-	opts := defaultLCOWOptions(t)
+	opts := defaultLCOWOptions(ctx, t)
 	opts.ID += util.RandNameSuffix()
 	vm := uvm.CreateAndStartLCOWFromOpts(ctx, t, opts)
 
@@ -74,12 +75,12 @@ var ioTests = []struct {
 }
 
 func TestLCOW_ContainerIO(t *testing.T) {
-	requireFeatures(t, featureLCOW, featureContainer)
+	requireFeatures(t, featureLCOW, featureUVM, featureContainer)
 	require.Build(t, osversion.RS5)
 
-	ctx := namespacedContext()
+	ctx := namespacedContext(context.Background())
 	ls := linuxImageLayers(ctx, t)
-	opts := defaultLCOWOptions(t)
+	opts := defaultLCOWOptions(ctx, t)
 	opts.ID += util.RandNameSuffix()
 	cache := layers.CacheFile(ctx, t, "")
 	vm := uvm.CreateAndStartLCOWFromOpts(ctx, t, opts)
@@ -117,12 +118,12 @@ func TestLCOW_ContainerIO(t *testing.T) {
 }
 
 func TestLCOW_ContainerExec(t *testing.T) {
-	requireFeatures(t, featureLCOW, featureContainer)
+	requireFeatures(t, featureLCOW, featureUVM, featureContainer)
 	require.Build(t, osversion.RS5)
 
-	ctx := namespacedContext()
+	ctx := namespacedContext(context.Background())
 	ls := linuxImageLayers(ctx, t)
-	opts := defaultLCOWOptions(t)
+	opts := defaultLCOWOptions(ctx, t)
 	opts.ID += util.RandNameSuffix()
 	vm := uvm.CreateAndStartLCOWFromOpts(ctx, t, opts)
 

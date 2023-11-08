@@ -1,6 +1,5 @@
-//go:build windows && (functional || uvmscsi)
-// +build windows
-// +build functional uvmscsi
+//go:build windows && functional
+// +build windows,functional
 
 package functional
 
@@ -32,9 +31,10 @@ func TestSCSIAddRemoveLCOW(t *testing.T) {
 	t.Skip("not yet updated")
 
 	require.Build(t, osversion.RS5)
-	requireFeatures(t, featureLCOW, featureSCSI)
+	requireFeatures(t, featureLCOW, featureUVM, featureSCSI)
 
-	u := tuvm.CreateAndStartLCOWFromOpts(context.Background(), t, defaultLCOWOptions(t))
+	ctx := context.Background()
+	u := tuvm.CreateAndStartLCOWFromOpts(ctx, t, defaultLCOWOptions(ctx, t))
 	defer u.Close()
 
 	testSCSIAddRemoveMultiple(t, u, `/run/gcs/c/0/scsi`, "linux", []string{})
@@ -46,9 +46,10 @@ func TestSCSIAddRemoveWCOW(t *testing.T) {
 	t.Skip("not yet updated")
 
 	require.Build(t, osversion.RS5)
-	requireFeatures(t, featureWCOW, featureSCSI)
+	requireFeatures(t, featureWCOW, featureUVM, featureSCSI)
 
 	// TODO make the image configurable to the build we're testing on
+	//nolint:staticcheck // SA1019: deprecated; will be replaced when test is updated
 	u, layers, _ := tuvm.CreateWCOWUVM(context.Background(), t, t.Name(), "mcr.microsoft.com/windows/nanoserver:1903")
 	defer u.Close()
 
@@ -221,14 +222,15 @@ func TestParallelScsiOps(t *testing.T) {
 	t.Skip("not yet updated")
 
 	require.Build(t, osversion.RS5)
-	requireFeatures(t, featureLCOW, featureSCSI)
+	requireFeatures(t, featureLCOW, featureUVM, featureSCSI)
 
-	u := tuvm.CreateAndStartLCOWFromOpts(context.Background(), t, defaultLCOWOptions(t))
+	ctx := context.Background()
+	u := tuvm.CreateAndStartLCOWFromOpts(ctx, t, defaultLCOWOptions(ctx, t))
 	defer u.Close()
 
 	// Create a sandbox to use
 	tempDir := t.TempDir()
-	if err := lcow.CreateScratch(context.Background(), u, filepath.Join(tempDir, "sandbox.vhdx"), lcow.DefaultScratchSizeGB, ""); err != nil {
+	if err := lcow.CreateScratch(ctx, u, filepath.Join(tempDir, "sandbox.vhdx"), lcow.DefaultScratchSizeGB, ""); err != nil {
 		t.Fatalf("failed to create EXT4 scratch for LCOW test cases: %s", err)
 	}
 	copySandbox := func(dir string, workerId, iteration int) (string, error) {

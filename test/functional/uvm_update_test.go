@@ -18,8 +18,8 @@ import (
 	"github.com/Microsoft/hcsshim/test/pkg/uvm"
 )
 
-func Test_LCOW_Update_Resources(t *testing.T) {
-	requireFeatures(t, featureLCOW)
+func TestLCOW_Update_Resources(t *testing.T) {
+	requireFeatures(t, featureLCOW, featureUVM)
 	require.Build(t, osversion.RS5)
 
 	for _, config := range []struct {
@@ -55,7 +55,7 @@ func Test_LCOW_Update_Resources(t *testing.T) {
 	} {
 		t.Run(config.name, func(t *testing.T) {
 			ctx := context.Background()
-			vm, cleanup := uvm.CreateLCOW(ctx, t, defaultLCOWOptions(t))
+			vm, cleanup := uvm.CreateLCOW(ctx, t, defaultLCOWOptions(ctx, t))
 			uvm.Start(ctx, t, vm)
 			defer cleanup(ctx)
 			if err := vm.Update(ctx, config.resource, nil); err != nil {

@@ -1,6 +1,5 @@
-//go:build windows && (functional || uvmvsmb)
-// +build windows
-// +build functional uvmvsmb
+//go:build windows && functional
+// +build windows,functional
 
 package functional
 
@@ -14,17 +13,18 @@ import (
 	"github.com/Microsoft/hcsshim/osversion"
 
 	"github.com/Microsoft/hcsshim/test/pkg/require"
-	tuvm "github.com/Microsoft/hcsshim/test/pkg/uvm"
+	testuvm "github.com/Microsoft/hcsshim/test/pkg/uvm"
 )
 
-// TestVSMB tests adding/removing VSMB layers from a v2 Windows utility VM
+// TestVSMB tests adding/removing VSMB layers from a v2 Windows utility VM.
 func TestVSMB(t *testing.T) {
 	t.Skip("not yet updated")
 
 	require.Build(t, osversion.RS5)
-	requireFeatures(t, featureWCOW, featureVSMB)
+	requireFeatures(t, featureWCOW, featureUVM, featureVSMB)
 
-	uvm, _, _ := tuvm.CreateWCOWUVM(context.Background(), t, t.Name(), "microsoft/nanoserver")
+	//nolint:staticcheck // SA1019: deprecated; will be replaced when test is updated
+	uvm, _, _ := testuvm.CreateWCOWUVM(context.Background(), t, t.Name(), "microsoft/nanoserver")
 	defer uvm.Close()
 
 	dir := t.TempDir()
@@ -51,11 +51,12 @@ func TestVSMB_Writable(t *testing.T) {
 	t.Skip("not yet updated")
 
 	require.Build(t, osversion.RS5)
-	requireFeatures(t, featureWCOW, featureVSMB)
+	requireFeatures(t, featureWCOW, featureUVM, featureVSMB)
 
 	opts := uvm.NewDefaultOptionsWCOW(t.Name(), "")
 	opts.NoWritableFileShares = true
-	vm, _, _ := tuvm.CreateWCOWUVMFromOptsWithImage(context.Background(), t, opts, "microsoft/nanoserver")
+	//nolint:staticcheck // SA1019: deprecated; will be replaced when test is updated
+	vm, _, _ := testuvm.CreateWCOWUVMFromOptsWithImage(context.Background(), t, opts, "microsoft/nanoserver")
 	defer vm.Close()
 
 	dir := t.TempDir()

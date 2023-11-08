@@ -15,7 +15,7 @@ import (
 )
 
 func BenchmarkLCOW_UVM(b *testing.B) {
-	requireFeatures(b, featureLCOW)
+	requireFeatures(b, featureLCOW, featureUVM)
 	require.Build(b, osversion.RS5)
 
 	pCtx := context.Background()
@@ -26,7 +26,7 @@ func BenchmarkLCOW_UVM(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			ctx, cancel := context.WithTimeout(pCtx, benchmarkIterationTimeout)
 
-			opts := defaultLCOWOptions(b)
+			opts := defaultLCOWOptions(ctx, b)
 			opts.ID += util.RandNameSuffix(i)
 
 			b.StartTimer()
@@ -44,7 +44,7 @@ func BenchmarkLCOW_UVM(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			ctx, cancel := context.WithTimeout(pCtx, benchmarkIterationTimeout)
 
-			opts := defaultLCOWOptions(b)
+			opts := defaultLCOWOptions(ctx, b)
 			opts.ID += util.RandNameSuffix(i)
 			vm, cleanup := uvm.CreateLCOW(ctx, b, opts)
 
@@ -65,7 +65,7 @@ func BenchmarkLCOW_UVM(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			ctx, cancel := context.WithTimeout(pCtx, benchmarkIterationTimeout)
 
-			opts := defaultLCOWOptions(b)
+			opts := defaultLCOWOptions(ctx, b)
 			opts.ID += util.RandNameSuffix(i)
 			vm, cleanup := uvm.CreateLCOW(ctx, b, opts)
 			uvm.Start(ctx, b, vm)
@@ -88,13 +88,13 @@ func BenchmarkLCOW_UVM(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			ctx, cancel := context.WithTimeout(pCtx, benchmarkIterationTimeout)
 
-			opts := defaultLCOWOptions(b)
+			opts := defaultLCOWOptions(ctx, b)
 			opts.ID += util.RandNameSuffix(i)
 			vm, cleanup := uvm.CreateLCOW(ctx, b, opts)
 			uvm.Start(ctx, b, vm)
 
 			b.StartTimer()
-			if err := vm.Close(); err != nil {
+			if err := vm.CloseCtx(ctx); err != nil {
 				b.Fatalf("could not kill uvm %q: %v", vm.ID(), err)
 			}
 			b.StopTimer()

@@ -30,29 +30,27 @@ import (
 	testuvm "github.com/Microsoft/hcsshim/test/pkg/uvm"
 )
 
-// test if closing a waiting (but not starting) uVM succeeds
+// test if closing a waiting (but not starting) uVM succeeds.
 func TestLCOW_UVMCreateClose(t *testing.T) {
-	requireFeatures(t, featureLCOW)
+	requireFeatures(t, featureLCOW, featureUVM)
 	require.Build(t, osversion.RS5)
 
 	ctx := context.Background()
-	vm, err := uvm.CreateLCOW(ctx, defaultLCOWOptions(t))
-	if err != nil {
-		t.Fatalf("could not create LCOW UVM: %v", err)
-	}
+	vm, cleanup := testuvm.CreateLCOW(ctx, t, defaultLCOWOptions(ctx, t))
 
-	if err := vm.CloseCtx(ctx); err != nil {
-		t.Fatalf("could not close uvm %q: %s", vm.ID(), err)
-	}
+	testuvm.Close(ctx, t, vm)
+
+	// also run cleanup to make sure that works fine too
+	cleanup(ctx)
 }
 
-// test if waiting after creating (but not starting) an LCOW uVM returns
+// test if waiting after creating (but not starting) an LCOW uVM returns.
 func TestLCOW_UVMCreateWait(t *testing.T) {
-	requireFeatures(t, featureLCOW)
+	requireFeatures(t, featureLCOW, featureUVM)
 	require.Build(t, osversion.RS5)
 
 	pCtx := context.Background()
-	vm, cleanup := testuvm.CreateLCOW(pCtx, t, defaultLCOWOptions(t))
+	vm, cleanup := testuvm.CreateLCOW(pCtx, t, defaultLCOWOptions(pCtx, t))
 	t.Cleanup(func() { cleanup(pCtx) })
 
 	ctx, cancel := context.WithTimeout(pCtx, 3*time.Second)
@@ -68,24 +66,27 @@ func TestLCOW_UVMCreateWait(t *testing.T) {
 // TestLCOW_UVMNoSCSINoVPMemInitrd starts an LCOW utility VM without a SCSI controller and
 // no VPMem device. Uses initrd.
 func TestLCOW_UVMNoSCSINoVPMemInitrd(t *testing.T) {
-	requireFeatures(t, featureLCOW)
+	requireFeatures(t, featureLCOW, featureUVM)
 
-	opts := defaultLCOWOptions(t)
+	ctx := context.Background()
+	opts := defaultLCOWOptions(ctx, t)
 	opts.SCSIControllerCount = 0
 	opts.VPMemDeviceCount = 0
 	opts.PreferredRootFSType = uvm.PreferredRootFSTypeInitRd
 	opts.RootFSFile = uvm.InitrdFile
 	opts.KernelDirect = false
+	opts.KernelFile = uvm.KernelFile
 
 	testLCOWUVMNoSCSISingleVPMem(t, opts, fmt.Sprintf("Command line: initrd=/%s", opts.RootFSFile))
 }
 
 // TestLCOW_UVMNoSCSISingleVPMemVHD starts an LCOW utility VM without a SCSI controller and
-// only a single VPMem device. Uses VPMEM VHD
+// only a single VPMem device. Uses VPMEM VHD.
 func TestLCOW_UVMNoSCSISingleVPMemVHD(t *testing.T) {
-	requireFeatures(t, featureLCOW)
+	requireFeatures(t, featureLCOW, featureUVM)
 
-	opts := defaultLCOWOptions(t)
+	ctx := context.Background()
+	opts := defaultLCOWOptions(ctx, t)
 	opts.SCSIControllerCount = 0
 	opts.VPMemDeviceCount = 1
 	opts.PreferredRootFSType = uvm.PreferredRootFSTypeVHD
@@ -97,16 +98,16 @@ func TestLCOW_UVMNoSCSISingleVPMemVHD(t *testing.T) {
 func testLCOWUVMNoSCSISingleVPMem(t *testing.T, opts *uvm.OptionsLCOW, expected ...string) {
 	t.Helper()
 	require.Build(t, osversion.RS5)
-	requireFeatures(t, featureLCOW)
+	requireFeatures(t, featureLCOW, featureUVM)
 	ctx := context.Background()
 
 	lcowUVM := testuvm.CreateAndStartLCOWFromOpts(ctx, t, opts)
-	defer lcowUVM.Close()
 
 	io := testcmd.NewBufferedIO()
 	// c := cmd.Command(lcowUVM, "dmesg")
 	c := testcmd.Create(ctx, t, lcowUVM, &specs.Process{Args: []string{"dmesg"}}, io)
-	testcmd.Run(ctx, t, c)
+	testcmd.Start(ctx, t, c)
+	testcmd.WaitExitCode(ctx, t, c, 0)
 
 	out, err := io.Output()
 
@@ -127,7 +128,7 @@ func testLCOWUVMNoSCSISingleVPMem(t *testing.T, opts *uvm.OptionsLCOW, expected 
 // attached root filesystem a number of times.
 func TestLCOW_TimeUVMStartVHD(t *testing.T) {
 	require.Build(t, osversion.RS5)
-	requireFeatures(t, featureLCOW)
+	requireFeatures(t, featureLCOW, featureUVM)
 
 	testLCOWTimeUVMStart(t, false, uvm.PreferredRootFSTypeVHD)
 }
@@ -137,7 +138,7 @@ func TestLCOW_TimeUVMStartVHD(t *testing.T) {
 // Kernel directly and skipping EFI.
 func TestLCOW_UVMStart_KernelDirect_VHD(t *testing.T) {
 	require.Build(t, 18286)
-	requireFeatures(t, featureLCOW)
+	requireFeatures(t, featureLCOW, featureUVM)
 
 	testLCOWTimeUVMStart(t, true, uvm.PreferredRootFSTypeVHD)
 }
@@ -146,7 +147,7 @@ func TestLCOW_UVMStart_KernelDirect_VHD(t *testing.T) {
 // attached root file system a number of times.
 func TestLCOW_TimeUVMStartInitRD(t *testing.T) {
 	require.Build(t, osversion.RS5)
-	requireFeatures(t, featureLCOW)
+	requireFeatures(t, featureLCOW, featureUVM)
 
 	testLCOWTimeUVMStart(t, false, uvm.PreferredRootFSTypeInitRd)
 }
@@ -156,18 +157,23 @@ func TestLCOW_TimeUVMStartInitRD(t *testing.T) {
 // Linux Kernel directly and skipping EFI.
 func TestLCOW_UVMStart_KernelDirect_InitRd(t *testing.T) {
 	require.Build(t, 18286)
-	requireFeatures(t, featureLCOW)
+	requireFeatures(t, featureLCOW, featureUVM)
 
 	testLCOWTimeUVMStart(t, true, uvm.PreferredRootFSTypeInitRd)
 }
 
 func testLCOWTimeUVMStart(t *testing.T, kernelDirect bool, rfsType uvm.PreferredRootFSType) {
 	t.Helper()
-	requireFeatures(t, featureLCOW)
+	requireFeatures(t, featureLCOW, featureUVM)
 
+	ctx := context.Background()
 	for i := 0; i < 3; i++ {
-		opts := defaultLCOWOptions(t)
+		opts := defaultLCOWOptions(ctx, t)
 		opts.KernelDirect = kernelDirect
+		if !kernelDirect {
+			// can only use the uncompressed kernel with direct boot
+			opts.KernelFile = uvm.KernelFile
+		}
 		opts.VPMemDeviceCount = 32
 		opts.PreferredRootFSType = rfsType
 		switch opts.PreferredRootFSType {
@@ -178,7 +184,7 @@ func testLCOWTimeUVMStart(t *testing.T, kernelDirect bool, rfsType uvm.Preferred
 		}
 
 		lcowUVM := testuvm.CreateAndStartLCOWFromOpts(context.Background(), t, opts)
-		lcowUVM.Close()
+		testuvm.Close(ctx, t, lcowUVM)
 	}
 }
 
@@ -186,7 +192,7 @@ func TestLCOWSimplePodScenario(t *testing.T) {
 	t.Skip("Doesn't work quite yet")
 
 	require.Build(t, osversion.RS5)
-	requireFeatures(t, featureLCOW, featureContainer)
+	requireFeatures(t, featureLCOW, featureUVM, featureContainer)
 
 	layers := linuxImageLayers(context.Background(), t)
 
@@ -245,11 +251,11 @@ func TestLCOWSimplePodScenario(t *testing.T) {
 	}
 
 	// Create the two containers
-	c1hcsSystem, c1Resources, err := CreateContainerTestWrapper(context.Background(), c1Opts)
+	c1hcsSystem, c1Resources, err := hcsoci.CreateContainer(context.Background(), c1Opts)
 	if err != nil {
 		t.Fatal(err)
 	}
-	c2hcsSystem, c2Resources, err := CreateContainerTestWrapper(context.Background(), c2Opts)
+	c2hcsSystem, c2Resources, err := hcsoci.CreateContainer(context.Background(), c2Opts)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -30,10 +30,10 @@ import (
 )
 
 func BenchmarkLCOW_Container(b *testing.B) {
-	requireFeatures(b, featureLCOW, featureContainer)
+	requireFeatures(b, featureLCOW, featureUVM, featureContainer)
 	require.Build(b, osversion.RS5)
 
-	pCtx := namespacedContext()
+	pCtx := namespacedContext(context.Background())
 	ls := linuxImageLayers(pCtx, b)
 
 	// Create a new uVM per benchmark in case any left over state lingers
@@ -65,7 +65,7 @@ func BenchmarkLCOW_Container(b *testing.B) {
 					vmCleanup(ctx)
 				}
 				// recreate the uVM
-				opts := defaultLCOWOptions(b)
+				opts := defaultLCOWOptions(ctx, b)
 				opts.ID += util.RandNameSuffix(i)
 				vm, vmCleanup = testuvm.CreateLCOW(ctx, b, opts)
 				testuvm.Start(ctx, b, vm)
@@ -145,7 +145,7 @@ func BenchmarkLCOW_Container(b *testing.B) {
 					vmCleanup(ctx)
 				}
 				// recreate the uVM
-				opts := defaultLCOWOptions(b)
+				opts := defaultLCOWOptions(ctx, b)
 				opts.ID += util.RandNameSuffix(i)
 				vm, vmCleanup = testuvm.CreateLCOW(ctx, b, opts)
 				testuvm.Start(ctx, b, vm)
@@ -200,7 +200,7 @@ func BenchmarkLCOW_Container(b *testing.B) {
 					vmCleanup(ctx)
 				}
 				// recreate the uVM
-				opts := defaultLCOWOptions(b)
+				opts := defaultLCOWOptions(ctx, b)
 				opts.ID += util.RandNameSuffix(i)
 				vm, vmCleanup = testuvm.CreateLCOW(ctx, b, opts)
 				testuvm.Start(ctx, b, vm)
@@ -258,7 +258,7 @@ func BenchmarkLCOW_Container(b *testing.B) {
 					vmCleanup(ctx)
 				}
 				// recreate the uVM
-				opts := defaultLCOWOptions(b)
+				opts := defaultLCOWOptions(ctx, b)
 				opts.ID += util.RandNameSuffix(i)
 				vm, vmCleanup = testuvm.CreateLCOW(ctx, b, opts)
 				testuvm.Start(ctx, b, vm)
@@ -322,7 +322,7 @@ func BenchmarkLCOW_Container(b *testing.B) {
 					vmCleanup(ctx)
 				}
 				// recreate the uVM
-				opts := defaultLCOWOptions(b)
+				opts := defaultLCOWOptions(ctx, b)
 				opts.ID += util.RandNameSuffix(i)
 				vm, vmCleanup = testuvm.CreateLCOW(ctx, b, opts)
 				testuvm.Start(ctx, b, vm)
@@ -387,7 +387,7 @@ func BenchmarkLCOW_Container(b *testing.B) {
 					vmCleanup(ctx)
 				}
 				// recreate the uVM
-				opts := defaultLCOWOptions(b)
+				opts := defaultLCOWOptions(ctx, b)
 				opts.ID += util.RandNameSuffix(i)
 				vm, vmCleanup = testuvm.CreateLCOW(ctx, b, opts)
 				testuvm.Start(ctx, b, vm)
@@ -452,7 +452,7 @@ func BenchmarkLCOW_Container(b *testing.B) {
 					vmCleanup(ctx)
 				}
 				// recreate the uVM
-				opts := defaultLCOWOptions(b)
+				opts := defaultLCOWOptions(ctx, b)
 				opts.ID += util.RandNameSuffix(i)
 				vm, vmCleanup = testuvm.CreateLCOW(ctx, b, opts)
 				testuvm.Start(ctx, b, vm)

@@ -1,6 +1,5 @@
-//go:build windows && (functional || uvmvpmem)
-// +build windows
-// +build functional uvmvpmem
+//go:build windows && functional
+// +build windows,functional
 
 package functional
 
@@ -16,12 +15,12 @@ import (
 	tuvm "github.com/Microsoft/hcsshim/test/pkg/uvm"
 )
 
-// TestVPMEM tests adding/removing VPMem Read-Only layers from a v2 Linux utility VM
+// TestVPMEM tests adding/removing VPMem Read-Only layers from a v2 Linux utility VM.
 func TestVPMEM(t *testing.T) {
 	t.Skip("not yet updated")
 
 	require.Build(t, osversion.RS5)
-	requireFeatures(t, featureLCOW, featureVPMEM)
+	requireFeatures(t, featureLCOW, featureUVM, featureVPMEM)
 
 	ctx := context.Background()
 	layers := linuxImageLayers(ctx, t)

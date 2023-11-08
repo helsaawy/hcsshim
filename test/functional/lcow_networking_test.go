@@ -4,6 +4,7 @@
 package functional
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -22,7 +23,7 @@ import (
 )
 
 func TestLCOW_IPv6_Assignment(t *testing.T) {
-	requireFeatures(t, featureLCOW)
+	requireFeatures(t, featureLCOW, featureUVM)
 	require.Build(t, osversion.RS5)
 
 	ns, err := newNetworkNamespace()
@@ -121,9 +122,9 @@ func TestLCOW_IPv6_Assignment(t *testing.T) {
 		t.Fatalf("network attachment: %v", err)
 	}
 
-	ctx := namespacedContext()
+	ctx := namespacedContext(context.Background())
 	ls := linuxImageLayers(ctx, t)
-	opts := defaultLCOWOptions(t)
+	opts := defaultLCOWOptions(ctx, t)
 	vm := uvm.CreateAndStartLCOWFromOpts(ctx, t, opts)
 
 	if err := vm.CreateAndAssignNetworkSetup(ctx, "", ""); err != nil {
@@ -138,7 +139,7 @@ func TestLCOW_IPv6_Assignment(t *testing.T) {
 	spec := oci.CreateLinuxSpec(ctx, t, cID,
 		oci.DefaultLinuxSpecOpts(ns.Id,
 			ctrdoci.WithProcessArgs("/bin/sh", "-c", oci.TailNullArgs),
-			oci.WithWindowsNetworkNamespace(ns.Id),
+			ctrdoci.WithWindowsNetworkNamespace(ns.Id),
 			oci.WithWindowsLayerFolders(append(ls, scratch)))...)
 
 	c, _, cleanup := container.Create(ctx, t, vm, spec, cID, hcsOwner)
