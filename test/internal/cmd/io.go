@@ -57,13 +57,14 @@ func (b *BufferedIO) TestStdOutContains(tb testing.TB, want, notWant []string) {
 	tb.Helper()
 
 	outGot, err := b.Output()
+	outGot = strings.ToLower(outGot)
+	tb.Logf("stdout:\n%s", outGot)
+
 	if err != nil {
 		tb.Fatalf("got stderr: %v", err)
 	}
 
-	tb.Logf("searching stdout for substrings\nstdout:\n%s\nwanted substrings:\n%q\nunwanted substrings:\n%q", outGot, want, notWant)
-
-	outGot = strings.ToLower(outGot)
+	tb.Logf("searching stdout for\nwanted substrings:\n%q\nunwanted substrings:\n%q", want, notWant)
 
 	for _, s := range want {
 		if !strings.Contains(outGot, strings.ToLower(s)) {

@@ -73,6 +73,7 @@ var (
 	procCreatePseudoConsole                    = modkernel32.NewProc("CreatePseudoConsole")
 	procCreateRemoteThread                     = modkernel32.NewProc("CreateRemoteThread")
 	procGetActiveProcessorCount                = modkernel32.NewProc("GetActiveProcessorCount")
+	procGetPhysicallyInstalledSystemMemory     = modkernel32.NewProc("GetPhysicallyInstalledSystemMemory")
 	procIsProcessInJob                         = modkernel32.NewProc("IsProcessInJob")
 	procLocalAlloc                             = modkernel32.NewProc("LocalAlloc")
 	procLocalFree                              = modkernel32.NewProc("LocalFree")
@@ -457,6 +458,14 @@ func CreateRemoteThread(process windows.Handle, sa *windows.SecurityAttributes, 
 func GetActiveProcessorCount(groupNumber uint16) (amount uint32) {
 	r0, _, _ := syscall.Syscall(procGetActiveProcessorCount.Addr(), 1, uintptr(groupNumber), 0, 0)
 	amount = uint32(r0)
+	return
+}
+
+func getPhysicallyInstalledSystemMemory(TotalMemoryInKilobytes *uint64) (err error) {
+	r1, _, e1 := syscall.Syscall(procGetPhysicallyInstalledSystemMemory.Addr(), 1, uintptr(unsafe.Pointer(TotalMemoryInKilobytes)), 0, 0)
+	if r1 == 0 {
+		err = errnoErr(e1)
+	}
 	return
 }
 

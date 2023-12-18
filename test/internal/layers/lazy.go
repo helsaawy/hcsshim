@@ -12,12 +12,11 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/Microsoft/go-winio"
 	"github.com/google/go-containerregistry/pkg/crane"
-	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1"
 	"github.com/sirupsen/logrus"
 
 	"github.com/Microsoft/hcsshim/ext4/dmverity"
@@ -33,7 +32,7 @@ import (
 
 // helper utilities for dealing with images
 
-// TODO: create a `type innerImageLayers struct{ dir, layers }` and use `testsync.Once[innerImageLayers]` instead
+// TODO: create a `type innerImageLayers struct{ dir, layers }` for [extractLayers] return
 
 type LazyImageLayers struct {
 	Image        string
@@ -43,9 +42,10 @@ type LazyImageLayers struct {
 	// Defaults to [os.TempDir] if left empty.
 	TempPath string
 	// dedicated directory, under [TempPath], to store layers in
-	dir    string
-	once   sync.Once
-	layers []string // extracted layer directories, under [dir]
+	dir string
+	// cant use [isync.OnceValueCtx] since that requires [LazyImageLayers] to be initialized with a valid function first
+	layersOnce isync.OnceErr[struct{}]
+	layers     []string // extracted layer directories, under [dir]
 }
 
 type extractHandler func(ctx context.Context, rc io.ReadCloser, dir string, parents []string) error
@@ -84,9 +84,8 @@ func (x *LazyImageLayers) Layers(ctx context.Context, tb testing.TB) []string {
 		return nil
 	}
 
-	var err error
-	x.once.Do(func() {
-		err = x.extractLayers(ctx)
+	_, err := x.layersOnce.DoCtx(ctx, func(ctx context.Context) (struct{}, error) {
+		return struct{}{}, x.extractLayers(ctx)
 	})
 	if err != nil {
 		x.Close(ctx)
@@ -96,7 +95,7 @@ func (x *LazyImageLayers) Layers(ctx context.Context, tb testing.TB) []string {
 }
 
 // don't use tb.Error/Log inside Once.Do stack, since we cannot call tb.Helper before executing f()
-// within Once.Do and that will therefore show the wrong stack/location
+// within Once.Do and that will therefore show the wrong stack/location.
 func (x *LazyImageLayers) extractLayers(ctx context.Context) (err error) {
 	if x.Image == "" {
 		return fmt.Errorf("cannot return layers for an empty image")

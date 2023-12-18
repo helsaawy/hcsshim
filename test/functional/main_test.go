@@ -121,7 +121,8 @@ var allFeatures = []string{
 }
 
 var (
-	flagLogLevel            = testflag.NewLogrusLevel("log-level", logrus.WarnLevel.String(), "logrus logging `level`")
+	flagLogLevel = testflag.NewLogrusLevel("log-level", logrus.WarnLevel.String(), "logrus logging `level`")
+
 	flagFeatures            = testflag.NewFeatureFlag(allFeatures)
 	flagContainerdNamespace = flag.String("ctr-namespace", hcsOwner,
 		"containerd `namespace` to use when creating OCI specs")
@@ -173,81 +174,86 @@ func runTests(m *testing.M) error {
 	logrus.SetFormatter(&logrus.TextFormatter{FullTimestamp: true})
 	logrus.SetLevel(flagLogLevel.Level)
 
-	logrus.Debugf("using features: %s", flagFeatures.Strings())
+	if !util.IsTestReExec() {
+		// don't bother re-setting up testing infra for a re-exec, since we really shouldn't
+		// be doing testing/uVM/image related things outside the main test
 
-	if flagFeatures.IsSet(featureLCOWIntegrity) {
-		logrus.Info("appending verity information to LCOW images")
-		alpineImagePaths.AppendVerity = true
-	}
+		logrus.Debugf("using features: %s", flagFeatures.Strings())
 
-	imgs := []*testlayers.LazyImageLayers{}
-	if flagFeatures.IsSet(featureLCOWIntegrity) || flagFeatures.IsSet(featureLCOW) {
-		imgs = append(imgs, alpineImagePaths)
-	}
-
-	if flagFeatures.IsSet(featureWCOW) {
-		wcow, err := wcowImagePathsOnce()
-		if err != nil {
-			return err
+		if flagFeatures.IsSet(featureLCOWIntegrity) {
+			logrus.Info("appending verity information to LCOW images")
+			alpineImagePaths.AppendVerity = true
 		}
 
-		logrus.WithField("image", wcow.nanoserver.Image).Info("using Nano Server image")
-		logrus.WithField("image", wcow.nanoserver.Image).Info("using Server Core image")
+		imgs := []*testlayers.LazyImageLayers{}
+		if flagFeatures.IsSet(featureLCOWIntegrity) || flagFeatures.IsSet(featureLCOW) {
+			imgs = append(imgs, alpineImagePaths)
+		}
 
-		imgs = append(imgs, wcow.nanoserver, wcow.servercore)
-	}
+		if flagFeatures.IsSet(featureWCOW) {
+			wcow, err := wcowImagePathsOnce()
+			if err != nil {
+				return err
+			}
 
-	for _, l := range imgs {
-		l.TempPath = *flagLayerTempDir
-	}
+			logrus.WithField("image", wcow.nanoserver.Image).Info("using Nano Server image")
+			logrus.WithField("image", wcow.nanoserver.Image).Info("using Server Core image")
 
-	defer func(ctx context.Context) {
-		cleanupComputeSystems(ctx, hcsOwner)
+			imgs = append(imgs, wcow.nanoserver, wcow.servercore)
+		}
 
 		for _, l := range imgs {
-			if l == nil {
-				continue
-			}
-			// just log errors: no other cleanup possible
-			if err := l.Close(ctx); err != nil {
-				log.G(ctx).WithFields(logrus.Fields{
-					logrus.ErrorKey: err,
-					"image":         l.Image,
-					"platform":      l.Platform,
-				}).Warning("image cleanup failed")
-			}
+			l.TempPath = *flagLayerTempDir
 		}
-	}(ctx)
 
-	// print additional configuration options when running benchmarks, so we can track performance.
-	//
-	// also, print to ETW instead of stdout to mirror actual deployments, and to prevent logs from
-	// interfering with benchmarking output
-	if util.RunningBenchmarks() {
-		util.PrintAdditionalBenchmarkConfig()
-		// also print out the features used as part of the benchmarking config
-		fmt.Printf("features: %s\n", flagFeatures.Strings())
+		defer func(ctx context.Context) {
+			cleanupComputeSystems(ctx, hcsOwner)
 
-		provider, err := etw.NewProviderWithOptions("Microsoft.Virtualization.RunHCS")
-		if err != nil {
-			logrus.Error(err)
-		} else {
-			if hook, err := etwlogrus.NewHookFromProvider(provider); err == nil {
-				logrus.AddHook(hook)
+			for _, l := range imgs {
+				if l == nil {
+					continue
+				}
+				// just log errors: no other cleanup possible
+				if err := l.Close(ctx); err != nil {
+					log.G(ctx).WithFields(logrus.Fields{
+						logrus.ErrorKey: err,
+						"image":         l.Image,
+						"platform":      l.Platform,
+					}).Warning("image cleanup failed")
+				}
+			}
+		}(ctx)
+
+		// print additional configuration options when running benchmarks, so we can track performance.
+		//
+		// also, print to ETW instead of stdout to mirror actual deployments, and to prevent logs from
+		// interfering with benchmarking output
+		if util.RunningBenchmarks() {
+			util.PrintAdditionalBenchmarkConfig()
+			// also print out the features used as part of the benchmarking config
+			fmt.Printf("features: %s\n", flagFeatures.Strings())
+
+			provider, err := etw.NewProviderWithOptions("Microsoft.Virtualization.RunHCS")
+			if err != nil {
+				logrus.Error(err)
 			} else {
-				logrus.WithError(err).Error("could not create ETW logrus hook")
+				if hook, err := etwlogrus.NewHookFromProvider(provider); err == nil {
+					logrus.AddHook(hook)
+				} else {
+					logrus.WithError(err).Error("could not create ETW logrus hook")
+				}
 			}
+
+			// regardless of ETW provider status, still discard logs
+			logrus.SetFormatter(log.NopFormatter{})
+			logrus.SetOutput(io.Discard)
+
+			defer func() {
+				// un-discard logs during cleanup
+				logrus.SetFormatter(&logrus.TextFormatter{FullTimestamp: true})
+				logrus.SetOutput(os.Stdout)
+			}()
 		}
-
-		// regardless of ETW provider status, still discard logs
-		logrus.SetFormatter(log.NopFormatter{})
-		logrus.SetOutput(io.Discard)
-
-		defer func() {
-			// un-discard logs during cleanup
-			logrus.SetFormatter(&logrus.TextFormatter{FullTimestamp: true})
-			logrus.SetOutput(os.Stdout)
-		}()
 	}
 
 	if e := m.Run(); e != 0 {

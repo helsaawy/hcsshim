@@ -51,6 +51,8 @@ func Create(ctx context.Context, _ testing.TB, c cow.ProcessHost, p *specs.Proce
 
 func Start(_ context.Context, tb testing.TB, c *cmd.Cmd) {
 	tb.Helper()
+	tb.Logf("starting command: %s", desc(c))
+
 	if err := c.Start(); err != nil {
 		tb.Fatalf("failed to start %q: %v", desc(c), err)
 	}

@@ -31,6 +31,19 @@ func CleanName(n string) string {
 	return strings.TrimSpace(strings.Map(mapper, n))
 }
 
+func Testing() bool {
+	// TODO (go1.21): use [testing.Testing]
+
+	b := false
+	// check if any `-test.*` flags have been defined
+	flag.VisitAll(func(f *flag.Flag) {
+		if strings.HasPrefix(f.Name, "test.") {
+			b = true
+		}
+	})
+	return b
+}
+
 // RunningBenchmarks returns whether benchmarks were requested to be run.
 //
 // Returning true implies the current executable is a testing binary (either built or run by `go test`).
