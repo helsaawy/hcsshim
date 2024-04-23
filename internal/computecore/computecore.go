@@ -45,11 +45,11 @@ type HCSContext uintptr
 //
 //sys hcsEnumerateComputeSystems(query string, operation HCSOperation) (hr error) = computecore.HcsEnumerateComputeSystems?
 
-func EnumerateComputeSystems(ctx context.Context, op HCSOperation, query *hcsschema.SystemQuery) (properties []hcsschema.Properties, err error) {
+func EnumerateComputeSystems(ctx context.Context, op hcsOperation, query *hcsschema.SystemQuery) (properties []hcsschema.Properties, err error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout.SyscallWatcher)
 	defer cancel()
 
-	ctx, span := oc.StartSpan(ctx, "computecore::HcsEnumerateComputeSystems", oc.WithClientSpanKind)
+	ctx, span := oc.StartSpan(ctx, computecoreSpanName("HcsEnumerateComputeSystems"), oc.WithClientSpanKind)
 	defer func() {
 		if len(properties) != 0 {
 			span.AddAttributes(trace.StringAttribute("properties", log.Format(ctx, properties)))
@@ -70,7 +70,7 @@ func EnumerateComputeSystems(ctx context.Context, op HCSOperation, query *hcssch
 	return runOperation[[]hcsschema.Properties](
 		ctx,
 		op,
-		func(_ context.Context, op HCSOperation) (err error) {
+		func(_ context.Context, op hcsOperation) (err error) {
 			return hcsEnumerateComputeSystems(q, op)
 		},
 	)
@@ -88,7 +88,7 @@ func EnumerateComputeSystems(ctx context.Context, op HCSOperation, query *hcssch
 
 // SetCallback assigns a callback to handle events for the compute system.
 func (s HCSSystem) SetCallback(ctx context.Context, options HCSEventOptions, hcsCtx HCSContext, callback HCSEventCallback) (err error) {
-	_, span := oc.StartSpan(ctx, "computecore::HcsSetComputeSystemCallback", oc.WithClientSpanKind)
+	_, span := oc.StartSpan(ctx, computecoreSpanName("HcsSetComputeSystemCallback"), oc.WithClientSpanKind)
 	defer func() {
 		oc.SetSpanStatus(span, err)
 		span.End()
@@ -116,7 +116,7 @@ func (s HCSSystem) SetCallback(ctx context.Context, options HCSEventOptions, hcs
 
 // SetCallback assigns a callback to handle events for the compute system.
 func (p HCSProcess) SetCallback(ctx context.Context, options HCSEventOptions, hcsCtx HCSContext, callback HCSEventCallback) (err error) {
-	_, span := oc.StartSpan(ctx, "computecore::HcsSetProcessCallback", oc.WithClientSpanKind)
+	_, span := oc.StartSpan(ctx, computecoreSpanName("HcsSetProcessCallback"), oc.WithClientSpanKind)
 	defer func() {
 		oc.SetSpanStatus(span, err)
 		span.End()
@@ -134,8 +134,8 @@ func (p HCSProcess) SetCallback(ctx context.Context, options HCSEventOptions, hc
 
 func runOperation[T any](
 	ctx context.Context,
-	op HCSOperation,
-	f func(context.Context, HCSOperation) error,
+	op hcsOperation,
+	f func(context.Context, hcsOperation) error,
 ) (v T, err error) {
 	if err := f(ctx, op); err != nil {
 		return v, err
@@ -172,4 +172,19 @@ func encode(v any) (string, error) {
 
 	// encoder.Encode appends a newline to the end
 	return strings.TrimSpace(buf.String()), nil
+}
+
+func validHandle(h windows.Handle) bool {
+	return h != 0 && h != windows.InvalidHandle
+}
+
+func computecoreSpanName(names ...string) string {
+	s := make([]string, 0, len(names))
+	for _, n := range names {
+		n = strings.TrimSpace(n)
+		if n != "" {
+			s = append(s, n)
+		}
+	}
+	return strings.Join(append([]string{"computecore"}, s...), "::")
 }

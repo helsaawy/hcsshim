@@ -19,7 +19,7 @@ type (
 	//	    _In_ HCS_OPERATION operation,
 	//	    _In_opt_ void* context
 	//	    );
-	HCSOperationCompletion func(op HCSOperation, hcsCtx HCSContext)
+	HCSOperationCompletion func(op hcsOperation, hcsCtx HCSContext)
 
 	hcsOperationCompletionUintptr uintptr
 )
@@ -29,7 +29,7 @@ func (f HCSOperationCompletion) asCallback() hcsOperationCompletionUintptr {
 		return hcsOperationCompletionUintptr(0)
 	}
 	return hcsOperationCompletionUintptr(windows.NewCallback(
-		func(op HCSOperation, hcsCtx HCSContext) uintptr {
+		func(op hcsOperation, hcsCtx HCSContext) uintptr {
 			f(op, hcsCtx)
 			return 0
 		},

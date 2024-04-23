@@ -52,7 +52,7 @@ var (
 	procHcsWaitForOperationResult   = modcomputecore.NewProc("HcsWaitForOperationResult")
 )
 
-func hcsCancelOperation(operation HCSOperation) (hr error) {
+func hcsCancelOperation(operation hcsOperation) (hr error) {
 	hr = procHcsCancelOperation.Find()
 	if hr != nil {
 		return
@@ -67,7 +67,7 @@ func hcsCancelOperation(operation HCSOperation) (hr error) {
 	return
 }
 
-func hcsCloseOperation(operation HCSOperation) (err error) {
+func hcsCloseOperation(operation hcsOperation) (err error) {
 	err = procHcsCloseOperation.Find()
 	if err != nil {
 		return
@@ -76,20 +76,20 @@ func hcsCloseOperation(operation HCSOperation) (err error) {
 	return
 }
 
-func hcsCreateOperation(context HCSContext, callback hcsOperationCompletionUintptr) (op HCSOperation, err error) {
+func hcsCreateOperation(context HCSContext, callback hcsOperationCompletionUintptr) (op hcsOperation, err error) {
 	err = procHcsCreateOperation.Find()
 	if err != nil {
 		return
 	}
 	r0, _, e1 := syscall.SyscallN(procHcsCreateOperation.Addr(), uintptr(context), uintptr(callback))
-	op = HCSOperation(r0)
+	op = hcsOperation(r0)
 	if op == 0 {
 		err = errnoErr(e1)
 	}
 	return
 }
 
-func hcsEnumerateComputeSystems(query string, operation HCSOperation) (hr error) {
+func hcsEnumerateComputeSystems(query string, operation hcsOperation) (hr error) {
 	var _p0 *uint16
 	_p0, hr = syscall.UTF16PtrFromString(query)
 	if hr != nil {
@@ -98,7 +98,7 @@ func hcsEnumerateComputeSystems(query string, operation HCSOperation) (hr error)
 	return _hcsEnumerateComputeSystems(_p0, operation)
 }
 
-func _hcsEnumerateComputeSystems(query *uint16, operation HCSOperation) (hr error) {
+func _hcsEnumerateComputeSystems(query *uint16, operation hcsOperation) (hr error) {
 	hr = procHcsEnumerateComputeSystems.Find()
 	if hr != nil {
 		return
@@ -113,7 +113,7 @@ func _hcsEnumerateComputeSystems(query *uint16, operation HCSOperation) (hr erro
 	return
 }
 
-func hcsGetOperationID(operation HCSOperation) (id uint64, err error) {
+func hcsGetOperationID(operation hcsOperation) (id uint64, err error) {
 	err = procHcsGetOperationId.Find()
 	if err != nil {
 		return
@@ -126,7 +126,7 @@ func hcsGetOperationID(operation HCSOperation) (id uint64, err error) {
 	return
 }
 
-func hcsGetOperationResult(operation HCSOperation, resultDocument **uint16) (hr error) {
+func hcsGetOperationResult(operation hcsOperation, resultDocument **uint16) (hr error) {
 	hr = procHcsGetOperationResult.Find()
 	if hr != nil {
 		return
@@ -141,7 +141,7 @@ func hcsGetOperationResult(operation HCSOperation, resultDocument **uint16) (hr 
 	return
 }
 
-func hcsGetOperationType(operation HCSOperation) (t HCSOperationType, err error) {
+func hcsGetOperationType(operation hcsOperation) (t HCSOperationType, err error) {
 	err = procHcsGetOperationType.Find()
 	if err != nil {
 		return
@@ -169,7 +169,7 @@ func hcsSetComputeSystemCallback(computeSystem HCSSystem, callbackOptions HCSEve
 	return
 }
 
-func hcsSetOperationCallback(operation HCSOperation, context HCSContext, callback hcsOperationCompletionUintptr) (hr error) {
+func hcsSetOperationCallback(operation hcsOperation, context HCSContext, callback hcsOperationCompletionUintptr) (hr error) {
 	hr = procHcsSetOperationCallback.Find()
 	if hr != nil {
 		return
@@ -199,7 +199,7 @@ func hcsSetProcessCallback(process HCSProcess, callbackOptions HCSEventOptions, 
 	return
 }
 
-func hcsWaitForOperationResult(operation HCSOperation, timeoutMs uint32, resultDocument **uint16) (hr error) {
+func hcsWaitForOperationResult(operation hcsOperation, timeoutMs uint32, resultDocument **uint16) (hr error) {
 	hr = procHcsWaitForOperationResult.Find()
 	if hr != nil {
 		return

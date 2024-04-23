@@ -23,7 +23,7 @@ type HCSEvent struct {
 	EventData *uint16
 	// Handle to a completed operation, if Type is eventOperationCallback.
 	// This is only possible when HcsSetComputeSystemCallback has specified event option HcsEventOptionEnableOperationCallbacks.
-	Operation HCSOperation
+	Operation hcsOperation
 }
 
 //go:generate go run golang.org/x/tools/cmd/stringer -type=HCSEventType -trimprefix=Event event.go
