@@ -1,0 +1,21 @@
+rules:
+  style:
+    file-length:
+      level: warning
+
+    line-length:
+      level: ignore
+      # max-line-length: 120
+
+    # too late to change the names, probably ...
+    prefer-snake-case:
+      level: ignore
+    avoid-get-and-list-prefix:
+      level: ignore
+
+ignore:
+  files:
+    # ignore test and vendored files
+    - "*test.rego"
+    - "test*"
+    - "vendor*"

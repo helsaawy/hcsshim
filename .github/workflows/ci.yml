@@ -48,6 +48,83 @@ jobs:
         env:
           GOOS: ${{ matrix.goos }}
 
+  lint-rego:
+    name: Lint Rego
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          show-progress: false
+
+      - name: Install OPA
+        uses: open-policy-agent/setup-opa@v2
+        with:
+          version: latest
+
+      # TODO: add summary to $env:GITHUB_STEP_SUMMARY?
+      - name: Check Policy
+        shell: pwsh
+        run: |
+          $errs = (opa check --strict --max-errors 0 --format json ./pkg/securitypolicy 2>&1) |
+              ConvertFrom-Json |
+              Select-Object -ExpandProperty Errors
+          foreach ( $err in $errs ) {
+              $title = (Get-Culture).TextInfo.ToTitleCase(($err.code -replace "_", " "))
+              $file = $err.location.file
+              $line = $err.location.row
+              $col = $err.location.col
+              $msg = $err.message
+              Write-Output "::error file=${file},line=${line},col=${col},title=${title}::${msg}"
+          }
+
+          if ( $errs.Count -gt 0 ) {
+            $LASTEXITCODE = 1
+          }
+        continue-on-error: true # TODO!!!!!!!!!
+
+      - name: Check Policy v1 Compatibility
+        shell: pwsh
+        run: |
+          $errs = (opa check --rego-v1 --max-errors 0 --format json ./pkg/securitypolicy 2>&1) |
+              ConvertFrom-Json |
+              Select-Object -ExpandProperty Errors
+          foreach ( $err in $errs ) {
+              $title = (Get-Culture).TextInfo.ToTitleCase(($err.code -replace "_", " "))
+              $file = $err.location.file
+              $line = $err.location.row
+              $col = $err.location.col
+              $msg = $err.message
+              Write-Output "::warning file=${file},line=${line},col=${col},title=${title}::${msg}"
+          }
+
+          if ( $errs.Count -gt 0 ) {
+            Write-Output "::error title=Rego v1 Compatibility::Policy files are not v1 compatible"
+            $LASTEXITCODE = 0
+          }
+
+      - name: Install Regal
+        uses: StyraInc/setup-regal@v1
+        with:
+          version: latest
+
+      - name: Lint Policy
+        run: regal lint --format=github ./pkg/securitypolicy
+
+      - name: Lint Policy Samples
+        shell: pwsh
+        # ignore errors in samples code
+        run: |
+          # ignore errors in samples code
+          try {
+            regal lint --format=github ./internal/regopolicyinterpreter ./internal/tools/policyenginesimulator/samples
+          } catch {
+            Write-Output "::error::Policy samples not properly linted."
+          } finally {
+            $LASTEXITCODE = 0
+          }
+
   protos:
     runs-on: "windows-2022"
 
@@ -233,7 +310,7 @@ jobs:
           }
 
   test-linux:
-    needs: [lint, protos, verify-vendor, go-gen]
+    needs: [lint, lint-rego, protos, verify-vendor, go-gen]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -266,7 +343,7 @@ jobs:
         working-directory: test
 
   test-windows:
-    needs: [lint, protos, verify-vendor, go-gen]
+    needs: [lint, lint-rego, protos, verify-vendor, go-gen]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -392,7 +469,7 @@ jobs:
             test/sample-logging-driver.exe
 
   integration-tests:
-    needs: [lint, protos, verify-vendor, go-gen]
+    needs: [lint, lint-rego, protos, verify-vendor, go-gen]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false

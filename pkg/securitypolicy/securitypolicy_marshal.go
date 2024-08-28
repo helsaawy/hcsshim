@@ -41,7 +41,7 @@ func init() {
 	registeredMarshallers[regoMarshaller] = marshalRego
 }
 
-//go:embed policy.rego
+//go:embed policy.rego.partial
 var policyRegoTemplate string
 
 //go:embed open_door.rego
