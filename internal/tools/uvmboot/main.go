@@ -4,18 +4,20 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"sync"
 	"time"
 
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
+	"go.opencensus.io/trace"
 
+	"github.com/Microsoft/hcsshim/internal/oc"
 	"github.com/Microsoft/hcsshim/internal/uvm"
 	"github.com/Microsoft/hcsshim/internal/winapi"
 )
 
+// Global flag names.
 const (
 	cpusArgName                 = "cpus"
 	memoryArgName               = "memory"
@@ -24,18 +26,48 @@ const (
 	measureArgName              = "measure"
 	parallelArgName             = "parallel"
 	countArgName                = "count"
+	useGCSArgName               = "gcs"
+)
 
+// Shared command flag names.
+const (
 	execCommandLineArgName = "exec"
+	forwardStdoutArgName   = "fwd-stdout"
+	forwardStderrArgName   = "fwd-stderr"
+	outputHandlingArgName  = "output-handling"
+	useTerminalArgName     = "tty"
 )
 
-var (
-	debug  bool
-	useGCS bool
-)
+// Shared command flags.
+var commonUVMFlags = []cli.Flag{
+	cli.StringFlag{
+		Name:  execCommandLineArgName,
+		Usage: "Command to execute in the UVM.",
+	},
+	cli.BoolFlag{
+		Name:  forwardStdoutArgName,
+		Usage: "Whether stdout from the process in the UVM should be forwarded",
+	},
+	cli.BoolFlag{
+		Name:  forwardStderrArgName,
+		Usage: "Whether stderr from the process in the UVM should be forwarded",
+	},
+	cli.StringFlag{
+		Name:  outputHandlingArgName,
+		Usage: "Controls how output from UVM is handled. Use 'stdout' to print all output to stdout",
+	},
+	cli.BoolFlag{
+		Name:  useTerminalArgName + ",t",
+		Usage: "create the process in the UVM with a TTY enabled",
+	},
+}
 
 type uvmRunFunc func(string) error
 
 func main() {
+	var debugLogs bool
+	var traceLogs bool
+
 	app := cli.NewApp()
 	app.Name = "uvmboot"
 	app.Usage = "Boot a utility VM"
@@ -73,13 +105,17 @@ func main() {
 		},
 		cli.BoolFlag{
 			Name:        "debug",
-			Usage:       "Enable debug information",
-			Destination: &debug,
+			Usage:       "Enable debug logs",
+			Destination: &debugLogs,
 		},
 		cli.BoolFlag{
-			Name:        "gcs",
-			Usage:       "Launch the GCS and perform requested operations via its RPC interface",
-			Destination: &useGCS,
+			Name:        "trace",
+			Usage:       "Enable trace logs (implies debug logs)",
+			Destination: &traceLogs,
+		},
+		cli.BoolFlag{
+			Name:  useGCSArgName,
+			Usage: "Launch the GCS and perform requested operations via its RPC interface. Currently LCOW only",
 		},
 	}
 
@@ -88,22 +124,35 @@ func main() {
 		wcowCommand,
 	}
 
-	app.Before = func(c *cli.Context) error {
+	app.Before = func(cCtx *cli.Context) error {
 		if !winapi.IsElevated() {
-			log.Fatal(c.App.Name + " must be run in an elevated context")
+			return fmt.Errorf(cCtx.App.Name + " must be run in an elevated context")
 		}
 
-		if debug {
-			logrus.SetLevel(logrus.DebugLevel)
-		} else {
-			logrus.SetLevel(logrus.WarnLevel)
-		}
+		// configure logging/tracing
+		trace.ApplyConfig(trace.Config{DefaultSampler: oc.DefaultSampler})
+		trace.RegisterExporter(&oc.LogrusExporter{})
 
+		logrus.SetFormatter(&logrus.TextFormatter{FullTimestamp: true})
+
+		lvl := logrus.WarnLevel
+		if traceLogs {
+			if debugLogs {
+				logrus.Warn(`"debug" and "trace" flags are mutually exclusive`)
+			}
+			lvl = logrus.TraceLevel
+		} else if debugLogs {
+			lvl = logrus.DebugLevel
+		}
+		logrus.SetLevel(lvl)
+
+		logrus.WithField("args", fmt.Sprintf("%#+v", os.Args)).Tracef("running %s command", cCtx.App.Name)
 		return nil
 	}
 
 	if err := app.Run(os.Args); err != nil {
-		logrus.Fatalf("%v\n", err)
+		fmt.Fprintln(app.ErrWriter, err)
+		os.Exit(1)
 	}
 }
 
@@ -122,7 +171,8 @@ func setGlobalOptions(c *cli.Context, options *uvm.Options) {
 	}
 }
 
-// todo: add a context here to propagate cancel/timeouts to runFunc uvm
+// TODO: add a context here to propagate cancel/timeouts to runFunc uvm
+// TODO: [runMany] can theoretically call runFunc multiple times on the same goroutine and starve others, fix that
 
 func runMany(c *cli.Context, runFunc uvmRunFunc) {
 	parallelCount := c.GlobalInt(parallelArgName)
