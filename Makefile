@@ -81,7 +81,7 @@ out/delta.tar.gz: bin/init bin/vsockexec bin/cmd/gcs bin/cmd/gcstools bin/cmd/ho
 	tar -zcf $@ -C rootfs .
 	rm -rf rootfs
 
-bin/cmd/gcs bin/cmd/gcstools bin/cmd/hooks/wait-paths bin/cmd/tar2ext4 bin/internal/tools/snp-report:
+bin/cmd/gcs bin/cmd/gcstools bin/cmd/hooks/wait-paths bin/cmd/tar2ext4 bin/internal/tools/lcowrootfs bin/internal/tools/snp-report:
 	@mkdir -p $(dir $@)
 	GOOS=linux $(GO_BUILD) -o $@ $(SRCROOT)/$(@:bin/%=%)
 
