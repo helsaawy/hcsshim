@@ -74,16 +74,22 @@ func main() {
 }
 
 // Note:
-// file modification time when booting from initrd.img is apparently the uVM boot time,
-// since the cpio archive is extracted to the rootfs (ramfs/tempfs).
+// file modification time when booting from initrd.img is the uVM boot time,
+// since the kernel creates a rootfs (ramfs or tempfs) filesystem, instead of using the
+// cpio archive directly.
 //
-// 	rootfs on / type rootfs (rw,size=488996k,nr_inodes=122249)
+// for rootfs.vhd, it is the original time as provided by the original tarball, since
+// the VHD has an already-formatted (ext4) filesystem on it
 //
-// rootfs.vhd is the modification time from creation (i.e., present in the tar)
-//
-// /dev/root on / type ext4 (ro,relatime)
+// for the rootfs.vhd and intermediary tar and cpio archives, if they are created after
+// extracting files to disk, the modification time for directories and symlinks will be
+// the extraction date (and not the original date from the source).
 
-const mergeOutputFlag = "output"
+const (
+	mergeFlagOutput          = "output"
+	mergeFlagNoTrailingSlash = "no-trailing-slash"
+	mergeFlagNoOverrideOwner = "no-override-owner"
+)
 
 var merge = &cli.Command{
 	Name:    "merge",
@@ -97,10 +103,18 @@ be changed by extraction`, "\n", " "),
 	ArgsUsage: "layers...",
 	Flags: []cli.Flag{
 		&cli.PathFlag{
-			Name:     mergeOutputFlag,
+			Name:     mergeFlagOutput,
 			Aliases:  []string{"o"},
 			Usage:    "output tarball `file`",
 			Required: true,
+		},
+		&cli.BoolFlag{
+			Name:  mergeFlagNoTrailingSlash,
+			Usage: "do not append a trailing slash (/) to directories",
+		},
+		&cli.BoolFlag{
+			Name:  mergeFlagNoOverrideOwner,
+			Usage: "do not set file owner UID and GID to 0",
 		},
 	},
 	// basically crane (github.com/google/go-containerregistry/cmd/crane) append and export
@@ -110,7 +124,7 @@ be changed by extraction`, "\n", " "),
 			return fmt.Errorf("no layers specified")
 		}
 
-		dest, err := outputFilePath(cCtx.Path(mergeOutputFlag))
+		dest, err := outputFilePath(cCtx.Path(mergeFlagOutput))
 		if err != nil {
 			return err
 		}
@@ -151,7 +165,9 @@ be changed by extraction`, "\n", " "),
 		}
 		defer w.Close()
 
-		if err := writeImage(w, img); err != nil {
+		trailingSlash := !cCtx.Bool(mergeFlagNoTrailingSlash)
+		overrideOwner := !cCtx.Bool(mergeFlagNoOverrideOwner)
+		if err := writeImage(w, img, trailingSlash, overrideOwner); err != nil {
 			return fmt.Errorf("write merged layers to %q: %w", dest, err)
 		}
 
@@ -163,18 +179,25 @@ be changed by extraction`, "\n", " "),
 	},
 }
 
-// writeTarToFile writes the tar stream to r, while undoing the changes that [mutate.Extract] made
-// when it calls [filepath.Clean] on the file names (but not the link names):
+// writeTarToFile writes the tar stream to r, while undoing some of the the changes that
+// [mutate.Extract] made when it calls [filepath.Clean] on the file names (but not the link names):
 //
 //   - removes leading `./`
 //   - removes trailing `/`
 //   - replaces `\` with [os.Separator]
 //
-// Reapplying them standardizes the output with how tar creates the layers, makes the result cross-platform,
-// and prevents broken (hard) links due to renamed files.
-// Also, send the (implied) end result is for a rootfs/initrd, set the user and group id to 0 (root)
-func writeImage(w io.WriteCloser, img v1.Image) error {
-	logrus.Debug("update tar headers")
+// We need to change `/` back to `\` on Windows to prevent broken (hard) links due to renamed files.
+//
+// Also, (GNU) tar and (BSD) tar.exe will prepend `./` depending on how the files are specified,
+// but both will add a trailing slash to directories.
+// Allow adding the trailing `/` to standardize with them.
+//
+// Also, allow overriding non-root (0) file ownershim, which may have been copied during tar creation.
+func writeImage(w io.WriteCloser, img v1.Image, trailingSlash, overrideOwner bool) error {
+	logrus.WithFields(logrus.Fields{
+		"trailing-slash": trailingSlash,
+		"override-owner": overrideOwner,
+	}).Info("update tar headers")
 
 	r := mutate.Extract(img)
 	defer r.Close()
@@ -198,13 +221,24 @@ func writeImage(w io.WriteCloser, img v1.Image) error {
 			"name":      header.Name,
 		})
 
-		if header.Gid != 0 || header.Gname != "" || header.Uid != 0 || header.Uname != "" {
+		header.Name = filepath.ToSlash(header.Name)
+
+		if trailingSlash && header.Typeflag == tar.TypeDir && !strings.HasSuffix(header.Name, `/`) {
+			entry.Debug("append trailing slash to directory name")
+			header.Name += `/`
+		}
+
+		// if !strings.HasPrefix(header.Name, `./`) {
+		// 	header.Name = `./` + header.Name
+		// }
+
+		if overrideOwner && (header.Gid != 0 || header.Gname != "" || header.Uid != 0 || header.Uname != "") {
 			entry.WithFields(logrus.Fields{
 				"group":     header.Gid,
 				"groupname": header.Gname,
 				"user":      header.Uid,
 				"username":  header.Uname,
-			}).Debug("setting owner user and group to 0 (root)")
+			}).Debug("set user and group ownership to 0 (root)")
 
 			header.Gid = 0
 			header.Uid = 0
@@ -212,21 +246,12 @@ func writeImage(w io.WriteCloser, img v1.Image) error {
 			header.Uname = ""
 		}
 
-		header.Name = filepath.ToSlash(header.Name)
-		if header.Typeflag == tar.TypeDir && !strings.HasSuffix(header.Name, `/`) {
-			header.Name += `/`
-		}
-		if !strings.HasPrefix(header.Name, `./`) {
-			header.Name = `./` + header.Name
-		}
-		entry.WithField("new-name", header.Name).Trace("updated file header")
-
 		if err := tw.WriteHeader(header); err != nil {
 			return fmt.Errorf("write %q header: %w", header.Name, err)
 		}
 		if header.Size > 0 {
 			if _, err := io.CopyN(tw, tr, header.Size); err != nil {
-				return fmt.Errorf("write %q: %w", header.Name, err)
+				return fmt.Errorf("write %q contents: %w", header.Name, err)
 			}
 		}
 	}
@@ -253,7 +278,6 @@ func baseImage() (v1.Image, error) {
 // current process (hack/catcpio.sh):
 //  - extract: `cpio -iumd` (preseve modification date, create directories, overwrite) or `tar -xf`
 //	- create: `cpio --create --format=newc -R 0:0`
-//
 
 const cpioOutputFlag = "output"
 
@@ -323,10 +347,6 @@ var cpioCommand = &cli.Command{
 		files := initramfs.NewFiles()
 		// from tar files -> files.AddRecord()
 
-		// todo: shouldn't need this
-		arch := cpio.InMemArchive()
-		fmt.Printf("archive\n%s", arch.String())
-
 		// don't use initramfs.Files, since:
 		//  - it assumes files are located on disk, and polls that for information
 		//  - it calls [cpio.MakeReproducible] on the files, which removes hardlinks
@@ -344,8 +364,6 @@ var cpioCommand = &cli.Command{
 
 		// todo: add in hardlinks
 
-		// write regular files as binary blobs to read later? (better than keeping in mem ...)
-		//
 		// if hardlink, look up previous record and increment nlink
 		//
 		// symlink:
