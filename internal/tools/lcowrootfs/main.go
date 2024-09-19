@@ -18,6 +18,8 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
 	"github.com/google/go-containerregistry/pkg/v1/types"
 	"github.com/sirupsen/logrus"
+	"github.com/u-root/mkuimage/cpio"
+	"github.com/u-root/mkuimage/uimage/initramfs"
 	"github.com/urfave/cli/v2"
 	"go.opencensus.io/trace"
 
@@ -55,13 +57,6 @@ func main() {
 			cpioCommand,
 		},
 		DefaultCommand: merge.Name,
-		// Before: func(cCtx *cli.Context) error {
-		// 	if !winapi.IsElevated() {
-		// 		return fmt.Errorf(cCtx.App.Name + " must be run in an elevated context")
-		// 	}
-
-		// 	return nil
-		// },
 		ExitErrHandler: func(ctx *cli.Context, err error) {
 			if err != nil {
 				logrus.WithFields(logrus.Fields{
@@ -78,34 +73,47 @@ func main() {
 	}
 }
 
+// Note:
+// file modification time when booting from initrd.img is apparently the uVM boot time,
+// since the cpio archive is extracted to the rootfs (ramfs/tempfs).
+//
+// 	rootfs on / type rootfs (rw,size=488996k,nr_inodes=122249)
+//
+// rootfs.vhd is the modification time from creation (i.e., present in the tar)
+//
+// /dev/root on / type ext4 (ro,relatime)
+
 const mergeOutputFlag = "output"
 
 var merge = &cli.Command{
-	Name:        "merge",
-	Aliases:     []string{"m"},
-	Usage:       "merge together multiple Linux layer tarballs",
-	Description: "a combination of crane (github.com/google/go-containerregistry/cmd/crane) append and export commands",
-	Args:        true,
-	ArgsUsage:   "layers...",
+	Name:    "merge",
+	Aliases: []string{"m"},
+	Usage:   "merge together multiple Linux layer tarballs",
+	Description: strings.ReplaceAll(
+		`merge layers without needing to extract and combine them on the file system.
+This allows preserving file properties (e.g., creation date, owner user and group) which could
+be changed by extraction`, "\n", " "),
+	Args:      true,
+	ArgsUsage: "layers...",
 	Flags: []cli.Flag{
 		&cli.PathFlag{
 			Name:     mergeOutputFlag,
 			Aliases:  []string{"o"},
-			Usage:    "output `path` for the merged tarball",
+			Usage:    "output tarball `file`",
 			Required: true,
 		},
 	},
+	// basically crane (github.com/google/go-containerregistry/cmd/crane) append and export
 	Action: func(cCtx *cli.Context) error {
 		args := cCtx.Args()
 		if args.Len() < 1 {
 			return fmt.Errorf("no layers specified")
 		}
 
-		dest, err := filepath.Abs(cCtx.Path(mergeOutputFlag))
+		dest, err := outputFilePath(cCtx.Path(mergeOutputFlag))
 		if err != nil {
-			return fmt.Errorf("invalid output file path %q: %w", cCtx.Path(mergeOutputFlag), err)
+			return err
 		}
-		logrus.WithField("output", dest).Debug("using destination path")
 
 		paths := make([]string, 0, args.Len())
 		for _, s := range args.Slice() {
@@ -164,6 +172,7 @@ var merge = &cli.Command{
 //
 // Reapplying them standardizes the output with how tar creates the layers, makes the result cross-platform,
 // and prevents broken (hard) links due to renamed files.
+// Also, send the (implied) end result is for a rootfs/initrd, set the user and group id to 0 (root)
 func writeImage(w io.WriteCloser, img v1.Image) error {
 	logrus.Debug("update tar headers")
 
@@ -185,9 +194,23 @@ func writeImage(w io.WriteCloser, img v1.Image) error {
 		}
 
 		entry := logrus.WithFields(logrus.Fields{
-			"type":          header.FileInfo().Mode().String(),
-			"original-name": header.Name,
+			"directory": header.FileInfo().IsDir(),
+			"name":      header.Name,
 		})
+
+		if header.Gid != 0 || header.Gname != "" || header.Uid != 0 || header.Uname != "" {
+			entry.WithFields(logrus.Fields{
+				"group":     header.Gid,
+				"groupname": header.Gname,
+				"user":      header.Uid,
+				"username":  header.Uname,
+			}).Debug("setting owner user and group to 0 (root)")
+
+			header.Gid = 0
+			header.Uid = 0
+			header.Gname = ""
+			header.Uname = ""
+		}
 
 		header.Name = filepath.ToSlash(header.Name)
 		if header.Typeflag == tar.TypeDir && !strings.HasSuffix(header.Name, `/`) {
@@ -196,7 +219,7 @@ func writeImage(w io.WriteCloser, img v1.Image) error {
 		if !strings.HasPrefix(header.Name, `./`) {
 			header.Name = `./` + header.Name
 		}
-		entry.WithField("name", header.Name).Trace("updated file header")
+		entry.WithField("new-name", header.Name).Trace("updated file header")
 
 		if err := tw.WriteHeader(header); err != nil {
 			return fmt.Errorf("write %q header: %w", header.Name, err)
@@ -227,11 +250,149 @@ func baseImage() (v1.Image, error) {
 	return img, nil
 }
 
+// current process (hack/catcpio.sh):
+//  - extract: `cpio -iumd` (preseve modification date, create directories, overwrite) or `tar -xf`
+//	- create: `cpio --create --format=newc -R 0:0`
+//
+
+const cpioOutputFlag = "output"
+
 var cpioCommand = &cli.Command{
-	Name:  "cpio",
-	Usage: "convert a tarball to a CPIO archive",
+	Name:      "cpio",
+	Aliases:   []string{"i", "initrd", "initramfs"},
+	Usage:     "convert a layer tarball to an (uncompressed) newc-formatted CPIO archive",
+	Args:      true,
+	ArgsUsage: "layer",
+	Flags: []cli.Flag{
+		&cli.PathFlag{
+			Name:     cpioOutputFlag,
+			Aliases:  []string{"o"},
+			Usage:    "output cpio archive `file`",
+			Required: true,
+		},
+	},
 	Action: func(cCtx *cli.Context) error {
-		// TODO
+		switch n := cCtx.NArg(); n {
+		case 0:
+			return fmt.Errorf("no layer specified")
+		case 1:
+		default:
+			return fmt.Errorf("only one layer allowed (received %d)", n)
+		}
+
+		dest, err := outputFilePath(cCtx.Path(cpioOutputFlag))
+		if err != nil {
+			return err
+		}
+
+		layer, err := filepath.Abs(cCtx.Args().First())
+		if err != nil {
+			return fmt.Errorf("invalid layer file path %q: %w", cCtx.Args().First(), err)
+		}
+		logrus.WithField("layer", layer).Debug("using layer path")
+
+		// TODO: tar reader
+		// TODO: look at how hardlinks are set up
+		// TODO: reject sparse TAR formats / file types
+		// TODO: see if offset is reliable (f.Seek(io.SeekCurrent, 0)?)
+		// TODO: does .ReadAt mess up the current offset?
+		// TODO: does io.SectionReader do anything?
+		// todo: set user:group owner to 0:0
+
+		// "os".(*File).ReadAt should be safe for concurrent use, since, ultimately, the reads go to "internal/poll".(*FD).Pread
+		// which is mutex locked and uses the specified offset
+
+		if true {
+			return nil
+		}
+
+		// u-root sorts the files by name first to make the creation reproducible
+		// however, since we are loading from a tar (which doesn't really support random file access),
+		// it doenst really make sense to do that.
+		// instead, always have files added in the same order they are in from the layer tar.
+
+		// cw, err := (&initramfs.CPIOFile{
+		// 	Path: dest,
+		// }).OpenWriter()
+		// if err != nil {
+		// 	return fmt.Errorf("create output file %q: %w", dest, err)
+		// }
+
+		// manually construct the records then add them, since we are creating it from a tar and
+		// need to construct the info and handle hard links ourselves
+		files := initramfs.NewFiles()
+		// from tar files -> files.AddRecord()
+
+		// todo: shouldn't need this
+		arch := cpio.InMemArchive()
+		fmt.Printf("archive\n%s", arch.String())
+
+		// don't use initramfs.Files, since:
+		//  - it assumes files are located on disk, and polls that for information
+		//  - it calls [cpio.MakeReproducible] on the files, which removes hardlinks
+
+		// adhoc our own cpio.Recorder, where we incremend inode numbers, but still track hardlinks
+		// we don't have any guarantees about file order, so the tar hardlink may be before
+		// its target
+		// save the hardlinks for later so we can add them all at the end, with the appropriate inode #
+		//
+		hardlinks := []cpio.Record{}
+
+		fmt.Printf("hardlinks\n%#+v", hardlinks)
+
+		// when reading tar, access the underlying tarball file to get offset of regular files, for use latter
+
+		// todo: add in hardlinks
+
+		// write regular files as binary blobs to read later? (better than keeping in mem ...)
+		//
+		// if hardlink, look up previous record and increment nlink
+		//
+		// symlink:
+		//  	StaticRecord([]byte(linkname), info), nil
+		// hardlink:
+		//      same inode and reader?
+
+		if err := initramfs.Write(&initramfs.Opts{
+			Files: files,
+			OutputFile: &initramfs.CPIOFile{
+				Path: dest,
+			},
+		}); err != nil {
+			return fmt.Errorf("write files to %q: %w", dest, err)
+		}
 		return nil
 	},
+}
+
+// see 	"github.com/u-root/mkuimage/cpio".fs_windows.go
+type tarRecorder struct {
+	inumber uint64
+}
+
+func newTarRecorder() *tarRecorder { return &tarRecorder{inumber: 2} }
+
+func (r *tarRecorder) inode() uint64 {
+	r.inumber++
+	return r.inumber - 1
+}
+
+// cCtx.Path(cpioOutputFlag))
+func outputFilePath(s string) (string, error) {
+	p, err := filepath.Abs(s)
+	if err != nil {
+		return "", fmt.Errorf("invalid output file path %q: %w", s, err)
+	}
+
+	entry := logrus.WithField("output", p)
+	// if path is a (normal) file, it'll be silently overwritten
+	if st, err := os.Stat(p); err == nil && st.IsDir() {
+		return "", fmt.Errorf("output file %q is a directory", p)
+	} else if !os.IsNotExist(err) {
+		// something weird happened, warn and hope the error goes away when we create it
+		entry.WithError(err).Warn("unable to stat")
+	}
+
+	entry.Debug("using output path")
+	return p, nil
 }
