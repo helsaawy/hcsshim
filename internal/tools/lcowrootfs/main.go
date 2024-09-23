@@ -221,7 +221,7 @@ func writeImage(w io.WriteCloser, img v1.Image, trailingSlash, overrideOwner boo
 			"name":      header.Name,
 		})
 
-		header.Name = filepath.ToSlash(header.Name)
+		// header.Name = filepath.ToSlash(header.Name)
 
 		if trailingSlash && header.Typeflag == tar.TypeDir && !strings.HasSuffix(header.Name, `/`) {
 			entry.Debug("append trailing slash to directory name")
