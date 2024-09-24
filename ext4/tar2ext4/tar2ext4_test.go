@@ -1,6 +1,7 @@
 package tar2ext4
 
 import (
+	"io"
 	"path/filepath"
 	"testing"
 
@@ -73,7 +74,7 @@ func Test_UnorderedTarExpansion(t *testing.T) {
 	}
 
 	// Now try to import this tar and verify that there is no failure.
-	if _, err := layerTar.Seek(0, 0); err != nil {
+	if _, err := layerTar.Seek(0, io.SeekStart); err != nil {
 		t.Fatalf("failed to seek file: %s", err)
 	}
 
@@ -146,7 +147,7 @@ func Test_TarHardlinkToSymlink(t *testing.T) {
 	}
 
 	// Now try to import this tar and verify that there is no failure.
-	if _, err := layerTar.Seek(0, 0); err != nil {
+	if _, err := layerTar.Seek(0, io.SeekStart); err != nil {
 		t.Fatalf("failed to seek file: %s", err)
 	}
 
