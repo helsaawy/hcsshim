@@ -89,6 +89,7 @@ const (
 	mergeFlagOutput          = "output"
 	mergeFlagNoTrailingSlash = "no-trailing-slash"
 	mergeFlagNoOverrideOwner = "no-override-owner"
+	mergeFlagConvertSlash    = "conver-slash"
 )
 
 var merge = &cli.Command{
@@ -115,6 +116,10 @@ be changed by extraction`, "\n", " "),
 		&cli.BoolFlag{
 			Name:  mergeFlagNoOverrideOwner,
 			Usage: "do not set file owner UID and GID to 0",
+		},
+		&cli.BoolFlag{
+			Name:  mergeFlagConvertSlash,
+			Usage: "convert backslashes ('\\') in path names to slashes ('/')",
 		},
 	},
 	// basically crane (github.com/google/go-containerregistry/cmd/crane) append and export
@@ -221,7 +226,7 @@ func writeImage(w io.WriteCloser, img v1.Image, trailingSlash, overrideOwner boo
 			"name":      header.Name,
 		})
 
-		// header.Name = filepath.ToSlash(header.Name)
+		header.Name = filepath.ToSlash(header.Name)
 
 		if trailingSlash && header.Typeflag == tar.TypeDir && !strings.HasSuffix(header.Name, `/`) {
 			entry.Debug("append trailing slash to directory name")
