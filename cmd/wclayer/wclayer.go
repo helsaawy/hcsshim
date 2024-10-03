@@ -32,6 +32,7 @@ func main() {
 		exportCommand,
 		importCommand,
 		makeBaseLayerCommand,
+		processUVMImageCommand,
 		mountCommand,
 		removeCommand,
 		unmountCommand,

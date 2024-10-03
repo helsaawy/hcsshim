@@ -4,13 +4,14 @@ package computestorage
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"syscall"
 
 	"github.com/Microsoft/go-winio/vhd"
 	"github.com/Microsoft/hcsshim/internal/memory"
-	"github.com/pkg/errors"
 	"golang.org/x/sys/windows"
 
 	"github.com/Microsoft/hcsshim/internal/security"
@@ -26,40 +27,17 @@ const (
 //
 // `layerPath` is the path to the base container layer on disk.
 //
-// `baseVhdPath` is the path to where the base vhdx for the base layer should be created.
+// `baseVHDPath` is the path to where the base vhdx for the base layer should be created.
 //
-// `diffVhdPath` is the path where the differencing disk for the base layer should be created.
+// `diffVHDPath` is the path where the differencing disk for the base layer should be created.
 //
 // `sizeInGB` is the size in gigabytes to make the base vhdx.
-func SetupContainerBaseLayer(ctx context.Context, layerPath, baseVhdPath, diffVhdPath string, sizeInGB uint64) (err error) {
-	var (
-		hivesPath  = filepath.Join(layerPath, "Hives")
-		layoutPath = filepath.Join(layerPath, "Layout")
-	)
-
+func SetupContainerBaseLayer(ctx context.Context, layerPath, baseVHDPath, diffVHDPath string, sizeInGB uint64) (err error) {
 	// We need to remove the hives directory and layout file as `SetupBaseOSLayer` fails if these files
 	// already exist. `SetupBaseOSLayer` will create these files internally. We also remove the base and
 	// differencing disks if they exist in case we're asking for a different size.
-	if _, err := os.Stat(hivesPath); err == nil {
-		if err := os.RemoveAll(hivesPath); err != nil {
-			return errors.Wrap(err, "failed to remove prexisting hives directory")
-		}
-	}
-	if _, err := os.Stat(layoutPath); err == nil {
-		if err := os.RemoveAll(layoutPath); err != nil {
-			return errors.Wrap(err, "failed to remove prexisting layout file")
-		}
-	}
-
-	if _, err := os.Stat(baseVhdPath); err == nil {
-		if err := os.RemoveAll(baseVhdPath); err != nil {
-			return errors.Wrap(err, "failed to remove base vhdx path")
-		}
-	}
-	if _, err := os.Stat(diffVhdPath); err == nil {
-		if err := os.RemoveAll(diffVhdPath); err != nil {
-			return errors.Wrap(err, "failed to remove differencing vhdx")
-		}
+	if err := removeLayerState(layerPath, baseVHDPath, diffVHDPath); err != nil {
+		return err
 	}
 
 	createParams := &vhd.CreateVirtualDiskParameters{
@@ -69,16 +47,16 @@ func SetupContainerBaseLayer(ctx context.Context, layerPath, baseVhdPath, diffVh
 			BlockSizeInBytes: defaultVHDXBlockSizeInMB * memory.MiB,
 		},
 	}
-	handle, err := vhd.CreateVirtualDisk(baseVhdPath, vhd.VirtualDiskAccessNone, vhd.CreateVirtualDiskFlagNone, createParams)
+	handle, err := vhd.CreateVirtualDisk(baseVHDPath, vhd.VirtualDiskAccessNone, vhd.CreateVirtualDiskFlagNone, createParams)
 	if err != nil {
-		return errors.Wrap(err, "failed to create vhdx")
+		return fmt.Errorf("failed to create vhdx: %w", err)
 	}
 
 	defer func() {
 		if err != nil {
 			_ = syscall.CloseHandle(handle)
-			os.RemoveAll(baseVhdPath)
-			os.RemoveAll(diffVhdPath)
+			os.RemoveAll(baseVHDPath)
+			os.RemoveAll(diffVHDPath)
 		}
 	}()
 
@@ -87,7 +65,7 @@ func SetupContainerBaseLayer(ctx context.Context, layerPath, baseVhdPath, diffVh
 	}
 	// Base vhd handle must be closed before calling SetupBaseLayer in case of Container layer
 	if err = syscall.CloseHandle(handle); err != nil {
-		return errors.Wrap(err, "failed to close vhdx handle")
+		return fmt.Errorf("failed to close vhdx handle: %w", err)
 	}
 
 	options := OsLayerOptions{
@@ -101,15 +79,15 @@ func SetupContainerBaseLayer(ctx context.Context, layerPath, baseVhdPath, diffVh
 	}
 	// Create the differencing disk that will be what's copied for the final rw layer
 	// for a container.
-	if err = vhd.CreateDiffVhd(diffVhdPath, baseVhdPath, defaultVHDXBlockSizeInMB); err != nil {
-		return errors.Wrap(err, "failed to create differencing disk")
+	if err = vhd.CreateDiffVhd(diffVHDPath, baseVHDPath, defaultVHDXBlockSizeInMB); err != nil {
+		return fmt.Errorf("failed to create differencing disk: %w", err)
 	}
 
-	if err = security.GrantVmGroupAccess(baseVhdPath); err != nil {
-		return errors.Wrapf(err, "failed to grant vm group access to %s", baseVhdPath)
+	if err = security.GrantVmGroupAccess(baseVHDPath); err != nil {
+		return fmt.Errorf("failed to grant vm group access to %q: %w", baseVHDPath, err)
 	}
-	if err = security.GrantVmGroupAccess(diffVhdPath); err != nil {
-		return errors.Wrapf(err, "failed to grant vm group access to %s", diffVhdPath)
+	if err = security.GrantVmGroupAccess(diffVHDPath); err != nil {
+		return fmt.Errorf("failed to grant vm group access to %s: %w", diffVHDPath, err)
 	}
 	return nil
 }
@@ -119,22 +97,17 @@ func SetupContainerBaseLayer(ctx context.Context, layerPath, baseVhdPath, diffVh
 //
 // `uvmPath` is the path to the UtilityVM filesystem.
 //
-// `baseVhdPath` is the path to where the base vhdx for the UVM should be created.
+// `baseVHDPath` is the path to where the base vhdx for the UVM should be created.
 //
-// `diffVhdPath` is the path where the differencing disk for the UVM should be created.
+// `diffVHDPath` is the path where the differencing disk for the UVM should be created.
 //
 // `sizeInGB` specifies the size in gigabytes to make the base vhdx.
-func SetupUtilityVMBaseLayer(ctx context.Context, uvmPath, baseVhdPath, diffVhdPath string, sizeInGB uint64) (err error) {
+func SetupUtilityVMBaseLayer(ctx context.Context, uvmPath, baseVHDPath, diffVHDPath string, sizeInGB uint64) (err error) {
 	// Remove the base and differencing disks if they exist in case we're asking for a different size.
-	if _, err := os.Stat(baseVhdPath); err == nil {
-		if err := os.RemoveAll(baseVhdPath); err != nil {
-			return errors.Wrap(err, "failed to remove base vhdx")
-		}
-	}
-	if _, err := os.Stat(diffVhdPath); err == nil {
-		if err := os.RemoveAll(diffVhdPath); err != nil {
-			return errors.Wrap(err, "failed to remove differencing vhdx")
-		}
+	// This will also attempt to remove `uvmPath/Hives/` and `uvmPath/Layout`, which shouldn't exist, but need to be removed
+	// if they do.
+	if err := removeLayerState(uvmPath, baseVHDPath, diffVHDPath); err != nil {
+		return err
 	}
 
 	// Just create the vhdx for utilityVM layer, no need to format it.
@@ -145,16 +118,16 @@ func SetupUtilityVMBaseLayer(ctx context.Context, uvmPath, baseVhdPath, diffVhdP
 			BlockSizeInBytes: defaultVHDXBlockSizeInMB * memory.MiB,
 		},
 	}
-	handle, err := vhd.CreateVirtualDisk(baseVhdPath, vhd.VirtualDiskAccessNone, vhd.CreateVirtualDiskFlagNone, createParams)
+	handle, err := vhd.CreateVirtualDisk(baseVHDPath, vhd.VirtualDiskAccessNone, vhd.CreateVirtualDiskFlagNone, createParams)
 	if err != nil {
-		return errors.Wrap(err, "failed to create vhdx")
+		return fmt.Errorf("failed to create vhdx: %w", err)
 	}
 
 	defer func() {
 		if err != nil {
 			_ = syscall.CloseHandle(handle)
-			os.RemoveAll(baseVhdPath)
-			os.RemoveAll(diffVhdPath)
+			os.RemoveAll(baseVHDPath)
+			os.RemoveAll(diffVHDPath)
 		}
 	}()
 
@@ -164,7 +137,7 @@ func SetupUtilityVMBaseLayer(ctx context.Context, uvmPath, baseVhdPath, diffVhdP
 		Version: 2,
 	}
 	if err := vhd.AttachVirtualDisk(handle, vhd.AttachVirtualDiskFlagNone, attachParams); err != nil {
-		return errors.Wrapf(err, "failed to attach virtual disk")
+		return fmt.Errorf("failed to attach virtual disk: %w", err)
 	}
 
 	options := OsLayerOptions{
@@ -177,23 +150,56 @@ func SetupUtilityVMBaseLayer(ctx context.Context, uvmPath, baseVhdPath, diffVhdP
 	// Detach and close the handle after setting up the layer as we don't need the handle
 	// for anything else and we no longer need to be attached either.
 	if err = vhd.DetachVirtualDisk(handle); err != nil {
-		return errors.Wrap(err, "failed to detach vhdx")
+		return fmt.Errorf("failed to detach vhdx: %w", err)
 	}
 	if err = syscall.CloseHandle(handle); err != nil {
-		return errors.Wrap(err, "failed to close vhdx handle")
+		return fmt.Errorf("failed to close vhdx handle: %w", err)
 	}
 
 	// Create the differencing disk that will be what's copied for the final rw layer
 	// for a container.
-	if err = vhd.CreateDiffVhd(diffVhdPath, baseVhdPath, defaultVHDXBlockSizeInMB); err != nil {
-		return errors.Wrap(err, "failed to create differencing disk")
+	if err = vhd.CreateDiffVhd(diffVHDPath, baseVHDPath, defaultVHDXBlockSizeInMB); err != nil {
+		return fmt.Errorf("failed to create differencing disk: %w", err)
 	}
 
-	if err := security.GrantVmGroupAccess(baseVhdPath); err != nil {
-		return errors.Wrapf(err, "failed to grant vm group access to %s", baseVhdPath)
+	if err := security.GrantVmGroupAccess(baseVHDPath); err != nil {
+		return fmt.Errorf("failed to grant vm group access to %q: %w", baseVHDPath, err)
 	}
-	if err := security.GrantVmGroupAccess(diffVhdPath); err != nil {
-		return errors.Wrapf(err, "failed to grant vm group access to %s", diffVhdPath)
+	if err := security.GrantVmGroupAccess(diffVHDPath); err != nil {
+		return fmt.Errorf("failed to grant vm group access to %q: %w", diffVHDPath, err)
 	}
 	return nil
+}
+
+// removeLayerState removes the base and differencing VHDx's, as well as the Hives directory
+// and Layout file (both under layerPath), if they exist.
+func removeLayerState(layerPath, baseVHD, diffVHD string) error {
+	var errs []error
+	for _, x := range []struct {
+		name string
+		path string
+	}{
+		{
+			name: "hives directory",
+			path: filepath.Join(layerPath, "Hives"),
+		},
+		{
+			name: "layout file",
+			path: filepath.Join(layerPath, "Layout"),
+		},
+		{
+			name: "base vhdx",
+			path: baseVHD,
+		},
+		{
+			name: "differencing vhdx",
+			path: diffVHD,
+		},
+	} {
+		if err := os.RemoveAll(x.path); err != nil {
+			errs = append(errs, fmt.Errorf("remove %s (%q): %w", x.name, x.path, err))
+		}
+	}
+
+	return errors.Join(errs...)
 }

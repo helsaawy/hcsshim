@@ -3,11 +3,14 @@
 package main
 
 import (
+	"context"
 	"path/filepath"
 
-	"github.com/Microsoft/hcsshim"
-	"github.com/Microsoft/hcsshim/internal/appargs"
 	"github.com/urfave/cli"
+
+	"github.com/Microsoft/hcsshim"
+	"github.com/Microsoft/hcsshim/computestorage"
+	"github.com/Microsoft/hcsshim/internal/appargs"
 )
 
 var makeBaseLayerCommand = cli.Command{
@@ -22,5 +25,25 @@ var makeBaseLayerCommand = cli.Command{
 		}
 
 		return hcsshim.ConvertToBaseLayer(path)
+	},
+}
+
+var processUVMImageCommand = cli.Command{
+	Name:      "processuvmimage",
+	Usage:     "update a utility VM base image by deleting and recreating files",
+	ArgsUsage: "<base image path>",
+	Before:    appargs.Validate(appargs.NonEmptyString),
+	Action: func(cCtx *cli.Context) error {
+		uvmPath, err := filepath.Abs(cCtx.Args().First())
+		if err != nil {
+			return err
+		}
+
+		// use computestorage since its newer and we need to switch anyways...
+		return computestorage.SetupUtilityVMBaseLayer(context.Background(), uvmPath,
+			filepath.Join(uvmPath, "SystemTemplateBase.vhdx"),
+			filepath.Join(uvmPath, "SystemTemplate.vhdx"),
+			20,
+		)
 	},
 }
