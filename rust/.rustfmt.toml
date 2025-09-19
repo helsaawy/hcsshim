@@ -1,0 +1,7 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT License.
+
+edition = "2021"
+max_width = 100
+attr_fn_like_width = 80
+newline_style = "Unix"

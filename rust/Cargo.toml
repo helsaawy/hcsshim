@@ -1,0 +1,64 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT License.
+
+[workspace]
+members = [
+    "init",
+]
+default-members = ["init"]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+authors = ["Container Platform Devs <containerplat-dev@microsoft.com>"]
+repository = "https://msazure.visualstudio.com/ContainerPlatform/_git/ContainerPlatform"
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+anyhow = "1.0"
+clap = { version = "4.5", features = ["derive"] }
+windows-sys = "0.59"
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["fmt", "time", "ansi"] }
+serde = { version = "1.0.216", features = ["derive"] }
+serde_json = "1.0.133"
+
+# mostly copied from https://microsoft.visualstudio.com/HyperVCloud/_git/openvmm?path=/Cargo.toml
+[workspace.lints.rust]
+nonstandard_style = { level = "deny", priority = -2 }
+keyword-idents = { level = "deny", priority = -2 }
+deprecated-safe = { level = "deny", priority = -2 }
+unused = { level = "deny", priority = -2 }
+
+# various future-proofing issues
+future-incompatible = { level = "deny", priority = -2 }
+rust-2018-idioms = { level = "deny", priority = -2 }
+rust-2018-compatibility = { level = "deny", priority = -2 }
+rust-2021-compatibility = { level = "deny", priority = -2 }
+rust-2024-compatibility = { level = "deny", priority = -2 }
+
+unsafe-code = "deny"
+unsafe-op-in-unsafe-fn = "warn"
+
+ambiguous-negative-literals = "deny"
+let-underscore-drop = "deny"
+non-local-definitions = "deny"
+
+absolute-paths-not-starting-with-crate = "warn"
+deprecated-in-future = "warn"
+impl-trait-overcaptures = "warn"
+missing-unsafe-on-extern = "warn"
+redundant-imports = "warn"
+redundant-lifetimes = "warn"
+single-use-lifetimes = "warn"
+tail-expr-drop-order = "warn"
+trivial-casts = "warn"
+trivial-numeric-casts = "warn"
+unit-bindings = "warn"
+unnameable-types = "warn"
+unreachable-pub = "warn"
+unsafe-attr-outside-unsafe = "warn"
+unstable-features = "warn"
+unused-import-braces = "warn"
+unused-lifetimes = "warn"
+unused-results = "warn"

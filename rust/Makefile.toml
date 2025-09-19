@@ -1,0 +1,30 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT License.
+
+# TODO: use `CARGO_MAKE_CRATE_TARGET_DIRECTORY` to output binary path?
+
+# override default args for built-in tasks
+
+[tasks.format]
+args = ["fmt", "--", "--emit=files"]
+
+# check for copyright statements
+
+[tasks.copyright]
+script_runner = "powershell"
+script_extension = "ps1"
+script = '''
+$ErrorActionPreference = 'Stop'
+$VerbosePreference = 'Continue'
+
+& "${env:CARGO_MAKE_WORKING_DIRECTORY}/scripts/Assert-CopyrightHeaders.ps1" @args -ErrorAction 'Stop' -Verbose
+'''
+
+# default command
+
+[tasks.validate]
+description = "Format, lint, and then build."
+dependencies = ["copyright", "format", "clippy", "build"]
+
+[tasks.default]
+alias = "validate"

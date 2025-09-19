@@ -1,0 +1,6 @@
+# copied from:
+# https://microsoft.visualstudio.com/HyperVCloud/_git/hvlite?
+
+# mark lock files as non-generated, so the diff is always displayed
+# https://github.com/github-linguist/linguist/blob/main/docs/overrides.md#generated-code
+Cargo.lock linguist-generated=false

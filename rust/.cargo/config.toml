@@ -1,0 +1,17 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT License.
+
+
+#
+# CFS-specific config
+#
+# See:
+# https://eng.ms/docs/cloud-ai-platform/devdiv/one-engineering-system-1es/1es-docs/azure-artifacts/cargo
+
+# Point cargo to ContainerPlatform's cargo feed.
+[registries.ContainerPlatform_PublicPackages]
+index = "sparse+https://msazure.pkgs.visualstudio.com/ContainerPlatform/_packaging/ContainerPlatform_PublicPackages/Cargo/index/"
+
+# Use ADO Artifacts instead of crates.io.
+[source.crates-io]
+replace-with = "ContainerPlatform_PublicPackages"
