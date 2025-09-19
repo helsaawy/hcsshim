@@ -1,0 +1,12 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT License.
+
+# can't make .cargo/config.toml conditional on the host for cross compilation
+# there is not build script command to change the linker used
+# so instead update the config manually via command line
+[tasks.build.windows]
+args = [
+    "--config",
+    "target.'cfg(target_os = \"linux\")'.linker = 'rust-lld'",
+    "build",
+]

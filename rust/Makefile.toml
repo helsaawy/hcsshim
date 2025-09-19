@@ -1,7 +1,10 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
-# TODO: use `CARGO_MAKE_CRATE_TARGET_DIRECTORY` to output binary path?
+# See: https://sagiegurari.github.io/cargo-make/
+
+[env]
+CARGO_MAKE_EXTEND_WORKSPACE_MAKEFILE = true
 
 # override default args for built-in tasks
 
@@ -19,6 +22,11 @@ $VerbosePreference = 'Continue'
 
 & "${env:CARGO_MAKE_WORKING_DIRECTORY}/scripts/Assert-CopyrightHeaders.ps1" @args -ErrorAction 'Stop' -Verbose
 '''
+
+# check command to be invoked by rust-analyser
+[tasks.racheck]
+extend = "check"
+args = ["check", "--workspace", "--message-format=json", "--all-targets", "${@}"]
 
 # default command
 

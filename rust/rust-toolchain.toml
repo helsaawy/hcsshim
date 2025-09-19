@@ -3,4 +3,4 @@
 
 # See: https://eng.ms/docs/more/rust/topics/conventions#toolchain-usage
 [toolchain]
-channel = "ms-1.85"
+channel = "ms-prod-1.90"

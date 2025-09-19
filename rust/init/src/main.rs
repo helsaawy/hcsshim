@@ -1,27 +1,39 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-// `cwcow-util` binary for Confidential WCOW related utilities.
-// Currently, only supports manipulating offline registries.
+#![allow(unused_imports)]
 
-use std::collections::HashMap;
+use anyhow::Context;
+use anyhow::anyhow;
+use clap::Parser;
+use clap::ValueHint;
 use std::env;
 use std::ffi::OsString;
-use std::fs;
-use std::path::Path;
-use std::path::PathBuf;
 
-use anyhow::anyhow;
-use anyhow::Context;
-use clap::Parser;
-use clap::Subcommand;
-use clap::ValueHint;
+use init::*;
 
-use cwcow::*;
-use windows::Wdk::System::OfflineRegistry::ORHKEY;
+// #define DEFAULT_PATH_ENV "PATH=/sbin:/usr/sbin:/bin:/usr/bin"
+// #define OPEN_FDS 15
 
-// TODO: make `String`s OsString
-// TODO: always use anyhow::anyhow!
+// const char* const default_envp[] = {
+//     DEFAULT_PATH_ENV,
+//     NULL,
+// };
+
+// #ifdef MODULES
+// // global kmod k_ctx so we can access it in the file tree traversal
+// struct kmod_ctx* k_ctx;
+
+// // possible extensions for the kernel modules files
+// const char* kmod_ext = ".ko";
+// const char* kmod_xz_ext = ".ko.xz";
+// #endif
+
+// // When nothing is passed, default to the LCOWv1 behavior.
+// const char* const default_argv[] = {"/bin/gcs", "-loglevel", "debug", "-logfile=/run/gcs/gcs.log"};
+// const char* const default_shell = "/bin/sh";
+// const char* const lib_modules = "/lib/modules";
+
 
 #[derive(Parser, Debug)]
 #[command(name = env!("CARGO_BIN_NAME"), about, long_about = None, author, version, propagate_version = true,)]
@@ -30,165 +42,31 @@ struct Cli {
     #[arg(short, long, action = clap::ArgAction::Count)]
     verbose: u8,
 
-    /// Suppress non error logs.
-    /// Takes precedence over [`verbose`].
-    #[arg(short, long)]
-    quiet: bool,
+    /// Launch the debug shell after the specified command.
+    #[arg(short, long, value_name = "PATH")]
+    debug_shell: Option<OsString>,
 
-    #[command(subcommand)]
-    command: Commands,
+    /// Vsock port to inject boot-time entropy from.
+    #[arg(short, long, value_name = "PORT")]
+    entropy_port: u64,
+
+    /// Create a writable overlay mount over the specified directory.
+    /// Can be repeated to specify multiple directories.
+    #[arg(short, long,  value_name = "PATH", value_hint = clap::ValueHint::DirPath)]
+    writable_overlay: Vec<OsString>,
+
+    /// Command line to exec after initializing.
+    #[arg(value_name = "CMD", trailing_var_arg = true, num_args(2..), value_hint = clap::ValueHint::CommandWithArguments)]
+    cmd: Vec<OsString>,
 }
 
-#[non_exhaustive]
-#[derive(Subcommand, Debug)]
-enum Commands {
-    /// Manipulate an offline registry hives
-    #[command(alias = "offreg")]
-    OfflineRegistry {
-        #[arg(short = 'f', long, alias = "file", value_name = "FILE", value_hint=ValueHint::FilePath)]
-        hive: PathBuf,
-
-        #[command(subcommand)]
-        operation: OfflineRegistryOperations,
-    },
+#[cfg(not(target_os = "linux"))]
+fn main() {
+    unimplemented!("init is Linux only");
 }
 
-impl Commands {
-    #[tracing::instrument(level = "debug", skip(self))]
-    fn run(&self) -> anyhow::Result<()> {
-        require_elevated()?;
-
-        let Commands::OfflineRegistry {
-            hive, operation, ..
-        } = self;
-        tracing::info!("offline registry operation");
-        let hhive = open_hive(hive)?;
-
-        operation.run(hive, hhive)
-    }
-}
-
-#[non_exhaustive]
-#[derive(Subcommand, Debug)]
-enum OfflineRegistryOperations {
-    /// Add keys to an offline hive
-    Add {
-        #[arg(short, long, value_name = "FILE")]
-        delta: PathBuf,
-    },
-
-    /// View key values in an offline hive
-    Get {
-        // Mostly for debug/validation
-        /// The registry key to enumerate
-        #[arg(short, long, value_name = "KEY")]
-        key: OsString,
-
-        /// The registry value to retrieve.
-        /// All values will be retrieved if unspecified.
-        #[arg(short = 'v', long = "value", value_name = "NAME")]
-        value_name: Option<String>,
-
-        /// Output result as JSON.
-        #[arg(short, long)]
-        json: bool,
-    },
-}
-
-impl OfflineRegistryOperations {
-    #[tracing::instrument(level = "debug",  skip(hive), fields(hive=tracing_display_path(&hive)))]
-    fn run<P: AsRef<Path>>(&self, hive: P, hhive: ORHKEY) -> anyhow::Result<()> {
-        match self {
-            OfflineRegistryOperations::Add { delta } => {
-                tracing::info!("adding registry values from delta json file to offline hive");
-
-                let delta_regs = parse_delta_file(delta)?;
-                let errs: Vec<anyhow::Error> = delta_regs
-                    .into_iter()
-                    .filter_map(|r| set_value(hhive, r).err())
-                    .collect();
-
-                if !errs.is_empty() {
-                    // not really a multi-error type that I am aware of there
-                    // based off of https://docs.rs/beau_collector/0.2.1/beau_collector/index.html
-                    anyhow::bail!(
-                        "{}",
-                        errs.iter()
-                            .map(|e| format!("{:#}", e))
-                            .collect::<Vec<String>>()
-                            .join("\n"),
-                    );
-                }
-
-                // only save hive if all value updates were successful
-                // Win32 ORSaveHive cannot overwrite an existing hive file, so write to a new one and replace
-                let mut new_path: PathBuf = hive.as_ref().into();
-                if !new_path.set_extension("new.hiv") {
-                    anyhow::bail!(
-                        "Setting new hive extention failed: {}",
-                        Path::display(hive.as_ref())
-                    );
-                }
-
-                save_hive(hhive, &new_path).context("Failed to save updated hive")?;
-
-                tracing::info!(
-                    source = tracing::field::display(new_path.display()),
-                    dest = tracing_display_path(&hive),
-                    "rename saved hive to original offline hive file"
-                );
-                fs::rename(new_path, hive).context("Renaming new hive failed")
-            }
-            OfflineRegistryOperations::Get {
-                key,
-                value_name,
-                json,
-            } => {
-                // TODO: get sub-key names as well?
-                let hkey = open_key(hhive, pcwstr(key))?;
-
-                let values = if value_name.is_none() {
-                    enumerate_values(hkey)
-                } else {
-                    let name_str: OsString = value_name.as_deref().unwrap().into();
-                    get_value(hkey, pcwstr(&name_str)).map(|rv| HashMap::from([(name_str, rv)]))
-                }?;
-
-                match json {
-                    true => {
-                        let key_str = key.to_string_lossy().into_owned();
-                        // ignore/surpress unicode conversion errors here since its just for printing
-
-                        let kvs: Vec<_> = values
-                            .into_iter()
-                            .map(|(name, value)| KeyValue {
-                                key: key_str.clone(),
-                                name: name.to_string_lossy().into_owned(),
-                                value,
-                            })
-                            .collect();
-                        serde_json::to_string_pretty(&kvs)
-                            .context("json encoding failed")
-                            .map(|s| println!("{s}"))?;
-                    }
-                    false => {
-                        println!("{key:?}:");
-                        for (name, val) in values {
-                            println!("  {name:?}:\n\t{val:?}")
-                        }
-                    }
-                }
-
-                Ok(())
-            }
-        }
-    }
-}
-
+#[cfg(target_os = "linux")]
 fn main() -> anyhow::Result<()> {
-    #[cfg(not(windows))]
-    anyhow::bail!("how did you build this?");
-
     // will call `std::process::exit`, but we get pretty printing for help and errors and co., so thats fine
     let cli = Cli::parse();
 
@@ -200,7 +78,8 @@ fn main() -> anyhow::Result<()> {
 
     tracing::debug!(?cli, "parsed CLI configuration");
 
-    cli.command.run()
+    // cli.command.run()
+    Ok(())
 }
 
 // based on
@@ -212,15 +91,12 @@ fn configure_tracing(cli: &Cli) -> anyhow::Result<()> {
     use tracing_subscriber::fmt::format::*;
     use tracing_subscriber::fmt::time::UtcTime;
 
-    let lvl = if cli.quiet {
-        LevelFilter::WARN
-    } else {
-        match cli.verbose {
-            0 => LevelFilter::INFO,
-            1 => LevelFilter::DEBUG,
-            // should warn that values greater than 2 are being ignored, but logging isn't enabled, so ...
-            2.. => LevelFilter::TRACE,
-        }
+    let lvl = match cli.verbose {
+        0 => LevelFilter::WARN,
+        1 => LevelFilter::INFO,
+        2 => LevelFilter::DEBUG,
+        // should warn that values greater than 3 are being ignored, but logging isn't enabled, so ...
+        3.. => LevelFilter::TRACE,
     };
 
     let format = Format::default()

@@ -1,0 +1,5 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT License.
+
+[build]
+target = "x86_64-unknown-linux-musl"
