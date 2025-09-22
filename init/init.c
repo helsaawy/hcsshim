@@ -1,4 +1,4 @@
-#define _GNU_SOURCE
+t #define _GNU_SOURCE
 #include <errno.h>
 #include <fcntl.h>
 #include <getopt.h>

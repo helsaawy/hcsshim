@@ -10,6 +10,14 @@ authors.workspace = true
 repository.workspace = true
 license.workspace = true
 
+[features]
+# Enable modules support
+modules = []
+# Increased logging detail, open dedicated vsock port for stdio.
+debug = []
+# Open TCP port instead of vsock for stdio.
+debug-tcp = ["debug"]
+
 [target.'cfg(target_os = "linux")'.dependencies]
 anyhow.workspace = true
 clap.workspace = true
