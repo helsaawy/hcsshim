@@ -3,42 +3,103 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"sync"
 	"time"
 
 	"github.com/Microsoft/go-winio/pkg/guid"
+	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
+	"go.opencensus.io/trace"
 
+	"github.com/Microsoft/hcsshim/internal/oc"
+	"github.com/Microsoft/hcsshim/internal/oci"
 	"github.com/Microsoft/hcsshim/internal/uvm"
 	"github.com/Microsoft/hcsshim/internal/winapi"
 )
 
+// Global run flag names.
+const (
+	measureArgName  = "measure"
+	parallelArgName = "parallel"
+	countArgName    = "count"
+)
+
+// Global uVM setting flag names.
 const (
 	cpusArgName                 = "cpus"
 	memoryArgName               = "memory"
 	allowOvercommitArgName      = "allow-overcommit"
 	enableDeferredCommitArgName = "enable-deferred-commit"
-	measureArgName              = "measure"
-	parallelArgName             = "parallel"
-	countArgName                = "count"
 	resourcePartitionArgName    = "resource-partition"
-
-	execCommandLineArgName = "exec"
-	uvmConsolePipe         = "\\\\.\\pipe\\uvmpipe"
+	useGCSArgName               = "gcs"
 )
 
-var (
-	debug  bool
-	useGCS bool
+// Shared flag names.
+const (
+	execCommandLineArgName   = "exec"
+	forwardStdoutArgName     = "fwd-stdout"
+	forwardStderrArgName     = "fwd-stderr"
+	outputHandlingArgName    = "output-handling"
+	useTerminalArgName       = "tty"
+	annotationsArgName       = "annotation"
+	annotationsBase64ArgName = "annotation-base64"
+	consolePipeArgName       = "console-pipe"
 )
+
+// Shared command flags.
+var commonUVMFlags = []cli.Flag{
+	cli.StringFlag{
+		Name:  execCommandLineArgName,
+		Usage: "Command to execute in the UVM.",
+	},
+	cli.BoolFlag{
+		Name:  forwardStdoutArgName,
+		Usage: "Whether stdout from the process in the UVM should be forwarded",
+	},
+	cli.BoolFlag{
+		Name:  forwardStderrArgName,
+		Usage: "Whether stderr from the process in the UVM should be forwarded",
+	},
+	cli.StringFlag{
+		Name:  outputHandlingArgName,
+		Usage: "Controls how output from UVM is handled. Use 'stdout' to print all output to stdout",
+	},
+	cli.BoolFlag{
+		Name:  useTerminalArgName + ",t",
+		Usage: "Create the process in the UVM with a TTY enabled",
+	},
+	cli.StringFlag{
+		Name:  consolePipeArgName,
+		Usage: "Named `pipe` for serial console output (which will be enabled)",
+		// Set the console pipe in uvmboot by default, it helps with testing/debugging
+		Value: `\\.\pipe\uvmpipe`,
+	},
+	cli.StringSliceFlag{
+		Name: annotationsArgName + ",annot",
+		Usage: "Annotation in the form of '`key=value`' to apply to the uVM. Use repeat instances to add multiple. " +
+			"Annotations will be applied to the uVM BEFORE all other settings; " +
+			"other flags will take precedence and override annotation settings. " +
+			"There is no guaranteed precedence or ordering with respect to annotations.",
+	},
+	cli.StringSliceFlag{
+		Name: annotationsBase64ArgName + ",annot64",
+		Usage: "Base64-encoded annotation value, in the form '`key=base64`'. " +
+			"See '" + annotationsArgName + "'.",
+	},
+}
 
 type uvmRunFunc func(string) error
 
 func main() {
+	var debugLogs bool
+
 	app := cli.NewApp()
+	// app.Setup() checks if app.Writer is nil, but doesn't for app.ErrWriter
+	app.ErrWriter = cli.ErrWriter
 	app.Name = "uvmboot"
 	app.Usage = "Boot a utility VM"
 
@@ -76,16 +137,15 @@ func main() {
 		cli.BoolFlag{
 			Name:        "debug",
 			Usage:       "Increase logging verbosity",
-			Destination: &debug,
-		},
-		cli.BoolFlag{
-			Name:        "gcs",
-			Usage:       "Launch the GCS and perform requested operations via its RPC interface",
-			Destination: &useGCS,
+			Destination: &debugLogs,
 		},
 		cli.StringFlag{
 			Name:  resourcePartitionArgName,
 			Usage: "Resource partition GUID to assign UVM to",
+		},
+		cli.BoolFlag{
+			Name:  useGCSArgName,
+			Usage: "Launch the GCS and perform requested operations via its RPC interface. Ignored for non-LCOW",
 		},
 	}
 
@@ -95,59 +155,116 @@ func main() {
 		cwcowCommand,
 	}
 
-	app.Before = func(c *cli.Context) error {
-		if !winapi.IsElevated() {
-			return fmt.Errorf(c.App.Name + " must be run in an elevated context")
-		}
+	app.Before = func(cCtx *cli.Context) error {
+		// configure logging & tracing before any other validation
+		trace.ApplyConfig(trace.Config{DefaultSampler: oc.DefaultSampler})
+		trace.RegisterExporter(&oc.LogrusExporter{})
+
+		logrus.SetFormatter(&logrus.TextFormatter{FullTimestamp: true})
 
 		lvl := logrus.WarnLevel
-		if debug {
+		if debugLogs {
 			// as a debugging tool, opt for more logs over less
 			lvl = logrus.TraceLevel
 		}
 		logrus.SetLevel(lvl)
 
+		// log arguments individually to help with debug quoting/parsing issues
+		if logrus.IsLevelEnabled(logrus.TraceLevel) {
+			f := logrus.Fields{
+				"app": cCtx.App.Name,
+			}
+			for i, s := range os.Args {
+				f[fmt.Sprintf("arg%02d", i)] = s
+			}
+			logrus.WithFields(f).Trace("running command")
+		}
+
+		// start validation after logging is configured
+		if !winapi.IsElevated() {
+			return fmt.Errorf(cCtx.App.Name + " must be run in an elevated context")
+		}
+
 		return nil
 	}
 
+	// override default handler which calls [os.Exit] (via [cli.OsExiter]) for certain errors.
+	app.ExitErrHandler = func(*cli.Context, error) {}
+
 	if err := app.Run(os.Args); err != nil {
-		logrus.Fatalf("%v\n", err)
+		fmt.Fprintln(app.ErrWriter, err)
+		os.Exit(1)
 	}
 }
 
-func setGlobalOptions(c *cli.Context, options *uvm.Options) {
-	// TODO: create appropriate spec for (conf) WCOW and handle annotations here
-	if c.GlobalIsSet(cpusArgName) {
-		options.ProcessorCount = int32(c.GlobalUint64(cpusArgName))
+// func uVMCreateOptionsCommon[O uvm.OptionsLCOW | uvm.OptionsWCOW](
+func uVMCreateOptionsCommon[O uvm.CreateOptions](
+	ctx context.Context,
+	cCtx *cli.Context,
+	id, owner string,
+) (o O, _ error) {
+	spec := &specs.Spec{
+		Annotations: parseAnnotationFlags(ctx, cCtx),
+		Windows: &specs.Windows{
+			HyperV: &specs.WindowsHyperV{},
+		},
 	}
-	if c.GlobalIsSet(memoryArgName) {
-		options.MemorySizeInMB = c.GlobalUint64(memoryArgName)
+	// check if LCOW
+	switch any(o).(type) {
+	case *uvm.OptionsLCOW:
+		spec.Linux = &specs.Linux{}
 	}
-	if c.GlobalIsSet(allowOvercommitArgName) {
-		options.AllowOvercommit = c.GlobalBool(allowOvercommitArgName)
+
+	if err := oci.ProcessAnnotations(ctx, spec); err != nil {
+		return o, fmt.Errorf("unable to process annotations: %w", err)
 	}
-	if c.GlobalIsSet(enableDeferredCommitArgName) {
-		options.EnableDeferredCommit = c.GlobalBool(enableDeferredCommitArgName)
+
+	opts, err := oci.SpecToUVMCreateOpts(ctx, spec, id, owner)
+	if err != nil {
+		return o, err
 	}
-	if c.GlobalIsSet(enableDeferredCommitArgName) {
-		options.EnableDeferredCommit = c.GlobalBool(enableDeferredCommitArgName)
+	options, ok := opts.(O)
+	if !ok {
+		return o, fmt.Errorf("unexpected uVM options type: %T", opts)
 	}
-	if c.GlobalIsSet(resourcePartitionArgName) {
-		rpID, err := guid.FromString(c.GlobalString(resourcePartitionArgName))
+
+	cOpts := options.CommonOptions()
+
+	if cCtx.GlobalIsSet(cpusArgName) {
+		cOpts.ProcessorCount = int32(cCtx.GlobalUint64(cpusArgName))
+	}
+	if cCtx.GlobalIsSet(memoryArgName) {
+		cOpts.MemorySizeInMB = cCtx.GlobalUint64(memoryArgName)
+	}
+	if cCtx.GlobalIsSet(allowOvercommitArgName) {
+		cOpts.AllowOvercommit = cCtx.GlobalBool(allowOvercommitArgName)
+	}
+	if cCtx.GlobalIsSet(enableDeferredCommitArgName) {
+		cOpts.EnableDeferredCommit = cCtx.GlobalBool(enableDeferredCommitArgName)
+	}
+	if cCtx.GlobalIsSet(enableDeferredCommitArgName) {
+		cOpts.EnableDeferredCommit = cCtx.GlobalBool(enableDeferredCommitArgName)
+	}
+	if cCtx.GlobalIsSet(resourcePartitionArgName) {
+		rpID, err := guid.FromString(cCtx.GlobalString(resourcePartitionArgName))
 		if err != nil {
-			logrus.Fatalf("Failed to parse resource partition GUID: %v", err)
+			return o, fmt.Errorf("parse resource partition GUID: %v", err)
 		}
-		options.ResourcePartitionID = &rpID
+		cOpts.ResourcePartitionID = &rpID
 	}
-	// TODO: create common arg for console pipe and set `uvmConsolePipe` as the default value
-	// Always set the console pipe in uvmboot, it helps with testing/debugging
-	options.ConsolePipe = uvmConsolePipe
+
+	if pipe := cCtx.String(consolePipeArgName); pipe != "" {
+		cOpts.ConsolePipe = cCtx.String(consolePipeArgName)
+	}
+
+	return options, nil
 }
 
-// todo: add a context here to propagate cancel/timeouts to runFunc uvm
+// TODO: add a context here to propagate cancel/timeouts to runFunc uvm
+// TODO: [runMany] can theoretically call runFunc multiple times on the same goroutine and starve others, fix that
 
-func runMany(c *cli.Context, runFunc uvmRunFunc) {
-	parallelCount := c.GlobalInt(parallelArgName)
+func runMany(cCtx *cli.Context, runFunc uvmRunFunc) {
+	parallelCount := cCtx.GlobalInt(parallelArgName)
 
 	var wg sync.WaitGroup
 	wg.Add(parallelCount)
@@ -165,13 +282,13 @@ func runMany(c *cli.Context, runFunc uvmRunFunc) {
 	}
 
 	start := time.Now()
-	for i := 0; i < c.GlobalInt(countArgName); i++ {
+	for i := 0; i < cCtx.GlobalInt(countArgName); i++ {
 		workChan <- i
 	}
 
 	close(workChan)
 	wg.Wait()
-	if c.GlobalBool(measureArgName) {
+	if cCtx.GlobalBool(measureArgName) {
 		fmt.Println("Elapsed time:", time.Since(start))
 	}
 }

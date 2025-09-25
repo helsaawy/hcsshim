@@ -44,36 +44,26 @@ var cwcowCommand = cli.Command{
 	Usage: "boot a confidential WCOW UVM",
 	Flags: []cli.Flag{
 		cli.StringFlag{
-			Name:        "exec",
-			Usage:       "Command to execute in the UVM.",
-			Destination: &wcowCommandLine,
-		},
-		cli.BoolFlag{
-			Name:        "tty,t",
-			Usage:       "create the process in the UVM with a TTY enabled",
-			Destination: &wcowUseTerminal,
-		},
-		cli.StringFlag{
 			Name:        "efi-vhd",
-			Usage:       "VHD at the provided path MUST have the EFI boot partition and be properly formatted for UEFI boot.",
+			Usage:       "`VHD` at the provided path MUST have the EFI boot partition and be properly formatted for UEFI boot.",
 			Destination: &cwcowEFIVHD,
 			Required:    true,
 		},
 		cli.StringFlag{
 			Name:        "boot-cim-vhd",
-			Usage:       "A VHD containing the block CIM that contains the OS files.",
+			Usage:       "A `VHD` containing the block CIM that contains the OS files.",
 			Destination: &cwcowBootVHD,
 			Required:    true,
 		},
 		cli.StringFlag{
 			Name:        "scratch-vhd",
-			Usage:       "A scratch VHD for the UVM",
+			Usage:       "A scratch `VHD` for the UVM",
 			Destination: &cwcowScratchVHD,
 			Required:    true,
 		},
 		cli.StringFlag{
 			Name:        vmgsFilePathArgName,
-			Usage:       "VMGS file path (only applies when confidential mode is enabled). This option is only applicable in confidential mode.",
+			Usage:       "`VMGS` file path (only applies when confidential mode is enabled). This option is only applicable in confidential mode.",
 			Destination: &cwcowVMGSPath,
 			Required:    true,
 		},
@@ -90,21 +80,30 @@ var cwcowCommand = cli.Command{
 		},
 		cli.StringFlag{
 			Name:        securityPolicyArgName,
-			Usage:       "Security policy that should be enforced inside the UVM. If none is provided, default policy that allows all operations will be used.",
+			Usage:       "Security `policy` that should be enforced inside the UVM. If none is provided, default policy that allows all operations will be used.",
 			Destination: &cwcowSecurityPolicy,
 			Value:       allowAllPolicy,
 		},
 		cli.BoolFlag{
 			Name:        writableEFIArgName,
-			Usage:       "Attaches the EFI VHD as read-write instead of read-only. This allows the UVM to modify the contents of the VHD, be careful when using this option!",
+			Usage:       "Attaches the EFI `VHD` as read-write instead of read-only. This allows the UVM to modify the contents of the VHD, be careful when using this option!",
 			Destination: &cwcowWritableEFI,
 		},
 	},
-	Action: func(c *cli.Context) error {
-		runMany(c, func(id string) error {
-			options := uvm.NewDefaultOptionsWCOW(id, "")
-			options.ProcessorCount = 2
-			options.MemorySizeInMB = 2048
+	Action: func(cCtx *cli.Context) error {
+		runMany(cCtx, func(id string) error {
+			ctx := context.Background()
+
+			options, err := uVMCreateOptionsCommon[*uvm.OptionsWCOW](ctx, cCtx, id, "")
+			if err != nil {
+				return err
+			}
+			if options.ProcessorCount == 0 { // not overridden by flag
+				options.ProcessorCount = 2
+			}
+			if options.MemorySizeInMB == 0 { // not overridden by flag
+				options.MemorySizeInMB = 2048
+			}
 			options.AllowOvercommit = false
 			options.EnableDeferredCommit = false
 
@@ -118,7 +117,6 @@ var cwcowCommand = cli.Command{
 			options.EnableGraphicsConsole = true
 			options.WritableEFI = cwcowWritableEFI
 
-			var err error
 			cwcowBootVHD, err = filepath.Abs(cwcowBootVHD)
 			if err != nil {
 				return err
@@ -142,52 +140,61 @@ var cwcowCommand = cli.Command{
 					ScratchVHDPath: cwcowScratchVHD,
 				},
 			}
-			setGlobalOptions(c, options.Options)
 
-			vm, err := uvm.CreateWCOW(context.TODO(), options)
+			vm, err := uvm.CreateWCOW(ctx, options)
 			if err != nil {
-				return err
+				return fmt.Errorf("create uVM: %w", err)
 			}
 			defer vm.Close()
-			if err := vm.Start(context.TODO()); err != nil {
-				return err
+			if err := vm.Start(ctx); err != nil {
+				return fmt.Errorf("start uVM: %w", err)
 			}
-			if wcowCommandLine != "" {
-				cmd := cmd.Command(vm, "cmd.exe", "/c", wcowCommandLine)
-				cmd.Spec.User.Username = `NT AUTHORITY\SYSTEM`
-				cmd.Log = log.L.Dup()
-				if wcowUseTerminal {
-					cmd.Spec.Terminal = true
-					cmd.Stdin = os.Stdin
-					cmd.Stdout = os.Stdout
+
+			if commandLine := cCtx.String(execCommandLineArgName); commandLine != "" {
+				var c *cmd.Cmd
+				if cCtx.Bool(wcowNoCMDPrependArgName) {
+					// Cmd on Windows host doesn't use arg array, except when escapping them to create [c.Spec.CommandLine]
+					// we can play fast and loose with the arguments themselves if we are providing the CommandLine directly
+					c = cmd.CommandContext(ctx, vm, commandLine)
+					c.Spec.Args = nil
+					c.Spec.CommandLine = commandLine
+				} else {
+					c = cmd.CommandContext(ctx, vm, "cmd.exe", "/c", commandLine)
+				}
+				c.Spec.User.Username = `NT AUTHORITY\SYSTEM`
+				c.Log = log.L.Dup()
+				if cCtx.Bool(useTerminalArgName) {
+					c.Spec.Terminal = true
+					c.Stdin = os.Stdin
+					c.Stdout = os.Stdout
 					con, err := console.ConsoleFromFile(os.Stdin)
 					if err == nil {
 						csz, err := con.Size()
 						if err != nil {
 							return fmt.Errorf("failed to get console size: %w", err)
 						}
-						cmd.Spec.ConsoleSize = &specs.Box{
+						c.Spec.ConsoleSize = &specs.Box{
 							Height: uint(csz.Height),
 							Width:  uint(csz.Width),
 						}
 						err = con.SetRaw()
 						if err != nil {
-							return err
+							return fmt.Errorf("failed to set console to raw mode: %w", err)
 						}
 						defer func() {
 							_ = con.Reset()
 						}()
 					}
 				} else {
-					cmd.Stdout = os.Stdout
-					cmd.Stderr = os.Stdout
+					c.Stdout = os.Stdout
+					c.Stderr = os.Stdout
 				}
-				err = cmd.Run()
+				err = c.Run()
 				if err != nil {
 					return err
 				}
 			}
-			_ = vm.Terminate(context.TODO())
+			_ = vm.Terminate(ctx)
 			_ = vm.Wait()
 			return vm.ExitError()
 		})

@@ -25,6 +25,17 @@ import (
 	"github.com/Microsoft/hcsshim/osversion"
 )
 
+// TODO: replace `options interface{}` with `options CreateOptions`
+
+// CreateOptions specifies the creation options for LCOW, WCOW, or other uVM types.
+type CreateOptions interface {
+	// CommonOptions returns the options common to uVM types.
+	CommonOptions() *Options
+	isCreationOptions() // Private, so outside users cannot create their own options type.
+	// TODO: implement for Options[L|W]COW and replace [verifyOptions] below
+	// verify(context.Context) error
+}
+
 // Options are the set of options passed to Create() to create a utility vm.
 type Options struct {
 	ID    string // Identifier for the uvm. Defaults to generated GUID.

@@ -61,6 +61,17 @@ type OptionsWCOW struct {
 	AdditionalRegistryKeys []hcsschema.RegistryValue
 }
 
+var _ CreateOptions = (*OptionsWCOW)(nil)
+
+func (opts *OptionsWCOW) CommonOptions() *Options {
+	if opts == nil {
+		return nil
+	}
+	return opts.Options
+}
+
+func (opts *OptionsWCOW) isCreationOptions() {}
+
 func defaultConfidentialWCOWOSBootFilesPath() string {
 	return filepath.Join(filepath.Dir(os.Args[0]), "WindowsBootFiles", "confidential")
 }

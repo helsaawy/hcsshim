@@ -10,29 +10,21 @@ import (
 	"strings"
 
 	"github.com/containerd/console"
-	"github.com/opencontainers/runtime-spec/specs-go"
-	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
 
 	"github.com/Microsoft/hcsshim/internal/cmd"
 	"github.com/Microsoft/hcsshim/internal/log"
-	"github.com/Microsoft/hcsshim/internal/logfields"
 	"github.com/Microsoft/hcsshim/internal/memory"
-	"github.com/Microsoft/hcsshim/internal/oci"
 	"github.com/Microsoft/hcsshim/internal/uvm"
 )
 
 const (
-	annotationsArgName            = "annotation"
 	bootFilesPathArgName          = "boot-files-path"
-	consolePipeArgName            = "console-pipe"
 	kernelDirectArgName           = "kernel-direct"
 	kernelFileArgName             = "kernel-file"
-	forwardStdoutArgName          = "fwd-stdout"
-	forwardStderrArgName          = "fwd-stderr"
-	outputHandlingArgName         = "output-handling"
 	kernelArgsArgName             = "kernel-args"
 	rootFSTypeArgName             = "root-fs-type"
+	disableTimeSyncArgName        = "disable-time-sync"
 	vpMemMaxCountArgName          = "vpmem-max-count"
 	vpMemMaxSizeArgName           = "vpmem-max-size"
 	scsiMountsArgName             = "mount-scsi"
@@ -43,23 +35,14 @@ const (
 	securityPolicyEnforcerArgName = "security-policy-enforcer"
 )
 
-var (
-	lcowUseTerminal     bool
-	lcowDisableTimeSync bool
-)
-
 var lcowCommand = cli.Command{
 	Name:  "lcow",
 	Usage: "Boot an LCOW UVM",
-	Flags: []cli.Flag{
-		cli.StringSliceFlag{
-			Name: annotationsArgName,
-			Usage: "Annotations in the form of `key=value` to apply to the uVM. Use repeat instances to add multiple. " +
-				"Annotations will be applied to uVM settings BEFORE all other settings.",
-		},
+	CustomHelpTemplate: cli.CommandHelpTemplate + "EXAMPLES:\n" +
+		`   .\uvmboot.exe -gcs lcow -boot-files-path "C:\ContainerPlat\LinuxBootFiles" -root-fs-type vhd -t -exec "/bin/bash"`,
+	Flags: append(commonUVMFlags,
 		cli.StringFlag{
 			Name:  kernelArgsArgName,
-			Value: "",
 			Usage: "Additional arguments to pass to the kernel",
 		},
 		cli.StringFlag{
@@ -87,9 +70,8 @@ var lcowCommand = cli.Command{
 			Usage: "The kernel `file` to use; either 'kernel' or 'vmlinux'. (default: 'kernel')",
 		},
 		cli.BoolFlag{
-			Name:        "disable-time-sync",
-			Usage:       "Disable the time synchronization service",
-			Destination: &lcowDisableTimeSync,
+			Name:  disableTimeSyncArgName,
+			Usage: "Disable the time synchronization service",
 		},
 		cli.StringFlag{
 			Name:  securityPolicyArgName,
@@ -103,31 +85,6 @@ var lcowCommand = cli.Command{
 		cli.BoolFlag{
 			Name:  securityHardwareFlag,
 			Usage: "Use VMGS file to run on secure hardware. ('root-fs-type' must be set to 'none')",
-		},
-		cli.StringFlag{
-			Name:  execCommandLineArgName,
-			Usage: "Command to execute in the UVM.",
-		},
-		cli.BoolFlag{
-			Name:  forwardStdoutArgName,
-			Usage: "Whether stdout from the process in the UVM should be forwarded",
-		},
-		cli.BoolFlag{
-			Name:  forwardStderrArgName,
-			Usage: "Whether stderr from the process in the UVM should be forwarded",
-		},
-		cli.StringFlag{
-			Name:  outputHandlingArgName,
-			Usage: "Controls how output from UVM is handled. Use 'stdout' to print all output to stdout",
-		},
-		cli.StringFlag{
-			Name:  consolePipeArgName,
-			Usage: "Named `pipe` for serial console output (which will be enabled)",
-		},
-		cli.BoolFlag{
-			Name:        "tty,t",
-			Usage:       "create the process in the UVM with a TTY enabled",
-			Destination: &lcowUseTerminal,
 		},
 		cli.StringSliceFlag{
 			Name: scsiMountsArgName,
@@ -145,72 +102,55 @@ var lcowCommand = cli.Command{
 			Name:  vpmemMountsArgName,
 			Usage: "List of VHDs to VPMem mount into the UVM. Use repeat instances to add multiple. ",
 		},
-	},
-	Action: func(c *cli.Context) error {
-		runMany(c, func(id string) error {
+	),
+	Action: func(cCtx *cli.Context) error {
+		runMany(cCtx, func(id string) error {
 			ctx := context.Background()
 
-			options, err := createLCOWOptions(ctx, c, id)
+			options, err := createLCOWOptions(ctx, cCtx, id)
 			if err != nil {
 				return err
 			}
 
-			return runLCOW(ctx, options, c)
+			return runLCOW(ctx, cCtx, options)
 		})
 
 		return nil
 	},
 }
 
-func init() {
-	lcowCommand.CustomHelpTemplate = cli.CommandHelpTemplate + "EXAMPLES:\n" +
-		`.\uvmboot.exe -gcs lcow -boot-files-path "C:\ContainerPlat\LinuxBootFiles" -root-fs-type vhd -t -exec "/bin/bash"`
-}
-
-func createLCOWOptions(ctx context.Context, c *cli.Context, id string) (*uvm.OptionsLCOW, error) {
-	opt, err := oci.SpecToUVMCreateOpts(ctx,
-		&specs.Spec{
-			Linux:       &specs.Linux{},
-			Annotations: parseAnnotations(ctx, c, annotationsArgName),
-		},
-		id, "",
-	)
+func createLCOWOptions(ctx context.Context, cCtx *cli.Context, id string) (*uvm.OptionsLCOW, error) {
+	options, err := uVMCreateOptionsCommon[*uvm.OptionsLCOW](ctx, cCtx, id, "")
 	if err != nil {
 		return nil, err
 	}
-	options, ok := opt.(*uvm.OptionsLCOW)
-	if !ok {
-		return nil, fmt.Errorf("unexpect uVM create options type: %T", opt)
-	}
-
-	setGlobalOptions(c, options.Options)
 
 	// boot
-	if c.IsSet(bootFilesPathArgName) {
-		options.UpdateBootFilesPath(ctx, c.String(bootFilesPathArgName))
+	if cCtx.IsSet(bootFilesPathArgName) {
+		options.UpdateBootFilesPath(ctx, cCtx.String(bootFilesPathArgName))
 	}
 
 	// kernel
-	if c.IsSet(kernelDirectArgName) {
-		options.KernelDirect = c.Bool(kernelDirectArgName)
+	if cCtx.IsSet(kernelDirectArgName) {
+		options.KernelDirect = cCtx.Bool(kernelDirectArgName)
 	}
-	if c.IsSet(kernelFileArgName) {
-		switch strings.ToLower(c.String(kernelFileArgName)) {
+	if cCtx.IsSet(kernelFileArgName) {
+		switch strings.ToLower(cCtx.String(kernelFileArgName)) {
 		case uvm.KernelFile:
 			options.KernelFile = uvm.KernelFile
 		case uvm.UncompressedKernelFile:
 			options.KernelFile = uvm.UncompressedKernelFile
 		default:
-			return nil, unrecognizedError(c.String(kernelFileArgName), kernelFileArgName)
+			return nil, unrecognizedError(cCtx.String(kernelFileArgName), kernelFileArgName)
 		}
 	}
-	if c.IsSet(kernelArgsArgName) {
-		options.KernelBootOptions = c.String(kernelArgsArgName)
+	if cCtx.IsSet(kernelArgsArgName) {
+		options.KernelBootOptions = cCtx.String(kernelArgsArgName)
 	}
 
 	// rootfs
-	if c.IsSet(rootFSTypeArgName) {
-		switch strings.ToLower(c.String(rootFSTypeArgName)) {
+	if cCtx.IsSet(rootFSTypeArgName) {
+		switch strings.ToLower(cCtx.String(rootFSTypeArgName)) {
 		case "initrd":
 			options.RootFSFile = uvm.InitrdFile
 			options.PreferredRootFSType = uvm.PreferredRootFSTypeInitRd
@@ -221,31 +161,31 @@ func createLCOWOptions(ctx context.Context, c *cli.Context, id string) (*uvm.Opt
 			options.RootFSFile = ""
 			options.PreferredRootFSType = uvm.PreferredRootFSTypeNA
 		default:
-			return nil, unrecognizedError(c.String(rootFSTypeArgName), rootFSTypeArgName)
+			return nil, unrecognizedError(cCtx.String(rootFSTypeArgName), rootFSTypeArgName)
 		}
 	}
 
-	if c.IsSet(vpMemMaxCountArgName) {
-		options.VPMemDeviceCount = uint32(c.Uint(vpMemMaxCountArgName))
+	if cCtx.IsSet(vpMemMaxCountArgName) {
+		options.VPMemDeviceCount = uint32(cCtx.Uint(vpMemMaxCountArgName))
 	}
-	if c.IsSet(vpMemMaxSizeArgName) {
-		options.VPMemSizeBytes = c.Uint64(vpMemMaxSizeArgName) * memory.MiB // convert from MB to bytes
+	if cCtx.IsSet(vpMemMaxSizeArgName) {
+		options.VPMemSizeBytes = cCtx.Uint64(vpMemMaxSizeArgName) * memory.MiB // convert from MB to bytes
 	}
 
 	// GCS
-	options.UseGuestConnection = useGCS
-	if !useGCS {
-		if c.IsSet(execCommandLineArgName) {
-			options.ExecCommandLine = c.String(execCommandLineArgName)
+	options.UseGuestConnection = cCtx.GlobalBool(useGCSArgName)
+	if !options.UseGuestConnection {
+		if cCtx.IsSet(execCommandLineArgName) {
+			options.ExecCommandLine = cCtx.String(execCommandLineArgName)
 		}
-		if c.IsSet(forwardStdoutArgName) {
-			options.ForwardStdout = c.Bool(forwardStdoutArgName)
+		if cCtx.IsSet(forwardStdoutArgName) {
+			options.ForwardStdout = cCtx.Bool(forwardStdoutArgName)
 		}
-		if c.IsSet(forwardStderrArgName) {
-			options.ForwardStderr = c.Bool(forwardStderrArgName)
+		if cCtx.IsSet(forwardStderrArgName) {
+			options.ForwardStderr = cCtx.Bool(forwardStderrArgName)
 		}
-		if c.IsSet(outputHandlingArgName) {
-			switch strings.ToLower(c.String(outputHandlingArgName)) {
+		if cCtx.IsSet(outputHandlingArgName) {
+			switch strings.ToLower(cCtx.String(outputHandlingArgName)) {
 			case "stdout":
 				options.OutputHandlerCreator = func(*uvm.Options) uvm.OutputHandler {
 					return func(r io.Reader) {
@@ -253,27 +193,24 @@ func createLCOWOptions(ctx context.Context, c *cli.Context, id string) (*uvm.Opt
 					}
 				}
 			default:
-				return nil, unrecognizedError(c.String(outputHandlingArgName), outputHandlingArgName)
+				return nil, unrecognizedError(cCtx.String(outputHandlingArgName), outputHandlingArgName)
 			}
 		}
 	}
-	if c.IsSet(consolePipeArgName) {
-		options.ConsolePipe = c.String(consolePipeArgName)
-	}
 
 	// general settings
-	if lcowDisableTimeSync {
-		options.DisableTimeSyncService = true
+	if cCtx.IsSet(disableTimeSyncArgName) {
+		options.DisableTimeSyncService = cCtx.Bool(disableTimeSyncArgName)
 	}
 
 	// empty policy string defaults to open door
-	if c.IsSet(securityPolicyArgName) {
-		options.SecurityPolicy = c.String(securityPolicyArgName)
+	if cCtx.IsSet(securityPolicyArgName) {
+		options.SecurityPolicy = cCtx.String(securityPolicyArgName)
 	}
-	if c.IsSet(securityPolicyEnforcerArgName) {
-		options.SecurityPolicyEnforcer = c.String(securityPolicyEnforcerArgName)
+	if cCtx.IsSet(securityPolicyEnforcerArgName) {
+		options.SecurityPolicyEnforcer = cCtx.String(securityPolicyEnforcerArgName)
 	}
-	if c.IsSet(securityHardwareFlag) {
+	if cCtx.IsSet(securityHardwareFlag) {
 		options.GuestStateFile = uvm.GuestStateFile
 		options.SecurityPolicyEnabled = true
 		options.AllowOvercommit = false
@@ -282,64 +219,33 @@ func createLCOWOptions(ctx context.Context, c *cli.Context, id string) (*uvm.Opt
 	return options, nil
 }
 
-// parseAnnotations parses the annotations from the [cli.StringSliceFlag] specified by `name`.
-func parseAnnotations(ctx context.Context, c *cli.Context, name string) map[string]string {
-	ss := c.StringSlice(name)
-	annots := map[string]string{}
-
-	for _, s := range ss {
-		entry := log.G(ctx).WithField("flag-value", s)
-		k, v, found := strings.Cut(s, "=")
-
-		if !found {
-			entry.WithField(logrus.ErrorKey, "missing `=` in annotation").Warnf("invald %s flag value", name)
-		} else if k == "" || v == "" {
-			entry.WithField(logrus.ErrorKey, "empty annotation key or value").Warnf("invald %s flag value", name)
-		} else {
-			entry = entry.WithFields(logrus.Fields{
-				logfields.Key:   k,
-				logfields.Value: v,
-			})
-			entry.Debugf("parsed %s flag", name)
-
-			if vv, ok := annots[k]; ok {
-				entry.WithField(logfields.Value+"-existing", vv).Warn("overriding existing annotation")
-			}
-
-			annots[k] = v
-		}
-	}
-
-	return annots
-}
-
-func runLCOW(ctx context.Context, options *uvm.OptionsLCOW, c *cli.Context) error {
+func runLCOW(ctx context.Context, cCtx *cli.Context, options *uvm.OptionsLCOW) error {
 	vm, err := uvm.CreateLCOW(ctx, options)
 	if err != nil {
-		return err
+		return fmt.Errorf("create uVM: %w", err)
 	}
 	defer func() {
 		_ = vm.CloseCtx(ctx)
 	}()
 
 	if err := vm.Start(ctx); err != nil {
-		return err
+		return fmt.Errorf("start uVM: %w", err)
 	}
 
-	if err := mountSCSI(ctx, c, vm); err != nil {
-		return err
+	if err := mountSCSI(ctx, cCtx, vm); err != nil {
+		return fmt.Errorf("mount SCSI: %w", err)
 	}
 
-	if err := shareFiles(ctx, c, vm); err != nil {
-		return err
+	if err := shareFiles(ctx, cCtx, vm); err != nil {
+		return fmt.Errorf("share files: %w", err)
 	}
 
-	if err := mountVPMem(ctx, c, vm); err != nil {
-		return err
+	if err := mountVPMem(ctx, cCtx, vm); err != nil {
+		return fmt.Errorf("mount VPMEM: %w", err)
 	}
 
 	if options.UseGuestConnection {
-		if err := execViaGCS(ctx, vm, c); err != nil {
+		if err := execViaGCS(ctx, vm, cCtx); err != nil {
 			return err
 		}
 		_ = vm.Terminate(ctx)
@@ -354,7 +260,7 @@ func runLCOW(ctx context.Context, options *uvm.OptionsLCOW, c *cli.Context) erro
 func execViaGCS(ctx context.Context, vm *uvm.UtilityVM, cCtx *cli.Context) error {
 	c := cmd.CommandContext(ctx, vm, "sh", "-c", cCtx.String(execCommandLineArgName))
 	c.Log = log.L.Dup()
-	if lcowUseTerminal {
+	if cCtx.Bool(useTerminalArgName) {
 		c.Spec.Terminal = true
 		c.Stdin = os.Stdin
 		c.Stdout = os.Stdout
@@ -362,14 +268,6 @@ func execViaGCS(ctx context.Context, vm *uvm.UtilityVM, cCtx *cli.Context) error
 		if err != nil {
 			log.G(ctx).WithError(err).Warn("could not create console from stdin")
 		} else {
-			csz, err := con.Size()
-			if err != nil {
-				return fmt.Errorf("failed to get console size: %w", err)
-			}
-			c.Spec.ConsoleSize = &specs.Box{
-				Height: uint(csz.Height),
-				Width:  uint(csz.Width),
-			}
 			if err := con.SetRaw(); err != nil {
 				return err
 			}

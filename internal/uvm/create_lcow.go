@@ -134,6 +134,17 @@ type OptionsLCOW struct {
 	PolicyBasedRouting      bool                 // Whether we should use policy based routing when configuring net interfaces in guest
 }
 
+var _ CreateOptions = (*OptionsLCOW)(nil)
+
+func (opts *OptionsLCOW) CommonOptions() *Options {
+	if opts == nil {
+		return nil
+	}
+	return opts.Options
+}
+
+func (opts *OptionsLCOW) isCreationOptions() {}
+
 // defaultLCOWOSBootFilesPath returns the default path used to locate the LCOW
 // OS kernel and root FS files. This default is the subdirectory
 // `LinuxBootFiles` in the directory of the executable that started the current
