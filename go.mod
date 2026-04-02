@@ -15,12 +15,11 @@ tool (
 tool (
 	// generate Win32 API code
 	github.com/Microsoft/go-winio/tools/mkwinsyscall
-
 	// create syso files for manifesting
 	github.com/josephspurrier/goversioninfo/cmd/goversioninfo
-
 	// mock gRPC client and servers
 	go.uber.org/mock/mockgen
+	golang.org/x/tools/cmd/stringer
 )
 
 require (

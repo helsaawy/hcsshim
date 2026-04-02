@@ -3,13 +3,14 @@
 package computecore
 
 import (
-	gcontext "context"
-	"syscall"
+	"context"
+	"encoding/json"
 	"time"
 	"unsafe"
 
 	"github.com/sirupsen/logrus"
 	"go.opencensus.io/trace"
+	"golang.org/x/sys/windows"
 
 	"github.com/Microsoft/hcsshim/internal/interop"
 	"github.com/Microsoft/hcsshim/internal/log"
@@ -21,62 +22,62 @@ import (
 //go:generate go tool github.com/Microsoft/go-winio/tools/mkwinsyscall -output zsyscall_windows.go computecore.go
 
 // Operation management
-//sys hcsCreateOperation(context uintptr, callback uintptr) (operation HcsOperation, err error) = computecore.HcsCreateOperation?
-//sys hcsCreateOperationWithNotifications(eventTypes uint32, context uintptr, callback uintptr) (operation HcsOperation, err error) = computecore.HcsCreateOperationWithNotifications?
-//sys hcsCloseOperation(operation HcsOperation) = computecore.HcsCloseOperation
-//sys hcsGetOperationContext(operation HcsOperation) (context uintptr) = computecore.HcsGetOperationContext
-//sys hcsSetOperationContext(operation HcsOperation, context uintptr) (hr error) = computecore.HcsSetOperationContext?
-//sys hcsGetComputeSystemFromOperation(operation HcsOperation) (computeSystem HcsSystem) = computecore.HcsGetComputeSystemFromOperation
-//sys hcsGetProcessFromOperation(operation HcsOperation) (process HcsProcess) = computecore.HcsGetProcessFromOperation
-//sys hcsGetOperationType(operation HcsOperation) (operationType int32) = computecore.HcsGetOperationType
-//sys hcsGetOperationId(operation HcsOperation) (operationId uint64) = computecore.HcsGetOperationId
-//sys hcsGetOperationResult(operation HcsOperation, resultDocument **uint16) (hr error) = computecore.HcsGetOperationResult?
-//sys hcsGetOperationResultAndProcessInfo(operation HcsOperation, processInformation *HcsProcessInformation, resultDocument **uint16) (hr error) = computecore.HcsGetOperationResultAndProcessInfo?
-//sys hcsAddResourceToOperation(operation HcsOperation, resourceType uint32, uri string, handle syscall.Handle) (hr error) = computecore.HcsAddResourceToOperation?
+//sys hcsCreateOperation(context HCSContext, callback HCSCallback) (operation HCSOperation, err error) = computecore.HcsCreateOperation?
+//sys hcsCreateOperationWithNotifications(eventTypes uint32, context HCSContext, callback HCSCallback) (operation HCSOperation, err error) = computecore.HcsCreateOperationWithNotifications?
+//sys hcsCloseOperation(operation HCSOperation) = computecore.HcsCloseOperation
+//sys hcsGetOperationContext(operation HCSOperation) (context HCSContext) = computecore.HcsGetOperationContext
+//sys hcsSetOperationContext(operation HCSOperation, context HCSContext) (hr error) = computecore.HcsSetOperationContext?
+//sys hcsGetComputeSystemFromOperation(operation HCSOperation) (computeSystem HCSSystem) = computecore.HcsGetComputeSystemFromOperation
+//sys hcsGetProcessFromOperation(operation HCSOperation) (process HCSProcess) = computecore.HcsGetProcessFromOperation
+//sys hcsGetOperationType(operation HCSOperation) (operationType int32) = computecore.HcsGetOperationType
+//sys hcsGetOperationId(operation HCSOperation) (operationId uint64) = computecore.HcsGetOperationId
+//sys hcsGetOperationResult(operation HCSOperation, resultDocument **uint16) (hr error) = computecore.HcsGetOperationResult?
+//sys hcsGetOperationResultAndProcessInfo(operation HCSOperation, processInformation *HCSProcessInformation, resultDocument **uint16) (hr error) = computecore.HcsGetOperationResultAndProcessInfo?
+//sys hcsAddResourceToOperation(operation HCSOperation, resourceType uint32, uri string, handle windows.Handle) (hr error) = computecore.HcsAddResourceToOperation?
 //sys hcsGetProcessorCompatibilityFromSavedState(runtimeFileName string, processorFeaturesString **uint16) (hr error) = computecore.HcsGetProcessorCompatibilityFromSavedState?
-//sys hcsWaitForOperationResult(operation HcsOperation, timeoutMs uint32, resultDocument **uint16) (hr error) = computecore.HcsWaitForOperationResult?
-//sys hcsWaitForOperationResultAndProcessInfo(operation HcsOperation, timeoutMs uint32, processInformation *HcsProcessInformation, resultDocument **uint16) (hr error) = computecore.HcsWaitForOperationResultAndProcessInfo?
-//sys hcsSetOperationCallback(operation HcsOperation, context uintptr, callback uintptr) (hr error) = computecore.HcsSetOperationCallback?
-//sys hcsCancelOperation(operation HcsOperation) (hr error) = computecore.HcsCancelOperation?
-//sys hcsGetOperationProperties(operation HcsOperation, options string, resultDocument **uint16) (hr error) = computecore.HcsGetOperationProperties?
+//sys hcsWaitForOperationResult(operation HCSOperation, timeoutMs uint32, resultDocument **uint16) (hr error) = computecore.HcsWaitForOperationResult?
+//sys hcsWaitForOperationResultAndProcessInfo(operation HCSOperation, timeoutMs uint32, processInformation *HCSProcessInformation, resultDocument **uint16) (hr error) = computecore.HcsWaitForOperationResultAndProcessInfo?
+//sys hcsSetOperationCallback(operation HCSOperation, context HCSContext, callback HCSCallback) (hr error) = computecore.HcsSetOperationCallback?
+//sys hcsCancelOperation(operation HCSOperation) (hr error) = computecore.HcsCancelOperation?
+//sys hcsGetOperationProperties(operation HCSOperation, options string, resultDocument **uint16) (hr error) = computecore.HcsGetOperationProperties?
 
 // Compute system lifecycle
-//sys hcsEnumerateComputeSystems(query string, operation HcsOperation) (hr error) = computecore.HcsEnumerateComputeSystems?
-//sys hcsEnumerateComputeSystemsInNamespace(idNamespace string, query string, operation HcsOperation) (hr error) = computecore.HcsEnumerateComputeSystemsInNamespace?
-//sys hcsCreateComputeSystem(id string, configuration string, operation HcsOperation, securityDescriptor unsafe.Pointer, computeSystem *HcsSystem) (hr error) = computecore.HcsCreateComputeSystem?
-//sys hcsCreateComputeSystemInNamespace(idNamespace string, id string, configuration string, operation HcsOperation, options unsafe.Pointer, computeSystem *HcsSystem) (hr error) = computecore.HcsCreateComputeSystemInNamespace?
-//sys hcsOpenComputeSystem(id string, requestedAccess uint32, computeSystem *HcsSystem) (hr error) = computecore.HcsOpenComputeSystem?
-//sys hcsOpenComputeSystemInNamespace(idNamespace string, id string, requestedAccess uint32, computeSystem *HcsSystem) (hr error) = computecore.HcsOpenComputeSystemInNamespace?
-//sys hcsCloseComputeSystem(computeSystem HcsSystem) = computecore.HcsCloseComputeSystem
-//sys hcsStartComputeSystem(computeSystem HcsSystem, operation HcsOperation, options string) (hr error) = computecore.HcsStartComputeSystem?
-//sys hcsShutDownComputeSystem(computeSystem HcsSystem, operation HcsOperation, options string) (hr error) = computecore.HcsShutDownComputeSystem?
-//sys hcsTerminateComputeSystem(computeSystem HcsSystem, operation HcsOperation, options string) (hr error) = computecore.HcsTerminateComputeSystem?
-//sys hcsCrashComputeSystem(computeSystem HcsSystem, operation HcsOperation, options string) (hr error) = computecore.HcsCrashComputeSystem?
-//sys hcsPauseComputeSystem(computeSystem HcsSystem, operation HcsOperation, options string) (hr error) = computecore.HcsPauseComputeSystem?
-//sys hcsResumeComputeSystem(computeSystem HcsSystem, operation HcsOperation, options string) (hr error) = computecore.HcsResumeComputeSystem?
-//sys hcsSaveComputeSystem(computeSystem HcsSystem, operation HcsOperation, options string) (hr error) = computecore.HcsSaveComputeSystem?
-//sys hcsGetComputeSystemProperties(computeSystem HcsSystem, operation HcsOperation, propertyQuery string) (hr error) = computecore.HcsGetComputeSystemProperties?
-//sys hcsModifyComputeSystem(computeSystem HcsSystem, operation HcsOperation, configuration string, identity syscall.Handle) (hr error) = computecore.HcsModifyComputeSystem?
-//sys hcsWaitForComputeSystemExit(computeSystem HcsSystem, timeoutMs uint32, result **uint16) (hr error) = computecore.HcsWaitForComputeSystemExit?
-//sys hcsSetComputeSystemCallback(computeSystem HcsSystem, callbackOptions uint32, context uintptr, callback uintptr) (hr error) = computecore.HcsSetComputeSystemCallback?
+//sys hcsEnumerateComputeSystems(query string, operation HCSOperation) (hr error) = computecore.HcsEnumerateComputeSystems?
+//sys hcsEnumerateComputeSystemsInNamespace(idNamespace string, query string, operation HCSOperation) (hr error) = computecore.HcsEnumerateComputeSystemsInNamespace?
+//sys hcsCreateComputeSystem(id string, configuration string, operation HCSOperation, securityDescriptor unsafe.Pointer, computeSystem *HCSSystem) (hr error) = computecore.HcsCreateComputeSystem?
+//sys hcsCreateComputeSystemInNamespace(idNamespace string, id string, configuration string, operation HCSOperation, options unsafe.Pointer, computeSystem *HCSSystem) (hr error) = computecore.HcsCreateComputeSystemInNamespace?
+//sys hcsOpenComputeSystem(id string, requestedAccess uint32, computeSystem *HCSSystem) (hr error) = computecore.HcsOpenComputeSystem?
+//sys hcsOpenComputeSystemInNamespace(idNamespace string, id string, requestedAccess uint32, computeSystem *HCSSystem) (hr error) = computecore.HcsOpenComputeSystemInNamespace?
+//sys hcsCloseComputeSystem(computeSystem HCSSystem) = computecore.HcsCloseComputeSystem
+//sys hcsStartComputeSystem(computeSystem HCSSystem, operation HCSOperation, options string) (hr error) = computecore.HcsStartComputeSystem?
+//sys hcsShutDownComputeSystem(computeSystem HCSSystem, operation HCSOperation, options string) (hr error) = computecore.HcsShutDownComputeSystem?
+//sys hcsTerminateComputeSystem(computeSystem HCSSystem, operation HCSOperation, options string) (hr error) = computecore.HcsTerminateComputeSystem?
+//sys hcsCrashComputeSystem(computeSystem HCSSystem, operation HCSOperation, options string) (hr error) = computecore.HcsCrashComputeSystem?
+//sys hcsPauseComputeSystem(computeSystem HCSSystem, operation HCSOperation, options string) (hr error) = computecore.HcsPauseComputeSystem?
+//sys hcsResumeComputeSystem(computeSystem HCSSystem, operation HCSOperation, options string) (hr error) = computecore.HcsResumeComputeSystem?
+//sys hcsSaveComputeSystem(computeSystem HCSSystem, operation HCSOperation, options string) (hr error) = computecore.HcsSaveComputeSystem?
+//sys hcsGetComputeSystemProperties(computeSystem HCSSystem, operation HCSOperation, propertyQuery string) (hr error) = computecore.HcsGetComputeSystemProperties?
+//sys hcsModifyComputeSystem(computeSystem HCSSystem, operation HCSOperation, configuration string, identity windows.Handle) (hr error) = computecore.HcsModifyComputeSystem?
+//sys hcsWaitForComputeSystemExit(computeSystem HCSSystem, timeoutMs uint32, result **uint16) (hr error) = computecore.HcsWaitForComputeSystemExit?
+//sys hcsSetComputeSystemCallback(computeSystem HCSSystem, callbackOptions uint32, context HCSContext, callback HCSCallback) (hr error) = computecore.HcsSetComputeSystemCallback?
 
 // Live migration
-//sys hcsInitializeLiveMigrationOnSource(computeSystem HcsSystem, operation HcsOperation, options string) (hr error) = computecore.HcsInitializeLiveMigrationOnSource?
-//sys hcsStartLiveMigrationOnSource(computeSystem HcsSystem, operation HcsOperation, options string) (hr error) = computecore.HcsStartLiveMigrationOnSource?
-//sys hcsStartLiveMigrationTransfer(computeSystem HcsSystem, operation HcsOperation, options string) (hr error) = computecore.HcsStartLiveMigrationTransfer?
-//sys hcsFinalizeLiveMigration(computeSystem HcsSystem, operation HcsOperation, options string) (hr error) = computecore.HcsFinalizeLiveMigration?
+//sys hcsInitializeLiveMigrationOnSource(computeSystem HCSSystem, operation HCSOperation, options string) (hr error) = computecore.HcsInitializeLiveMigrationOnSource?
+//sys hcsStartLiveMigrationOnSource(computeSystem HCSSystem, operation HCSOperation, options string) (hr error) = computecore.HcsStartLiveMigrationOnSource?
+//sys hcsStartLiveMigrationTransfer(computeSystem HCSSystem, operation HCSOperation, options string) (hr error) = computecore.HcsStartLiveMigrationTransfer?
+//sys hcsFinalizeLiveMigration(computeSystem HCSSystem, operation HCSOperation, options string) (hr error) = computecore.HcsFinalizeLiveMigration?
 
 // Process lifecycle
-//sys hcsCreateProcess(computeSystem HcsSystem, processParameters string, operation HcsOperation, securityDescriptor unsafe.Pointer, process *HcsProcess) (hr error) = computecore.HcsCreateProcess?
-//sys hcsOpenProcess(computeSystem HcsSystem, pid uint32, requestedAccess uint32, process *HcsProcess) (hr error) = computecore.HcsOpenProcess?
-//sys hcsCloseProcess(process HcsProcess) = computecore.HcsCloseProcess
-//sys hcsTerminateProcess(process HcsProcess, operation HcsOperation, options string) (hr error) = computecore.HcsTerminateProcess?
-//sys hcsSignalProcess(process HcsProcess, operation HcsOperation, options string) (hr error) = computecore.HcsSignalProcess?
-//sys hcsGetProcessInfo(process HcsProcess, operation HcsOperation) (hr error) = computecore.HcsGetProcessInfo?
-//sys hcsGetProcessProperties(process HcsProcess, operation HcsOperation, propertyQuery string) (hr error) = computecore.HcsGetProcessProperties?
-//sys hcsModifyProcess(process HcsProcess, operation HcsOperation, settings string) (hr error) = computecore.HcsModifyProcess?
-//sys hcsSetProcessCallback(process HcsProcess, callbackOptions uint32, context uintptr, callback uintptr) (hr error) = computecore.HcsSetProcessCallback?
-//sys hcsWaitForProcessExit(process HcsProcess, timeoutMs uint32, result **uint16) (hr error) = computecore.HcsWaitForProcessExit?
+//sys hcsCreateProcess(computeSystem HCSSystem, processParameters string, operation HCSOperation, securityDescriptor unsafe.Pointer, process *HCSProcess) (hr error) = computecore.HcsCreateProcess?
+//sys hcsOpenProcess(computeSystem HCSSystem, pid uint32, requestedAccess uint32, process *HCSProcess) (hr error) = computecore.HcsOpenProcess?
+//sys hcsCloseProcess(process HCSProcess) = computecore.HcsCloseProcess
+//sys hcsTerminateProcess(process HCSProcess, operation HCSOperation, options string) (hr error) = computecore.HcsTerminateProcess?
+//sys hcsSignalProcess(process HCSProcess, operation HCSOperation, options string) (hr error) = computecore.HcsSignalProcess?
+//sys hcsGetProcessInfo(process HCSProcess, operation HCSOperation) (hr error) = computecore.HcsGetProcessInfo?
+//sys hcsGetProcessProperties(process HCSProcess, operation HCSOperation, propertyQuery string) (hr error) = computecore.HcsGetProcessProperties?
+//sys hcsModifyProcess(process HCSProcess, operation HCSOperation, settings string) (hr error) = computecore.HcsModifyProcess?
+//sys hcsSetProcessCallback(process HCSProcess, callbackOptions uint32, context HCSContext, callback HCSCallback) (hr error) = computecore.HcsSetProcessCallback?
+//sys hcsWaitForProcessExit(process HCSProcess, timeoutMs uint32, result **uint16) (hr error) = computecore.HcsWaitForProcessExit?
 
 // Service
 //sys hcsGetServiceProperties(propertyQuery string, result **uint16) (hr error) = computecore.HcsGetServiceProperties?
@@ -92,41 +93,38 @@ import (
 //sys hcsRevokeVmGroupAccess(filePath string) (hr error) = computecore.HcsRevokeVmGroupAccess?
 
 // errVmcomputeOperationPending is an error encountered when the operation is being completed asynchronously
-const errVmcomputeOperationPending = syscall.Errno(0xC0370103)
+const errVmcomputeOperationPending = windows.Errno(0xC0370103)
 
-// HcsSystem is the handle associated with a created compute system.
-type HcsSystem syscall.Handle
+// HCSSystem is the handle associated with a created compute system.
+type HCSSystem windows.Handle
 
-// HcsProcess is the handle associated with a created process in a compute
+// HCSProcess is the handle associated with a created process in a compute
 // system.
-type HcsProcess syscall.Handle
+type HCSProcess windows.Handle
 
-// HcsOperation is the handle associated with an operation on a compute system.
-type HcsOperation syscall.Handle
-
-// HcsCallback is the handle associated with the function to call when events
+// HCSCallback is the handle associated with the function to call when events
 // occur.
-type HcsCallback syscall.Handle
+type HCSCallback windows.Handle
 
-// HcsProcessInformation is the structure used when creating or getting process
+// HCSProcessInformation is the structure used when creating or getting process
 // info.
-type HcsProcessInformation struct {
+type HCSProcessInformation struct {
 	// ProcessID is the pid of the created process.
 	ProcessID uint32
 	_         uint32 // reserved padding
 	// StdInput is the handle associated with the stdin of the process.
-	StdInput syscall.Handle
+	StdInput windows.Handle
 	// StdOutput is the handle associated with the stdout of the process.
-	StdOutput syscall.Handle
+	StdOutput windows.Handle
 	// StdError is the handle associated with the stderr of the process.
-	StdError syscall.Handle
+	StdError windows.Handle
 }
 
-func execute(ctx gcontext.Context, timeout time.Duration, f func() error) error {
+func execute(ctx context.Context, timeout time.Duration, f func() error) error {
 	now := time.Now()
 	if timeout > 0 {
-		var cancel gcontext.CancelFunc
-		ctx, cancel = gcontext.WithTimeout(ctx, timeout)
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
 		defer cancel()
 	}
 
@@ -146,7 +144,7 @@ func execute(ctx gcontext.Context, timeout time.Duration, f func() error) error 
 	}()
 	select {
 	case <-ctx.Done():
-		if ctx.Err() == gcontext.DeadlineExceeded {
+		if ctx.Err() == context.DeadlineExceeded {
 			log.G(ctx).WithField(logfields.Timeout, trueTimeout).
 				Warning("Syscall did not complete within operation timeout. This may indicate a platform issue. " +
 					"If it appears to be making no forward progress, obtain the stacks and see if there is a syscall " +
@@ -160,7 +158,7 @@ func execute(ctx gcontext.Context, timeout time.Duration, f func() error) error 
 
 // Operation management
 
-func HcsCreateOperation(ctx gcontext.Context, callbackContext uintptr, callback uintptr) (operation HcsOperation, hr error) {
+func HcsCreateOperation(ctx context.Context, callbackContext HCSContext, callback HCSCallback) (operation HCSOperation, hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsCreateOperation")
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, hr) }()
@@ -172,7 +170,7 @@ func HcsCreateOperation(ctx gcontext.Context, callbackContext uintptr, callback 
 	})
 }
 
-func HcsCreateOperationWithNotifications(ctx gcontext.Context, eventTypes uint32, callbackContext uintptr, callback uintptr) (operation HcsOperation, hr error) {
+func HcsCreateOperationWithNotifications(ctx context.Context, eventTypes uint32, callbackContext HCSContext, callback HCSCallback) (operation HCSOperation, hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsCreateOperationWithNotifications")
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, hr) }()
@@ -184,21 +182,21 @@ func HcsCreateOperationWithNotifications(ctx gcontext.Context, eventTypes uint32
 	})
 }
 
-func HcsCloseOperation(ctx gcontext.Context, operation HcsOperation) {
+func HcsCloseOperation(ctx context.Context, operation HCSOperation) {
 	_, span := oc.StartSpan(ctx, "HcsCloseOperation")
 	defer span.End()
 
 	hcsCloseOperation(operation)
 }
 
-func HcsGetOperationContext(ctx gcontext.Context, operation HcsOperation) uintptr {
+func HcsGetOperationContext(ctx context.Context, operation HCSOperation) HCSContext {
 	_, span := oc.StartSpan(ctx, "HcsGetOperationContext")
 	defer span.End()
 
 	return hcsGetOperationContext(operation)
 }
 
-func HcsSetOperationContext(ctx gcontext.Context, operation HcsOperation, callbackContext uintptr) (hr error) {
+func HcsSetOperationContext(ctx context.Context, operation HCSOperation, callbackContext HCSContext) (hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsSetOperationContext")
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, hr) }()
@@ -208,40 +206,40 @@ func HcsSetOperationContext(ctx gcontext.Context, operation HcsOperation, callba
 	})
 }
 
-func HcsGetComputeSystemFromOperation(ctx gcontext.Context, operation HcsOperation) HcsSystem {
+func HcsGetComputeSystemFromOperation(ctx context.Context, operation HCSOperation) HCSSystem {
 	_, span := oc.StartSpan(ctx, "HcsGetComputeSystemFromOperation")
 	defer span.End()
 
 	return hcsGetComputeSystemFromOperation(operation)
 }
 
-func HcsGetProcessFromOperation(ctx gcontext.Context, operation HcsOperation) HcsProcess {
+func HcsGetProcessFromOperation(ctx context.Context, operation HCSOperation) HCSProcess {
 	_, span := oc.StartSpan(ctx, "HcsGetProcessFromOperation")
 	defer span.End()
 
 	return hcsGetProcessFromOperation(operation)
 }
 
-func HcsGetOperationType(ctx gcontext.Context, operation HcsOperation) int32 {
+func HcsGetOperationType(ctx context.Context, operation HCSOperation) int32 {
 	_, span := oc.StartSpan(ctx, "HcsGetOperationType")
 	defer span.End()
 
 	return hcsGetOperationType(operation)
 }
 
-func HcsGetOperationID(ctx gcontext.Context, operation HcsOperation) uint64 {
+func HcsGetOperationID(ctx context.Context, operation HCSOperation) uint64 {
 	_, span := oc.StartSpan(ctx, "HcsGetOperationId")
 	defer span.End()
 
 	return hcsGetOperationId(operation)
 }
 
-func HcsGetOperationResult(ctx gcontext.Context, operation HcsOperation) (resultDocument string, hr error) {
+func HcsGetOperationResult(ctx context.Context, operation HCSOperation) (resultDocument json.RawMessage, hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsGetOperationResult")
 	defer span.End()
 	defer func() {
-		if resultDocument != "" {
-			span.AddAttributes(trace.StringAttribute("resultDocument", resultDocument))
+		if len(resultDocument) > 0 {
+			span.AddAttributes(trace.StringAttribute("resultDocument", string(resultDocument)))
 		}
 		oc.SetSpanStatus(span, hr)
 	}()
@@ -250,13 +248,13 @@ func HcsGetOperationResult(ctx gcontext.Context, operation HcsOperation) (result
 		var resultDocumentp *uint16
 		err := hcsGetOperationResult(operation, &resultDocumentp)
 		if resultDocumentp != nil {
-			resultDocument = interop.ConvertAndFreeCoTaskMemString(resultDocumentp)
+			resultDocument = json.RawMessage(interop.ConvertAndFreeCoTaskMemString(resultDocumentp))
 		}
 		return err
 	})
 }
 
-func HcsGetOperationResultAndProcessInfo(ctx gcontext.Context, operation HcsOperation) (processInformation HcsProcessInformation, resultDocument string, hr error) {
+func HcsGetOperationResultAndProcessInfo(ctx context.Context, operation HCSOperation) (processInformation HCSProcessInformation, resultDocument string, hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsGetOperationResultAndProcessInfo")
 	defer span.End()
 	defer func() {
@@ -276,7 +274,7 @@ func HcsGetOperationResultAndProcessInfo(ctx gcontext.Context, operation HcsOper
 	})
 }
 
-func HcsAddResourceToOperation(ctx gcontext.Context, operation HcsOperation, resourceType uint32, uri string, handle syscall.Handle) (hr error) {
+func HcsAddResourceToOperation(ctx context.Context, operation HCSOperation, resourceType uint32, uri string, handle windows.Handle) (hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsAddResourceToOperation")
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, hr) }()
@@ -287,7 +285,7 @@ func HcsAddResourceToOperation(ctx gcontext.Context, operation HcsOperation, res
 	})
 }
 
-func HcsGetProcessorCompatibilityFromSavedState(ctx gcontext.Context, runtimeFileName string) (processorFeaturesString string, hr error) {
+func HcsGetProcessorCompatibilityFromSavedState(ctx context.Context, runtimeFileName string) (processorFeaturesString string, hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsGetProcessorCompatibilityFromSavedState")
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, hr) }()
@@ -303,7 +301,7 @@ func HcsGetProcessorCompatibilityFromSavedState(ctx gcontext.Context, runtimeFil
 	})
 }
 
-func HcsWaitForOperationResult(ctx gcontext.Context, operation HcsOperation, timeoutMs uint32) (resultDocument string, hr error) {
+func HcsWaitForOperationResult(ctx context.Context, operation HCSOperation, timeoutMs uint32) (resultDocument string, hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsWaitForOperationResult")
 	defer span.End()
 	defer func() {
@@ -323,7 +321,7 @@ func HcsWaitForOperationResult(ctx gcontext.Context, operation HcsOperation, tim
 	})
 }
 
-func HcsWaitForOperationResultAndProcessInfo(ctx gcontext.Context, operation HcsOperation, timeoutMs uint32) (processInformation HcsProcessInformation, resultDocument string, hr error) {
+func HcsWaitForOperationResultAndProcessInfo(ctx context.Context, operation HCSOperation, timeoutMs uint32) (processInformation HCSProcessInformation, resultDocument string, hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsWaitForOperationResultAndProcessInfo")
 	defer span.End()
 	defer func() {
@@ -343,7 +341,7 @@ func HcsWaitForOperationResultAndProcessInfo(ctx gcontext.Context, operation Hcs
 	})
 }
 
-func HcsSetOperationCallback(ctx gcontext.Context, operation HcsOperation, callbackContext uintptr, callback uintptr) (hr error) {
+func HcsSetOperationCallback(ctx context.Context, operation HCSOperation, callbackContext HCSContext, callback HCSCallback) (hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsSetOperationCallback")
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, hr) }()
@@ -353,7 +351,7 @@ func HcsSetOperationCallback(ctx gcontext.Context, operation HcsOperation, callb
 	})
 }
 
-func HcsCancelOperation(ctx gcontext.Context, operation HcsOperation) (hr error) {
+func HcsCancelOperation(ctx context.Context, operation HCSOperation) (hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsCancelOperation")
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, hr) }()
@@ -363,7 +361,7 @@ func HcsCancelOperation(ctx gcontext.Context, operation HcsOperation) (hr error)
 	})
 }
 
-func HcsGetOperationProperties(ctx gcontext.Context, operation HcsOperation, options string) (resultDocument string, hr error) {
+func HcsGetOperationProperties(ctx context.Context, operation HCSOperation, options string) (resultDocument string, hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsGetOperationProperties")
 	defer span.End()
 	defer func() {
@@ -386,7 +384,7 @@ func HcsGetOperationProperties(ctx gcontext.Context, operation HcsOperation, opt
 
 // Compute system lifecycle
 
-func HcsEnumerateComputeSystems(ctx gcontext.Context, query string, operation HcsOperation) (hr error) {
+func HcsEnumerateComputeSystems(ctx context.Context, query string, operation HCSOperation) (hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsEnumerateComputeSystems")
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, hr) }()
@@ -397,7 +395,7 @@ func HcsEnumerateComputeSystems(ctx gcontext.Context, query string, operation Hc
 	})
 }
 
-func HcsEnumerateComputeSystemsInNamespace(ctx gcontext.Context, idNamespace string, query string, operation HcsOperation) (hr error) {
+func HcsEnumerateComputeSystemsInNamespace(ctx context.Context, idNamespace string, query string, operation HCSOperation) (hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsEnumerateComputeSystemsInNamespace")
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, hr) }()
@@ -410,7 +408,7 @@ func HcsEnumerateComputeSystemsInNamespace(ctx gcontext.Context, idNamespace str
 	})
 }
 
-func HcsCreateComputeSystem(ctx gcontext.Context, id string, configuration string, operation HcsOperation, securityDescriptor unsafe.Pointer) (computeSystem HcsSystem, hr error) {
+func HcsCreateComputeSystem(ctx context.Context, id string, configuration string, operation HCSOperation, securityDescriptor unsafe.Pointer) (computeSystem HCSSystem, hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsCreateComputeSystem")
 	defer span.End()
 	defer func() {
@@ -427,7 +425,7 @@ func HcsCreateComputeSystem(ctx gcontext.Context, id string, configuration strin
 	})
 }
 
-func HcsCreateComputeSystemInNamespace(ctx gcontext.Context, idNamespace string, id string, configuration string, operation HcsOperation, options unsafe.Pointer) (computeSystem HcsSystem, hr error) {
+func HcsCreateComputeSystemInNamespace(ctx context.Context, idNamespace string, id string, configuration string, operation HCSOperation, options unsafe.Pointer) (computeSystem HCSSystem, hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsCreateComputeSystemInNamespace")
 	defer span.End()
 	defer func() {
@@ -445,7 +443,7 @@ func HcsCreateComputeSystemInNamespace(ctx gcontext.Context, idNamespace string,
 	})
 }
 
-func HcsOpenComputeSystem(ctx gcontext.Context, id string, requestedAccess uint32) (computeSystem HcsSystem, hr error) {
+func HcsOpenComputeSystem(ctx context.Context, id string, requestedAccess uint32) (computeSystem HCSSystem, hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsOpenComputeSystem")
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, hr) }()
@@ -455,7 +453,7 @@ func HcsOpenComputeSystem(ctx gcontext.Context, id string, requestedAccess uint3
 	})
 }
 
-func HcsOpenComputeSystemInNamespace(ctx gcontext.Context, idNamespace string, id string, requestedAccess uint32) (computeSystem HcsSystem, hr error) {
+func HcsOpenComputeSystemInNamespace(ctx context.Context, idNamespace string, id string, requestedAccess uint32) (computeSystem HCSSystem, hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsOpenComputeSystemInNamespace")
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, hr) }()
@@ -466,14 +464,14 @@ func HcsOpenComputeSystemInNamespace(ctx gcontext.Context, idNamespace string, i
 	})
 }
 
-func HcsCloseComputeSystem(ctx gcontext.Context, computeSystem HcsSystem) {
+func HcsCloseComputeSystem(ctx context.Context, computeSystem HCSSystem) {
 	_, span := oc.StartSpan(ctx, "HcsCloseComputeSystem")
 	defer span.End()
 
 	hcsCloseComputeSystem(computeSystem)
 }
 
-func HcsStartComputeSystem(ctx gcontext.Context, computeSystem HcsSystem, operation HcsOperation, options string) (hr error) {
+func HcsStartComputeSystem(ctx context.Context, computeSystem HCSSystem, operation HCSOperation, options string) (hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsStartComputeSystem")
 	defer span.End()
 	defer func() {
@@ -488,7 +486,7 @@ func HcsStartComputeSystem(ctx gcontext.Context, computeSystem HcsSystem, operat
 	})
 }
 
-func HcsShutDownComputeSystem(ctx gcontext.Context, computeSystem HcsSystem, operation HcsOperation, options string) (hr error) {
+func HcsShutDownComputeSystem(ctx context.Context, computeSystem HCSSystem, operation HCSOperation, options string) (hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsShutDownComputeSystem")
 	defer span.End()
 	defer func() {
@@ -503,7 +501,7 @@ func HcsShutDownComputeSystem(ctx gcontext.Context, computeSystem HcsSystem, ope
 	})
 }
 
-func HcsTerminateComputeSystem(ctx gcontext.Context, computeSystem HcsSystem, operation HcsOperation, options string) (hr error) {
+func HcsTerminateComputeSystem(ctx context.Context, computeSystem HCSSystem, operation HCSOperation, options string) (hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsTerminateComputeSystem")
 	defer span.End()
 	defer func() {
@@ -518,7 +516,7 @@ func HcsTerminateComputeSystem(ctx gcontext.Context, computeSystem HcsSystem, op
 	})
 }
 
-func HcsCrashComputeSystem(ctx gcontext.Context, computeSystem HcsSystem, operation HcsOperation, options string) (hr error) {
+func HcsCrashComputeSystem(ctx context.Context, computeSystem HCSSystem, operation HCSOperation, options string) (hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsCrashComputeSystem")
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, hr) }()
@@ -529,7 +527,7 @@ func HcsCrashComputeSystem(ctx gcontext.Context, computeSystem HcsSystem, operat
 	})
 }
 
-func HcsPauseComputeSystem(ctx gcontext.Context, computeSystem HcsSystem, operation HcsOperation, options string) (hr error) {
+func HcsPauseComputeSystem(ctx context.Context, computeSystem HCSSystem, operation HCSOperation, options string) (hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsPauseComputeSystem")
 	defer span.End()
 	defer func() {
@@ -544,7 +542,7 @@ func HcsPauseComputeSystem(ctx gcontext.Context, computeSystem HcsSystem, operat
 	})
 }
 
-func HcsResumeComputeSystem(ctx gcontext.Context, computeSystem HcsSystem, operation HcsOperation, options string) (hr error) {
+func HcsResumeComputeSystem(ctx context.Context, computeSystem HCSSystem, operation HCSOperation, options string) (hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsResumeComputeSystem")
 	defer span.End()
 	defer func() {
@@ -559,7 +557,7 @@ func HcsResumeComputeSystem(ctx gcontext.Context, computeSystem HcsSystem, opera
 	})
 }
 
-func HcsSaveComputeSystem(ctx gcontext.Context, computeSystem HcsSystem, operation HcsOperation, options string) (hr error) {
+func HcsSaveComputeSystem(ctx context.Context, computeSystem HCSSystem, operation HCSOperation, options string) (hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsSaveComputeSystem")
 	defer span.End()
 	defer func() {
@@ -573,7 +571,7 @@ func HcsSaveComputeSystem(ctx gcontext.Context, computeSystem HcsSystem, operati
 	})
 }
 
-func HcsGetComputeSystemProperties(ctx gcontext.Context, computeSystem HcsSystem, operation HcsOperation, propertyQuery string) (hr error) {
+func HcsGetComputeSystemProperties(ctx context.Context, computeSystem HCSSystem, operation HCSOperation, propertyQuery string) (hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsGetComputeSystemProperties")
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, hr) }()
@@ -584,7 +582,7 @@ func HcsGetComputeSystemProperties(ctx gcontext.Context, computeSystem HcsSystem
 	})
 }
 
-func HcsModifyComputeSystem(ctx gcontext.Context, computeSystem HcsSystem, operation HcsOperation, configuration string, identity syscall.Handle) (hr error) {
+func HcsModifyComputeSystem(ctx context.Context, computeSystem HCSSystem, operation HCSOperation, configuration string, identity windows.Handle) (hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsModifyComputeSystem")
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, hr) }()
@@ -595,7 +593,7 @@ func HcsModifyComputeSystem(ctx gcontext.Context, computeSystem HcsSystem, opera
 	})
 }
 
-func HcsWaitForComputeSystemExit(ctx gcontext.Context, computeSystem HcsSystem, timeoutMs uint32) (result string, hr error) {
+func HcsWaitForComputeSystemExit(ctx context.Context, computeSystem HCSSystem, timeoutMs uint32) (result string, hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsWaitForComputeSystemExit")
 	defer span.End()
 	defer func() {
@@ -615,7 +613,7 @@ func HcsWaitForComputeSystemExit(ctx gcontext.Context, computeSystem HcsSystem, 
 	})
 }
 
-func HcsSetComputeSystemCallback(ctx gcontext.Context, computeSystem HcsSystem, callbackOptions uint32, callbackContext uintptr, callback uintptr) (hr error) {
+func HcsSetComputeSystemCallback(ctx context.Context, computeSystem HCSSystem, callbackOptions uint32, callbackContext HCSContext, callback HCSCallback) (hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsSetComputeSystemCallback")
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, hr) }()
@@ -627,7 +625,7 @@ func HcsSetComputeSystemCallback(ctx gcontext.Context, computeSystem HcsSystem, 
 
 // Live migration
 
-func HcsInitializeLiveMigrationOnSource(ctx gcontext.Context, computeSystem HcsSystem, operation HcsOperation, options string) (hr error) {
+func HcsInitializeLiveMigrationOnSource(ctx context.Context, computeSystem HCSSystem, operation HCSOperation, options string) (hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsInitializeLiveMigrationOnSource")
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, hr) }()
@@ -638,7 +636,7 @@ func HcsInitializeLiveMigrationOnSource(ctx gcontext.Context, computeSystem HcsS
 	})
 }
 
-func HcsStartLiveMigrationOnSource(ctx gcontext.Context, computeSystem HcsSystem, operation HcsOperation, options string) (hr error) {
+func HcsStartLiveMigrationOnSource(ctx context.Context, computeSystem HCSSystem, operation HCSOperation, options string) (hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsStartLiveMigrationOnSource")
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, hr) }()
@@ -649,7 +647,7 @@ func HcsStartLiveMigrationOnSource(ctx gcontext.Context, computeSystem HcsSystem
 	})
 }
 
-func HcsStartLiveMigrationTransfer(ctx gcontext.Context, computeSystem HcsSystem, operation HcsOperation, options string) (hr error) {
+func HcsStartLiveMigrationTransfer(ctx context.Context, computeSystem HCSSystem, operation HCSOperation, options string) (hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsStartLiveMigrationTransfer")
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, hr) }()
@@ -660,7 +658,7 @@ func HcsStartLiveMigrationTransfer(ctx gcontext.Context, computeSystem HcsSystem
 	})
 }
 
-func HcsFinalizeLiveMigration(ctx gcontext.Context, computeSystem HcsSystem, operation HcsOperation, options string) (hr error) {
+func HcsFinalizeLiveMigration(ctx context.Context, computeSystem HCSSystem, operation HCSOperation, options string) (hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsFinalizeLiveMigration")
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, hr) }()
@@ -673,7 +671,7 @@ func HcsFinalizeLiveMigration(ctx gcontext.Context, computeSystem HcsSystem, ope
 
 // Process lifecycle
 
-func HcsCreateProcess(ctx gcontext.Context, computeSystem HcsSystem, processParameters string, operation HcsOperation, securityDescriptor unsafe.Pointer) (process HcsProcess, hr error) {
+func HcsCreateProcess(ctx context.Context, computeSystem HCSSystem, processParameters string, operation HCSOperation, securityDescriptor unsafe.Pointer) (process HCSProcess, hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsCreateProcess")
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, hr) }()
@@ -688,7 +686,7 @@ func HcsCreateProcess(ctx gcontext.Context, computeSystem HcsSystem, processPara
 	})
 }
 
-func HcsOpenProcess(ctx gcontext.Context, computeSystem HcsSystem, pid uint32, requestedAccess uint32) (process HcsProcess, hr error) {
+func HcsOpenProcess(ctx context.Context, computeSystem HCSSystem, pid uint32, requestedAccess uint32) (process HCSProcess, hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsOpenProcess")
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, hr) }()
@@ -699,14 +697,14 @@ func HcsOpenProcess(ctx gcontext.Context, computeSystem HcsSystem, pid uint32, r
 	})
 }
 
-func HcsCloseProcess(ctx gcontext.Context, process HcsProcess) {
+func HcsCloseProcess(ctx context.Context, process HCSProcess) {
 	_, span := oc.StartSpan(ctx, "HcsCloseProcess")
 	defer span.End()
 
 	hcsCloseProcess(process)
 }
 
-func HcsTerminateProcess(ctx gcontext.Context, process HcsProcess, operation HcsOperation, options string) (hr error) {
+func HcsTerminateProcess(ctx context.Context, process HCSProcess, operation HCSOperation, options string) (hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsTerminateProcess")
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, hr) }()
@@ -716,7 +714,7 @@ func HcsTerminateProcess(ctx gcontext.Context, process HcsProcess, operation Hcs
 	})
 }
 
-func HcsSignalProcess(ctx gcontext.Context, process HcsProcess, operation HcsOperation, options string) (hr error) {
+func HcsSignalProcess(ctx context.Context, process HCSProcess, operation HCSOperation, options string) (hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsSignalProcess")
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, hr) }()
@@ -727,7 +725,7 @@ func HcsSignalProcess(ctx gcontext.Context, process HcsProcess, operation HcsOpe
 	})
 }
 
-func HcsGetProcessInfo(ctx gcontext.Context, process HcsProcess, operation HcsOperation) (hr error) {
+func HcsGetProcessInfo(ctx context.Context, process HCSProcess, operation HCSOperation) (hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsGetProcessInfo")
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, hr) }()
@@ -737,7 +735,7 @@ func HcsGetProcessInfo(ctx gcontext.Context, process HcsProcess, operation HcsOp
 	})
 }
 
-func HcsGetProcessProperties(ctx gcontext.Context, process HcsProcess, operation HcsOperation, propertyQuery string) (hr error) {
+func HcsGetProcessProperties(ctx context.Context, process HCSProcess, operation HCSOperation, propertyQuery string) (hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsGetProcessProperties")
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, hr) }()
@@ -747,7 +745,7 @@ func HcsGetProcessProperties(ctx gcontext.Context, process HcsProcess, operation
 	})
 }
 
-func HcsModifyProcess(ctx gcontext.Context, process HcsProcess, operation HcsOperation, settings string) (hr error) {
+func HcsModifyProcess(ctx context.Context, process HCSProcess, operation HCSOperation, settings string) (hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsModifyProcess")
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, hr) }()
@@ -758,7 +756,7 @@ func HcsModifyProcess(ctx gcontext.Context, process HcsProcess, operation HcsOpe
 	})
 }
 
-func HcsSetProcessCallback(ctx gcontext.Context, process HcsProcess, callbackOptions uint32, callbackContext uintptr, callback uintptr) (hr error) {
+func HcsSetProcessCallback(ctx context.Context, process HCSProcess, callbackOptions uint32, callbackContext HCSContext, callback HCSCallback) (hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsSetProcessCallback")
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, hr) }()
@@ -768,7 +766,7 @@ func HcsSetProcessCallback(ctx gcontext.Context, process HcsProcess, callbackOpt
 	})
 }
 
-func HcsWaitForProcessExit(ctx gcontext.Context, process HcsProcess, timeoutMs uint32) (result string, hr error) {
+func HcsWaitForProcessExit(ctx context.Context, process HCSProcess, timeoutMs uint32) (result string, hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsWaitForProcessExit")
 	defer span.End()
 	defer func() {
@@ -790,7 +788,7 @@ func HcsWaitForProcessExit(ctx gcontext.Context, process HcsProcess, timeoutMs u
 
 // Service
 
-func HcsGetServiceProperties(ctx gcontext.Context, propertyQuery string) (result string, hr error) {
+func HcsGetServiceProperties(ctx context.Context, propertyQuery string) (result string, hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsGetServiceProperties")
 	defer span.End()
 	defer func() {
@@ -811,7 +809,7 @@ func HcsGetServiceProperties(ctx gcontext.Context, propertyQuery string) (result
 	})
 }
 
-func HcsModifyServiceSettings(ctx gcontext.Context, settings string) (result string, hr error) {
+func HcsModifyServiceSettings(ctx context.Context, settings string) (result string, hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsModifyServiceSettings")
 	defer span.End()
 	defer func() {
@@ -832,7 +830,7 @@ func HcsModifyServiceSettings(ctx gcontext.Context, settings string) (result str
 	})
 }
 
-func HcsSubmitWerReport(ctx gcontext.Context, settings string) (hr error) {
+func HcsSubmitWerReport(ctx context.Context, settings string) (hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsSubmitWerReport")
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, hr) }()
@@ -845,7 +843,7 @@ func HcsSubmitWerReport(ctx gcontext.Context, settings string) (hr error) {
 
 // File and VM access
 
-func HcsCreateEmptyGuestStateFile(ctx gcontext.Context, guestStateFilePath string) (hr error) {
+func HcsCreateEmptyGuestStateFile(ctx context.Context, guestStateFilePath string) (hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsCreateEmptyGuestStateFile")
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, hr) }()
@@ -856,7 +854,7 @@ func HcsCreateEmptyGuestStateFile(ctx gcontext.Context, guestStateFilePath strin
 	})
 }
 
-func HcsCreateEmptyRuntimeStateFile(ctx gcontext.Context, runtimeStateFilePath string) (hr error) {
+func HcsCreateEmptyRuntimeStateFile(ctx context.Context, runtimeStateFilePath string) (hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsCreateEmptyRuntimeStateFile")
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, hr) }()
@@ -867,7 +865,7 @@ func HcsCreateEmptyRuntimeStateFile(ctx gcontext.Context, runtimeStateFilePath s
 	})
 }
 
-func HcsGrantVMAccess(ctx gcontext.Context, vmID string, filePath string) (hr error) {
+func HcsGrantVMAccess(ctx context.Context, vmID string, filePath string) (hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsGrantVmAccess")
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, hr) }()
@@ -880,7 +878,7 @@ func HcsGrantVMAccess(ctx gcontext.Context, vmID string, filePath string) (hr er
 	})
 }
 
-func HcsRevokeVMAccess(ctx gcontext.Context, vmID string, filePath string) (hr error) {
+func HcsRevokeVMAccess(ctx context.Context, vmID string, filePath string) (hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsRevokeVmAccess")
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, hr) }()
@@ -893,7 +891,7 @@ func HcsRevokeVMAccess(ctx gcontext.Context, vmID string, filePath string) (hr e
 	})
 }
 
-func HcsGrantVMGroupAccess(ctx gcontext.Context, filePath string) (hr error) {
+func HcsGrantVMGroupAccess(ctx context.Context, filePath string) (hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsGrantVmGroupAccess")
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, hr) }()
@@ -904,7 +902,7 @@ func HcsGrantVMGroupAccess(ctx gcontext.Context, filePath string) (hr error) {
 	})
 }
 
-func HcsRevokeVMGroupAccess(ctx gcontext.Context, filePath string) (hr error) {
+func HcsRevokeVMGroupAccess(ctx context.Context, filePath string) (hr error) {
 	ctx, span := oc.StartSpan(ctx, "HcsRevokeVmGroupAccess")
 	defer span.End()
 	defer func() { oc.SetSpanStatus(span, hr) }()
