@@ -123,23 +123,26 @@ var allFeatures = []string{
 
 var (
 	flagLogLevel = testflag.NewLogrusLevel("log-level", logrus.WarnLevel.String(), "logrus logging `level`")
+	flagETWLogs  = flag.Bool("etw", false, "print (non-test) logs to ETW instead of stdout; "+
+		"will always be true for benchmarking.")
 
 	flagFeatures            = testflag.NewFeatureFlag(allFeatures)
 	flagContainerdNamespace = flag.String("ctr-namespace", hcsOwner,
 		"containerd `namespace` to use when creating OCI specs")
 	flagLCOWLayerPaths = testflag.NewStringSet("lcow-layer-paths",
-		"comma separated list of image layer `paths` to use as LCOW container rootfs. "+
-			"If empty, \""+alpineImagePaths.Image+"\" will be pulled and unpacked.", true)
+		"comma separated list of image layer `paths` to use as LCOW container rootfs; "+
+			"if empty, \""+alpineImagePaths.Image+"\" will be pulled and unpacked", true)
 	flagWCOWLayerPaths = testflag.NewStringSet("wcow-layer-paths",
-		"comma separated list of image layer `paths` to use as WCOW uVM and container rootfs. "+
-			"If empty, \""+testimages.NanoserverImage("")+"\" will be pulled and unpacked.", true)
+		"comma separated list of image layer `paths` to use as WCOW uVM and container rootfs; "+
+			"if empty, \""+testimages.NanoserverImage("")+"\" will be pulled and unpacked", true)
 	flagLayerTempDir = flag.String("layer-temp-dir", "",
-		"`directory` to unpack image layers to, if not provided. Leave empty to use os.TempDir.")
+		"`directory` to unpack image layers to, if not provided. Leave empty to use os.TempDir")
 	flagLinuxBootFilesPath = flag.String("linux-bootfiles", "",
 		"override default `path` for LCOW uVM boot files (rootfs.vhd, initrd.img, kernel, and vmlinux)")
 )
 
 func TestMain(m *testing.M) {
+	log.SetScrubbing(false)
 	flag.Parse()
 
 	if err := runTests(m); err != nil {
@@ -170,7 +173,7 @@ func runTests(m *testing.M) error {
 	// default is stderr, but test2json does not consume stderr, so logs would be out of sync
 	// and powershell considers output on stderr as an error when execing
 	//
-	// ! keep defer statement in [util.RunningBenchmarks()] in sync with output/formatter settings here
+	// ! keep defer statement in ETW provider clause below in sync with output/formatter settings here
 	logrus.SetOutput(os.Stdout)
 	logrus.SetFormatter(&logrus.TextFormatter{FullTimestamp: true})
 	logrus.SetLevel(flagLogLevel.Level)
@@ -227,14 +230,15 @@ func runTests(m *testing.M) error {
 		}(ctx)
 
 		// print additional configuration options when running benchmarks, so we can track performance.
-		//
-		// also, print to ETW instead of stdout to mirror actual deployments, and to prevent logs from
-		// interfering with benchmarking output
 		if util.RunningBenchmarks() {
 			util.PrintAdditionalBenchmarkConfig()
 			// also print out the features used as part of the benchmarking config
 			fmt.Printf("features: %s\n", flagFeatures.Strings())
+		}
 
+		// print to ETW instead of stdout if requested, or during benchmarks to mirror actual deployments
+		// and to prevent logs from interfering with benchmarking output
+		if *flagETWLogs || util.RunningBenchmarks() {
 			provider, err := etw.NewProviderWithOptions("Microsoft.Virtualization.RunHCS")
 			if err != nil {
 				logrus.Error(err)

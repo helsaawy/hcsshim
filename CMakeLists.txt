@@ -254,7 +254,8 @@ function(go_build package)
 
     # for now, building will always require running `go gen` to create the needed syso files
     # will have to move those targets directly into CMake
-    list(PREPEND arg_DEPENDS "set_version" "go_mod_root" "go_gen")
+    list(PREPEND arg_DEPENDS "set_version" "go_mod_root")
+    # "go_gen")
 
     parse_goos("${arg_TARGET_OS}" os)
     set(env ${go_common_env} "GOOS=${os}")

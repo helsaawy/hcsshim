@@ -73,6 +73,7 @@ func (ke *Entry) logFormat() logrus.Fields {
 // Parse takes a single kmsg log entry string and returns a struct representing
 // the components of the log entry.
 func parse(s string) (*Entry, error) {
+	// TODO: parse key/value pairs (will be separated by \n if kernel concats lines)
 	fields := strings.SplitN(s, ";", 2)
 	if len(fields) < 2 {
 		return nil, ErrInvalidFormat
@@ -99,13 +100,20 @@ func parse(s string) (*Entry, error) {
 		Seq:                seq,
 		TimeSinceBootMicro: timestamp,
 		Flags:              prefixFields[3],
-		Message:            fields[1],
+		// trim trailing spaces (shouldn't be any leading ones), as lines are often newline terminated
+		Message: strings.TrimSpace(fields[1]),
 	}, nil
 }
 
 // ReadForever reads from /dev/kmsg forever unless /dev/kmsg cannot be opened.
 // Every entry with priority <= 'logLevel' will be logged.
 func ReadForever(logLevel LogLevel) {
+	// TODO:
+	//  - handle continuation fragments:
+	//    "/dev/kmsg users are recommended to implement fragment handling."
+	//  - switch to `dmesg --follow --decode --json` for easier parsing
+	//  - check entry sequence numbers are in order and warn if messages were skipped
+	// https://docs.kernel.org/admin-guide/abi-testing.html#abi-dev-kmsg
 	file, err := os.Open("/dev/kmsg")
 	if err != nil {
 		logrus.WithError(err).Error("failed to open /dev/kmsg")
