@@ -6,6 +6,8 @@ package functional
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -123,6 +125,63 @@ func TestLCOW_RepeatedEndpointAdd(t *testing.T) {
 
 	vm := testuvm.CreateAndStartLCOWFromOpts(ctx, t, opts)
 
+	// set up tracing events
+	// switch to the root cgroup first, then enable the required events
+	func() {
+		ps := testoci.CreateLinuxSpec(ctx, t, vm.ID(),
+			testoci.DefaultLinuxSpecOpts(ns.Id,
+				ctrdoci.WithDefaultPathEnv,
+				ctrdoci.WithProcessArgs("/bin/sh", "-c", `echo 0 > /sys/fs/cgroup/cgroup.procs
+mount -t tracefs nodev /sys/kernel/tracing
+
+echo hyperv:vmbus_on_msg_dpc >> /sys/kernel/tracing/set_event
+echo hyperv:vmbus_on_message >> /sys/kernel/tracing/set_event
+echo hyperv:vmbus_onoffer >> /sys/kernel/tracing/set_event
+echo hyperv:vmbus_onoffer_rescind >> /sys/kernel/tracing/set_event
+echo hyperv:vmbus_onopen_result >> /sys/kernel/tracing/set_event
+echo hyperv:vmbus_ongpadl_created >> /sys/kernel/tracing/set_event
+echo hyperv:vmbus_ongpadl_torndown >> /sys/kernel/tracing/set_event
+echo hyperv:vmbus_open >> /sys/kernel/tracing/set_event
+echo hyperv:vmbus_close_internal >> /sys/kernel/tracing/set_event
+echo hyperv:vmbus_establish_gpadl_header >> /sys/kernel/tracing/set_event
+echo hyperv:vmbus_establish_gpadl_body >> /sys/kernel/tracing/set_event
+echo hyperv:vmbus_teardown_gpadl >> /sys/kernel/tracing/set_event
+echo hyperv:vmbus_release_relid >> /sys/kernel/tracing/set_event
+echo hyperv:vmbus_send_tl_connect_request >> /sys/kernel/tracing/set_event
+`),
+			)...,
+		).Process
+		io := testcmd.NewBufferedIO()
+		p := testcmd.Create(ctx, t, vm, ps, io)
+		testcmd.Start(ctx, t, p)
+
+		e := testcmd.Wait(ctx, t, p)
+		out, err := io.Output()
+		t.Logf("cmd output:\n%s", out)
+		if e != 0 || err != nil {
+			t.Fatalf("enabling tracing failed with exit code %d and error %v", e, err)
+		}
+	}()
+
+	func() {
+		ps := testoci.CreateLinuxSpec(ctx, t, vm.ID(),
+			testoci.DefaultLinuxSpecOpts(ns.Id,
+				ctrdoci.WithDefaultPathEnv,
+				ctrdoci.WithProcessArgs("/bin/sh", "-c", `cat /sys/kernel/tracing/set_event`),
+			)...,
+		).Process
+		io := testcmd.NewBufferedIO()
+		p := testcmd.Create(ctx, t, vm, ps, io)
+		testcmd.Start(ctx, t, p)
+
+		e := testcmd.Wait(ctx, t, p)
+		out, err := io.Output()
+		t.Logf("cmd output:\n%s", out)
+		if e != 0 || err != nil {
+			t.Fatalf("get tracing events failed with exit code %d and error %v", e, err)
+		}
+	}()
+
 	if err := vm.CreateAndAssignNetworkSetup(ctx, "", ""); err != nil {
 		t.Fatalf("setting up network: %v", err)
 	}
@@ -134,6 +193,34 @@ func TestLCOW_RepeatedEndpointAdd(t *testing.T) {
 	if err = vm.RemoveEndpointFromNS(ctx, ns.Id, hnsEP); err != nil {
 		t.Fatalf("initial endpoint remove failed: %v", err)
 	}
+
+	t.Cleanup(func() {
+		s := filepath.Join(util.TestingBinaryPath(ctx, t), util.RandNameSuffix(t.Name(), "trace"))
+		t.Logf("writing trace data to: %s", s)
+		f, err := os.Open(s)
+		if err != nil {
+			t.Fatalf("failed to open trace file for writing: %v", err)
+		}
+		defer f.Close()
+
+		ps := testoci.CreateLinuxSpec(ctx, t, vm.ID(),
+			testoci.DefaultLinuxSpecOpts(ns.Id,
+				ctrdoci.WithDefaultPathEnv,
+				ctrdoci.WithProcessArgs("/bin/sh", "-c", `cat /sys/kernel/tracing/trace`),
+			)...,
+		).Process
+		p := testcmd.Create(ctx, t, vm, ps, nil)
+		p.Stderr = f
+		p.Stdout = f
+
+		testcmd.Start(ctx, t, p)
+		e := testcmd.Wait(ctx, t, p)
+		if e != 0 {
+			t.Fatalf("get tracing events failed with exit code %d", e)
+		}
+
+	})
+
 	// start hot adding and removing the endpoint
 	for i := range 2048 {
 		if i%50 == 0 {
