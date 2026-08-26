@@ -114,7 +114,7 @@ func TestLCOW_RepeatedEndpointAdd(t *testing.T) {
 		t.Fatalf("network attachment: %v", err)
 	}
 
-	ctx := util.Context(namespacedContext(context.Background()), t)
+	ctx := namespacedContext(t.Context())
 	opts := defaultLCOWOptions(ctx, t)
 	opts.ExecCommandLine += " -kmsgLogLevel=7 "
 	opts.KernelBootOptions += "spec_rstack_overflow=off"
@@ -157,7 +157,7 @@ echo hyperv:vmbus_send_tl_connect_request >> /sys/kernel/tracing/set_event
 
 		e := testcmd.Wait(ctx, t, p)
 		out, err := io.Output()
-		t.Logf("cmd output:\n%s", out)
+		t.Logf("enabling trace events output:\n%s", out)
 		if e != 0 || err != nil {
 			t.Fatalf("enabling tracing failed with exit code %d and error %v", e, err)
 		}
@@ -176,10 +176,69 @@ echo hyperv:vmbus_send_tl_connect_request >> /sys/kernel/tracing/set_event
 
 		e := testcmd.Wait(ctx, t, p)
 		out, err := io.Output()
-		t.Logf("cmd output:\n%s", out)
+		t.Logf("set_event file output:\n%s", out)
 		if e != 0 || err != nil {
 			t.Fatalf("get tracing events failed with exit code %d and error %v", e, err)
 		}
+	}()
+
+	logDir := filepath.Dir(util.TestingBinaryPath(ctx, t))
+
+	// pipe the tracing events into a file
+	go func() {
+		// keep running until the vm is removed
+		ctx := context.WithoutCancel(ctx)
+		s := filepath.Join(logDir, "trace"+util.RandNameSuffix(t.Name())+".log")
+		t.Logf("writing trace data to: %s", s)
+		f, err := os.Create(s)
+		if err != nil {
+			t.Errorf("failed to open trace file for writing: %v", err)
+			return
+		}
+		defer f.Close()
+
+		ps := testoci.CreateLinuxSpec(ctx, t, vm.ID(),
+			testoci.DefaultLinuxSpecOpts(ns.Id,
+				ctrdoci.WithDefaultPathEnv,
+				ctrdoci.WithProcessArgs("/bin/sh", "-c", `tail +1 -f /sys/kernel/tracing/trace`),
+			)...,
+		).Process
+		p := testcmd.Create(ctx, t, vm, ps, nil)
+		p.Stderr = f
+		p.Stdout = f
+
+		testcmd.Start(ctx, t, p)
+
+		err = p.Wait()
+		t.Logf("[%s] get tracing events ended: %v", time.Now().Format(time.RFC3339Nano), err)
+	}()
+
+	go func() {
+		// keep running until the vm is removed
+		ctx := context.WithoutCancel(ctx)
+		s := filepath.Join(logDir, "kmsg"+util.RandNameSuffix(t.Name())+".log")
+		t.Logf("writing kmsg data to: %s", s)
+		f, err := os.Create(s)
+		if err != nil {
+			t.Errorf("failed to open kmsg file for writing: %v", err)
+			return
+		}
+		defer f.Close()
+
+		ps := testoci.CreateLinuxSpec(ctx, t, vm.ID(),
+			testoci.DefaultLinuxSpecOpts(ns.Id,
+				ctrdoci.WithDefaultPathEnv,
+				ctrdoci.WithProcessArgs("/bin/sh", "-c", `tail +1 -f /dev/kmsg`),
+			)...,
+		).Process
+		p := testcmd.Create(ctx, t, vm, ps, nil)
+		p.Stderr = f
+		p.Stdout = f
+
+		testcmd.Start(ctx, t, p)
+
+		err = p.Wait()
+		t.Logf("[%s] get kmsg events ended: %v", time.Now().Format(time.RFC3339Nano), err)
 	}()
 
 	if err := vm.CreateAndAssignNetworkSetup(ctx, "", ""); err != nil {
@@ -194,19 +253,45 @@ echo hyperv:vmbus_send_tl_connect_request >> /sys/kernel/tracing/set_event
 		t.Fatalf("initial endpoint remove failed: %v", err)
 	}
 
-	t.Cleanup(func() {
-		s := filepath.Join(util.TestingBinaryPath(ctx, t), util.RandNameSuffix(t.Name(), "trace"))
-		t.Logf("writing trace data to: %s", s)
-		f, err := os.Open(s)
+	// start hot adding and removing the endpoint
+loop:
+	for i := range 2048 {
+		if i%50 == 0 {
+			t.Logf("iteration #%d", i)
+		}
+
+		if err = vm.AddEndpointToNSWithID(ctx, ns.Id, "", hnsEP); err != nil {
+			t.Errorf("endpoint add #%d failed at %s: %v", i, time.Now().Format(time.RFC3339Nano), err)
+		} else {
+			// time.Sleep(5 * time.Millisecond)
+
+			if err = vm.RemoveEndpointFromNS(ctx, ns.Id, hnsEP); err != nil {
+				t.Errorf("endpoint remove #%d failed at %s: %v", i, time.Now().Format(time.RFC3339Nano), err)
+			}
+		}
+
+		if t.Failed() {
+			break loop
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	func() {
+		// keep running until the vm is removed
+		ctx := context.WithoutCancel(ctx)
+		s := filepath.Join(logDir, "dmesg"+util.RandNameSuffix(t.Name())+".log")
+		t.Logf("writing dmesg data to: %s", s)
+		f, err := os.Create(s)
 		if err != nil {
-			t.Fatalf("failed to open trace file for writing: %v", err)
+			t.Errorf("failed to open dmesg file for writing: %v", err)
+			return
 		}
 		defer f.Close()
 
 		ps := testoci.CreateLinuxSpec(ctx, t, vm.ID(),
 			testoci.DefaultLinuxSpecOpts(ns.Id,
 				ctrdoci.WithDefaultPathEnv,
-				ctrdoci.WithProcessArgs("/bin/sh", "-c", `cat /sys/kernel/tracing/trace`),
+				ctrdoci.WithProcessArgs("/bin/sh", "-c", `dmesg -r`),
 			)...,
 		).Process
 		p := testcmd.Create(ctx, t, vm, ps, nil)
@@ -214,29 +299,14 @@ echo hyperv:vmbus_send_tl_connect_request >> /sys/kernel/tracing/set_event
 		p.Stdout = f
 
 		testcmd.Start(ctx, t, p)
-		e := testcmd.Wait(ctx, t, p)
-		if e != 0 {
-			t.Fatalf("get tracing events failed with exit code %d", e)
-		}
 
-	})
+		err = p.Wait()
+		t.Logf("[%s] get dmesg events ended: %v", time.Now().Format(time.RFC3339Nano), err)
+	}()
 
-	// start hot adding and removing the endpoint
-	for i := range 2048 {
-		if i%50 == 0 {
-			t.Logf("iteration #%d", i)
-		}
-
-		if err = vm.AddEndpointToNSWithID(ctx, ns.Id, "", hnsEP); err != nil {
-			t.Fatalf("endpoint add #%d failed: %v", i, err)
-		}
-		// time.Sleep(10 * time.Millisecond)
-
-		if err = vm.RemoveEndpointFromNS(ctx, ns.Id, hnsEP); err != nil {
-			t.Fatalf("endpoint remove #%d failed: %v", i, err)
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
+	// Wait a bit for the trace file to flush
+	time.Sleep(1 * time.Second)
+	t.Logf("[%s] slept after failure", time.Now().Format(time.RFC3339Nano))
 }
 
 func TestLCOW_IPv6_Assignment(t *testing.T) {
